@@ -32,6 +32,10 @@ Checkboxes are marked complete only when the named work is implemented and local
 - [x] Implement browser-style navigation, command search, contextual menus, local notifications, and history.
 - [x] Implement an advanced regular-expression workbench beside registered search surfaces.
 - [x] Implement browser-local demonstrations for locks, authentication codes, file conversion, and local Ollama mediation with explicit limitations.
+- [x] Reconcile the active estimator baseline from the newest valid remaining haircut while retaining an independent manual fallback after create, edit, and delete.
+- [x] Reject future manual baselines and haircut dates with guided inline validation, and exclude legacy future haircut records while their dates remain in the future.
+- [x] Serialize same-origin visitor-state writes with monotonic revisions, fresh per-document writer identity, storage-event reconciliation, stale-write refusal, and Web Locks or IndexedDB transactions.
+- [x] Export faithful normalized CSV and TSV rows with JSON Pointer paths, typed JSON values, and explicit representation and privacy metadata.
 - [ ] Complete a real browser interaction ledger through the approved off-screen route.
 - [ ] Capture keyboard, touch, narrow-layout, high-contrast, and screen-reader evidence.
 
@@ -50,6 +54,7 @@ Checkboxes are marked complete only when the named work is implemented and local
 - [x] Add source-level structure, provenance, responsive, privacy, and local-asset checks.
 - [x] Add hand-written feature and regular-expression-builder inventories.
 - [x] Demonstrate deliberate red-then-green regressions for provenance and builder removal.
+- [x] Add focused correctness tests and a deliberate red-then-green source-boundary regression for baseline, chronology, concurrent storage, and CSV or TSV behavior.
 - [ ] Run built-artifact interaction checks.
 - [ ] Run genuine capture review against the exact verified commit.
 - [ ] Verify the deployed page response, Open Graph metadata, and image bytes.

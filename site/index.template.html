@@ -129,7 +129,7 @@
           <article class="feature-card" data-feature="haircuts">
             <span class="feature-icon" aria-hidden="true">✂</span>
             <h3>Haircut resets</h3>
-            <p>Record the post-cut length and date, then begin the next estimate from that factual baseline.</p>
+            <p>Record the post-cut length and date. The newest valid haircut becomes the active baseline while the manual fallback remains available.</p>
             <button class="text-button" type="button" data-go-tab="haircuts">Open haircut log</button>
           </article>
           <article class="feature-card" data-feature="service">
@@ -156,8 +156,8 @@
         </header>
         <div class="two-column">
           <form class="surface-card form-grid" id="estimator-form">
-            <label>Baseline date<input id="baseline-date" type="date" required></label>
-            <label>Baseline length<span class="unit-input"><input id="baseline-length" type="number" min="0" max="300" step="0.01" required><span data-unit-label>cm</span></span></label>
+            <label>Manual fallback date<input id="baseline-date" type="date" required aria-describedby="baseline-date-help baseline-date-error"><small id="baseline-date-help">Used when no valid haircut record remains. Future dates are not accepted.</small><span class="field-error" id="baseline-date-error" role="alert"></span></label>
+            <label>Manual fallback length<span class="unit-input"><input id="baseline-length" type="number" min="0" max="300" step="0.01" required><span data-unit-label>cm</span></span></label>
             <label>Monthly growth rate<span class="unit-input"><input id="growth-rate" type="number" min="0" max="10" step="0.01" required><span data-unit-label>cm</span></span></label>
             <label>Target length<span class="unit-input"><input id="target-length" type="number" min="0" max="300" step="0.01" required><span data-unit-label>cm</span></span></label>
             <fieldset class="segmented-field">
@@ -169,6 +169,7 @@
           </form>
           <article class="surface-card estimate-result" aria-live="polite">
             <p class="eyebrow">Estimated today</p>
+            <p id="baseline-source">The manual fallback is the active baseline.</p>
             <strong class="metric" id="current-length-result">0.00 cm</strong>
             <p id="estimate-summary">Enter a factual baseline to calculate a projection.</p>
             <dl class="metric-list">
@@ -185,10 +186,10 @@
         <header class="page-header">
           <p class="eyebrow">Dated reset history</p>
           <h2>Haircut log</h2>
-          <p>Adding a haircut updates the browser-local estimator baseline. Desktop and server records remain separate.</p>
+          <p>The newest valid haircut is the active browser-local baseline. Editing or deleting records recalculates that choice, and the retained manual fallback resumes when no valid haircut remains. Desktop and server records remain separate.</p>
         </header>
         <form class="surface-card inline-form" id="haircut-form">
-          <label>Date<input id="haircut-date" type="date" required></label>
+          <label>Date<input id="haircut-date" type="date" required aria-describedby="haircut-date-help haircut-date-error"><small id="haircut-date-help">Choose today or an earlier date.</small><span class="field-error" id="haircut-date-error" role="alert"></span></label>
           <label>Post-cut length<input id="haircut-length" type="number" min="0" max="300" step="0.01" required></label>
           <label>Note<input id="haircut-note" type="text" maxlength="500" placeholder="Optional"></label>
           <button class="filled-button" type="submit">Record haircut</button>
@@ -304,7 +305,7 @@
         </section>
 
         <section class="tool-panel" data-tool-panel="exports" data-feature="exports">
-          <article class="surface-card form-grid"><h3>Export center</h3><p>Exports include browser-local settings, estimates, haircut records, notifications, and redacted history. Authenticator secrets, lock credentials, private vocabulary mappings, and custom-logo bytes are omitted and identified as omitted.</p><label>Format<select id="export-format" data-search-owner="export-format"><option>JSON</option><option>JSONL</option><option>YAML</option><option>TOML</option><option>XML</option><option>CSV</option><option>TSV</option><option>Markdown</option><option>HTML</option><option>SQL</option><option>TypeScript</option><option>JavaScript</option><option>Python</option><option>Go</option><option>Rust</option><option>JSON Schema</option><option>Protobuf</option></select><button type="button" class="builder-button" data-open-regex-for="export-format" aria-label="Open regex builder for export format">.*</button></label><button class="filled-button" type="button" id="export-state">Export redacted browser state</button><button class="tonal-button" type="button" id="import-state">Import compatible state</button><input id="import-file" type="file" accept="application/json" hidden></article>
+          <article class="surface-card form-grid"><h3>Export center</h3><p>Exports include browser-local settings, estimates, haircut records, notifications, and redacted history. Authenticator secrets, lock credentials, private vocabulary mappings, and custom-logo bytes are omitted and identified as omitted. CSV and TSV use normalized long-form rows with JSON Pointer paths, JSON values, representation metadata, and the same explicit privacy omissions.</p><label>Format<select id="export-format" data-search-owner="export-format"><option>JSON</option><option>JSONL</option><option>YAML</option><option>TOML</option><option>XML</option><option>CSV</option><option>TSV</option><option>Markdown</option><option>HTML</option><option>SQL</option><option>TypeScript</option><option>JavaScript</option><option>Python</option><option>Go</option><option>Rust</option><option>JSON Schema</option><option>Protobuf</option></select><button type="button" class="builder-button" data-open-regex-for="export-format" aria-label="Open regex builder for export format">.*</button></label><button class="filled-button" type="button" id="export-state">Export redacted browser state</button><button class="tonal-button" type="button" id="import-state">Import compatible state</button><input id="import-file" type="file" accept="application/json" hidden></article>
         </section>
       </section>
 
@@ -320,7 +321,7 @@
       </section>
 
       <section class="page-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history" data-panel="history" data-feature="history">
-        <header class="page-header"><p class="eyebrow">Append-only browser record</p><h2>Local history and notifications</h2><p>History is stored in this browser only. It is not Git, it is not synchronized, and clearing site storage removes it.</p></header>
+        <header class="page-header"><p class="eyebrow">Append-only browser record</p><h2>Local history and notifications</h2><p>History is stored in this browser only. Same-origin tabs reconcile monotonic revisions through an exclusive browser transaction and refuse stale writes. Nothing synchronizes to another device or server, and clearing site storage removes it.</p><p id="storage-revision-status" role="status">Browser revision unavailable until local state initializes.</p></header>
         <div class="two-column">
           <section class="surface-card"><h3>Version history</h3><div class="filter-row"><label>From<input id="history-from" type="date"></label><label>To<input id="history-to" type="date"></label><div class="search-row"><label class="sr-only" for="history-search">Search history</label><input id="history-search" type="search" placeholder="Search history" data-search-owner="history" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="history-search" aria-label="Open regex builder for history search">.*</button></div></div><div id="history-list" class="collection-list"></div><button class="tonal-button" type="button" data-action="export-history">Export redacted history</button></section>
           <section class="surface-card"><h3>Notification center</h3><div class="search-row"><label class="sr-only" for="notification-search">Search notifications</label><input id="notification-search" type="search" placeholder="Search notifications" data-search-owner="notifications" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="notification-search" aria-label="Open regex builder for notification search">.*</button></div><div id="notification-list" class="collection-list"></div><div class="button-row"><button class="tonal-button" type="button" data-action="select-all-notifications">Select every match</button><button class="danger-button" type="button" data-action="delete-notifications">Delete selected</button></div></section>
@@ -367,7 +368,7 @@
 
         <section class="settings-panel" data-settings-panel="privacy">
           <article class="setting-card school-hidden" data-setting-keywords="vocabulary JSON upload replace clear local"><div><h3>Local personal-vocabulary JSON</h3><p>Original wording remains active until a complete bounded file validates. No mapping is bundled.</p><small id="vocabulary-status">No file loaded</small></div><input id="vocabulary-file" type="file" accept="application/json"><button class="text-button" type="button" id="clear-vocabulary">Clear local cache</button></article>
-          <article class="setting-card"><div><h3>Browser storage</h3><p>Settings, haircut planning, locks, tickets, notifications, and history stay in localStorage. This is convenience storage, not a security boundary.</p></div><button class="danger-button" type="button" data-action="clear-site-data">Clear all local data</button></article>
+          <article class="setting-card"><div><h3>Browser storage</h3><p>Settings, haircut planning, locks, tickets, notifications, and history stay in a revisioned localStorage envelope. Same-origin tabs use Web Locks or an IndexedDB transaction to serialize writes, reconcile storage events, and visibly refuse stale changes. This is convenience storage, not a security boundary.</p></div><button class="danger-button" type="button" data-action="clear-site-data">Clear all local data</button></article>
           <article class="setting-card"><div><h3>Support Tickets</h3><p>A fictional, local-only recovery desk that sends nothing anywhere and cannot delete storage for you.</p></div><button class="tonal-button" type="button" data-action="open-support">Open Support Tickets</button></article>
         </section>
 
@@ -469,6 +470,7 @@
   <script id="bundled-docs" type="application/json">__DOCS_JSON__</script>
   <script id="bundled-changelog" type="application/json">__CHANGELOG_JSON__</script>
   <script id="bundled-hair-assets" type="application/json">__HAIR_ASSETS_JSON__</script>
+  <script src="state-contract.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

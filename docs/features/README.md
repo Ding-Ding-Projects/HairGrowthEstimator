@@ -14,7 +14,7 @@ These articles describe product behavior visible in the inspected source and ide
 
 ## Current implementation summary
 
-The inspected source contains a desktop main process, an isolated preload bridge, a local JSON state store, an HTTP service, Docker deployment files, strict SSH tunnel process management, and website template, stylesheet, and browser runtime files. The browser runtime includes a 1.0 cm per month adjustable default, centimetre and inch conversion, haircut baseline resets, localStorage persistence, redacted exports, and local utilities. The desktop renderer, canonical hair-reference files, tests, interaction ledgers, and built-artifact captures were not present at the latest documentation inspection. Source presence is not treated as built-artifact verification.
+The inspected source contains a desktop main process, an isolated preload bridge, a local JSON state store, an HTTP service, Docker deployment files, strict SSH tunnel process management, and website template, stylesheet, state contract, and browser runtime files. The browser runtime includes a 1.0 cm per month adjustable default, exact centimetre and inch conversion, newest-haircut baseline reconciliation with a retained manual fallback, guided future-date refusal, monotonic same-origin browser revisions, stale-write refusal, faithful normalized CSV and TSV exports, redacted exports, and local utilities. Focused source tests cover those correctness behaviors. Desktop interaction ledgers and built-artifact captures remain pending. Source presence is not treated as built-artifact verification.
 
 ## Suggested reading
 

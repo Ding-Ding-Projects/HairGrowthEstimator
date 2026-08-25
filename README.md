@@ -16,11 +16,12 @@ Installer: **pending verification and publication**. No download button or insta
 ## What it covers
 
 - Adjustable hair-growth estimates with a default of 1.0 cm per month.
-- Haircut resets, editing, deletion, and dated history.
+- Haircut create, edit, deletion, and dated history with the newest valid remaining haircut as the active baseline and an independently retained manual fallback.
 - Exact centimetre and inch display using 1 inch = 2.54 centimetres.
 - Animated male hair-stage references at approximately 0.3, 1.5, 3, 5, 9, 14, 20, and 28 cm.
 - Local service operation, private-LAN access, and SSH tunnel guidance.
-- Local-first browser settings, export and import, notifications, history, accessibility controls, and offline documentation.
+- Local-first browser settings with monotonic same-origin revisions, exclusive Web Locks or IndexedDB transactions, visible stale-write refusal, notifications, history, accessibility controls, and offline documentation.
+- Faithful normalized CSV and TSV exports of the complete redacted browser record, with explicit representation and privacy metadata on every row.
 - Release, installer, and update status that stays disabled until evidence exists.
 
 The 1.0 cm monthly value is an adjustable estimate, not a promise or medical assessment. Individual growth varies. See [NCBI Bookshelf, Hair Growth and Disorders](https://www.ncbi.nlm.nih.gov/books/NBK499948/).
@@ -81,7 +82,7 @@ The release line-count table and the corresponding human-effort estimate are pen
 
 ## Privacy
 
-The website bundles its scripts, styles, icons, and documentation locally. It uses no analytics, trackers, remote fonts, or CDN assets. The only runtime external links are factual public release, evidence, research, and catalog links selected by the visitor. Browser demonstration state stays in that visitor's browser storage. Clearing the website's storage resets it.
+The website bundles its scripts, styles, icons, and documentation locally. It uses no analytics, trackers, remote fonts, or CDN assets. The only runtime external links are factual public release, evidence, research, and catalog links selected by the visitor. Browser demonstration state stays in that visitor's browser profile. Same-origin tabs reconcile revisioned writes locally and refuse stale mutations, but nothing synchronizes to another device or service. Clearing the website's storage resets it.
 
 The optional dim-sum startup surprise links to the public catalog asset and does not vendor or duplicate the image in this repository.
 

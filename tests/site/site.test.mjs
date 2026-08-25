@@ -56,11 +56,14 @@ test('composition emits commit-bound provenance and local assets', async (contex
   delete env.REQUIRE_HAIR_ASSETS;
   execFileSync(process.execPath, [join(root, 'scripts', 'compose-site.mjs')], { cwd: root, env, stdio: 'pipe' });
   const html = await readFile(join(directory, 'index.html'), 'utf8');
+  const stateContract = await readFile(join(directory, 'state-contract.js'), 'utf8');
   assert.equal(/__[A-Z0-9_]+__/.test(html), false);
   assert.match(html, /"version":"1\.0\.0"/);
   const commit = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   assert.match(html, new RegExp(commit));
   assert.ok(html.indexOf('id="front-provenance"') < html.indexOf('id="app-shell"'));
+  assert.ok(html.indexOf('src="state-contract.js"') < html.indexOf('src="app.js"'));
+  assert.match(stateContract, /createStateCoordinator/);
   assert.match(html, /<script id="bundled-hair-assets" type="application\/json">\[\]<\/script>/);
   const rootPreview = await readFile(join(root, 'social-preview.png'));
   const servedPreview = await readFile(join(directory, 'social-preview.png'));

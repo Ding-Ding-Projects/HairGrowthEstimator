@@ -26,7 +26,7 @@ The public website is the product's documentation, download, status, settings, a
 
 ## Current status
 
-The current linked checkout contains `site/index.template.html`, `site/styles.css`, and `site/app.js`. The source implements browser-local estimation, haircut resets, centimetre and inch display, tabs, settings, local tools, status rendering, history, redacted exports, context actions, locks, confirmation, and other bounded visitor controls. Several universal-depth requirements remain partial or absent, as recorded in the completeness inventory. Composition, focused tests, interaction evidence, captures, deployment, and public URL verification remain pending. Source presence is not counted as built-artifact verification.
+The current source contains `site/index.template.html`, `site/styles.css`, `site/state-contract.js`, and `site/app.js`. It implements browser-local estimation, newest-haircut baseline reconciliation with a retained manual fallback, future-date refusal, monotonic same-origin state revisions, stale-write refusal, centimetre and inch display, tabs, settings, local tools, status rendering, history, redacted and normalized tabular exports, context actions, locks, confirmation, and other bounded visitor controls. Focused source tests cover the four corrected data behaviors. Several universal-depth requirements remain partial or absent, as recorded in the completeness inventory. Built interaction evidence, captures, deployment, and public URL verification remain pending. Source presence is not counted as built-artifact verification.
 
 ## Suggested reading
 

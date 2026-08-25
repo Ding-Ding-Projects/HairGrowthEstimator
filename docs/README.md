@@ -20,7 +20,7 @@ The following terms are used consistently throughout these articles:
 - **Built-artifact verified** means the packaged desktop product or composed website was exercised directly.
 - **Pending** means the requirement has no accepted proof yet. A planned selector, test identifier, interaction path, or capture filename is not evidence by itself.
 
-The current documentation baseline was prepared from revision `f7cf721809bb44047340e7893ed59b9268875871`. Source may continue changing until the release candidate is pinned.
+This correctness update starts from revision `df80a78d3c5964dca4a62a9196625c8482808408`. It cannot truthfully cite its own future commit from inside that commit. Build provenance and the immutable release record will pin the resulting revision when those artifacts exist.
 
 ## Product boundary
 

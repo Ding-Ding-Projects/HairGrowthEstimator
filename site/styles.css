@@ -281,6 +281,8 @@ main { min-width: 0; }
 
 .form-grid { display: grid; gap: 1rem; }
 .form-grid h3 { margin: 0; }
+.field-error { display: block; min-height: 1.25em; color: var(--md-error); font-size: 0.85rem; }
+input[aria-invalid="true"] { outline: 2px solid var(--md-error); outline-offset: 2px; }
 .inline-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 1rem; align-items: end; }
 label { display: grid; gap: 0.35rem; color: var(--md-on-surface-variant); font-weight: 650; }
 input, select, textarea {

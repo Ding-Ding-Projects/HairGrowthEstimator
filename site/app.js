@@ -1,12 +1,17 @@
 'use strict';
 
 const STATE_KEY = 'hairGrowthEstimator.websiteState.v1';
+const STATE_LOCK_NAME = 'hairGrowthEstimator.websiteState.transaction.v1';
+const WRITER_SESSION_KEY = 'hairGrowthEstimator.websiteState.writer.v1';
 const PRIVATE_KEYS = new Set(['totpSecret', 'lockHash', 'pinHash', 'passwordHash', 'vocabularyMappings', 'customLogoData']);
 const INCHES_PER_CM = 1 / 2.54;
 const CM_PER_INCH = 2.54;
 const MAX_HISTORY = 500;
 const MAX_NOTIFICATIONS = 200;
 const MAX_FILE_BYTES = 1024 * 1024;
+const StateContract = globalThis.HairGrowthStateContract;
+if (!StateContract) throw new Error('The browser state contract did not load.');
+const { createStateCoordinator, decodeStateEnvelope, reconcileBaseline, serializeDelimitedExport, todayDateString, validateDateNotFuture } = StateContract;
 const DIM_SUM = Object.freeze({
   nameEn: 'Classic Har Gow',
   nameYue: '蝦餃',
@@ -92,8 +97,10 @@ const defaultState = () => ({
     attention: { focus: false, lowStim: false, time: false, one: false, momentum: false, nextAction: '', snoozedUntil: 0 }
   },
   estimator: {
-    baselineDate: new Date().toISOString().slice(0, 10),
+    baselineDate: todayDateString(),
     baselineLengthCm: 1,
+    manualBaselineDate: todayDateString(),
+    manualBaselineLengthCm: 1,
     growthRateCmPerMonth: 1,
     targetLengthCm: 12,
     unit: 'cm'
@@ -136,6 +143,7 @@ const bundledHairAssets = readJsonScript('bundled-hair-assets', []);
 
 function mergeState(base, saved) {
   if (!saved || saved.schemaVersion !== 1) return base;
+  const savedEstimator = saved.estimator && typeof saved.estimator === 'object' ? saved.estimator : {};
   return {
     ...base,
     ...saved,
@@ -146,17 +154,46 @@ function mergeState(base, saved) {
       logo: { ...base.settings.logo, ...saved.settings?.logo },
       attention: { ...base.settings.attention, ...saved.settings?.attention }
     },
-    estimator: { ...base.estimator, ...saved.estimator },
+    estimator: {
+      ...base.estimator,
+      ...savedEstimator,
+      manualBaselineDate: savedEstimator.manualBaselineDate || savedEstimator.baselineDate || base.estimator.manualBaselineDate,
+      manualBaselineLengthCm: Number.isFinite(Number(savedEstimator.manualBaselineLengthCm))
+        ? Number(savedEstimator.manualBaselineLengthCm)
+        : Number.isFinite(Number(savedEstimator.baselineLengthCm))
+          ? Number(savedEstimator.baselineLengthCm)
+          : base.estimator.manualBaselineLengthCm
+    },
     tabs: { ...base.tabs, ...saved.tabs, groups: { ...base.tabs.groups, ...saved.tabs?.groups }, groupOverrides: { ...base.tabs.groupOverrides, ...saved.tabs?.groupOverrides } },
     vocabulary: { ...base.vocabulary, ...saved.vocabulary },
     ollama: { ...base.ollama, ...saved.ollama }
   };
 }
 
-let state = (() => {
-  try { return mergeState(defaultState(), JSON.parse(localStorage.getItem(STATE_KEY))); }
-  catch { return defaultState(); }
-})();
+function createWriterIdentity() {
+  const created = crypto.randomUUID();
+  try {
+    sessionStorage.setItem(WRITER_SESSION_KEY, created);
+  } catch {}
+  return created;
+}
+
+const writerId = createWriterIdentity();
+let initialStateValue = null;
+try { initialStateValue = localStorage.getItem(STATE_KEY); } catch {}
+const initialEnvelope = decodeStateEnvelope(initialStateValue, defaultState());
+let stateRevision = initialEnvelope.revision;
+let state = mergeState(defaultState(), initialEnvelope.state);
+let reconciliationGeneration = 0;
+let persistQueue = Promise.resolve();
+const stateCoordinator = createStateCoordinator({
+  storage: localStorage,
+  stateKey: STATE_KEY,
+  lockName: STATE_LOCK_NAME,
+  writerId,
+  navigatorLocks: navigator.locks,
+  indexedDB: globalThis.indexedDB || null
+});
 
 let contextTarget = null;
 let appearanceTarget = null;
@@ -193,12 +230,61 @@ function appendHistory(action, detail) {
   lastChangedAt = Date.now();
 }
 
+function cloneStateSnapshot(value) {
+  try { return structuredClone(value); }
+  catch { return JSON.parse(JSON.stringify(value)); }
+}
+
+function reconcileEstimatorBaseline(today = todayDateString()) {
+  const reconciled = reconcileBaseline(state.estimator, state.haircuts, today);
+  state.estimator = reconciled.estimator;
+  return reconciled;
+}
+
+function renderStorageRevision() {
+  const target = $('#storage-revision-status');
+  if (!target) return;
+  const shortWriter = writerId.slice(0, 8);
+  target.textContent = `Browser revision ${stateRevision}. This tab writer is ${shortWriter}. Same-origin stale writes are refused.`;
+}
+
+function adoptStoredEnvelope(envelope, { announce = true } = {}) {
+  reconciliationGeneration += 1;
+  stateRevision = envelope.revision;
+  state = mergeState(defaultState(), envelope.state);
+  reconcileEstimatorBaseline();
+  renderAll();
+  renderStorageRevision();
+  if (announce) showNotification('Newer browser revision loaded', `Revision ${envelope.revision} from another tab replaced this tab's older view.`, 'info', false);
+}
+
 function persist(action, detail, { record = true } = {}) {
   if (record && action) appendHistory(action, detail);
-  try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); }
-  catch (error) { showNotification('Storage write failed', error.message, 'error', false); }
+  const snapshot = cloneStateSnapshot(state);
+  const generation = reconciliationGeneration;
+  const run = async () => {
+    if (generation !== reconciliationGeneration) {
+      showNotification('Change not saved', 'A newer browser revision arrived before this write began. Review the current values and repeat the change if it is still needed.', 'warning', false);
+      return { ok: false, reason: 'superseded-before-write' };
+    }
+    const result = await stateCoordinator.commit({ baseRevision: stateRevision, state: snapshot });
+    if (result.ok) {
+      stateRevision = result.revision;
+      renderStorageRevision();
+      return result;
+    }
+    if (result.reason === 'stale-write' && result.current) {
+      adoptStoredEnvelope(result.current, { announce: false });
+      showNotification('Stale change refused', `Another tab already saved browser revision ${result.current.revision}. The older local change was not written. Review the current values and repeat it if needed.`, 'warning', false);
+      return result;
+    }
+    showNotification('Storage write failed', result.message || 'The browser could not complete a safe exclusive transaction. The local view remains unsaved.', 'error', false);
+    return result;
+  };
+  persistQueue = persistQueue.then(run, run);
   renderHistory();
   renderAttentionBar();
+  return persistQueue;
 }
 
 function friendlyCopy(serious, playfulEn, playfulYue) {
@@ -214,7 +300,7 @@ function showNotification(title, body, type = 'info', persistNotification = true
   const item = { id: crypto.randomUUID(), title, body, type, at: new Date().toISOString(), dismissed: false };
   if (persistNotification) {
     state.notifications = [item, ...state.notifications].slice(0, MAX_NOTIFICATIONS);
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch {}
+    persist(null, null, { record: false });
   }
   const suppressInterruption = state.settings.attention.lowStim && type === 'info';
   if (!suppressInterruption) {
@@ -390,13 +476,13 @@ function reorderTab(sourceId, targetId) {
   renderTabs();
 }
 
-function activateTab(id, focusTarget = null) {
+function activateTab(id, focusTarget = null, persistSelection = true) {
   if (state.tabs.closed.includes(id)) state.tabs.closed = state.tabs.closed.filter((tabId) => tabId !== id);
   state.activeTab = id;
   $$('.page-panel').forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === id));
   $$('.tab-button').forEach((button) => { const active = button.dataset.tab === id; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
   try { history.replaceState(null, '', `#${id}`); } catch {}
-  persist(null, null, { record: false });
+  if (persistSelection) persist(null, null, { record: false });
   renderAttentionBar();
   if (focusTarget) {
     const element = document.getElementById(focusTarget) || document.querySelector(`[data-feature="${CSS.escape(focusTarget)}"]`);
@@ -404,17 +490,44 @@ function activateTab(id, focusTarget = null) {
   }
 }
 
+function setDateFieldValidation(input, errorTarget, value, today = todayDateString()) {
+  const result = validateDateNotFuture(value, today);
+  input.max = today;
+  input.setCustomValidity(result.valid ? '' : result.message);
+  input.setAttribute('aria-invalid', String(!result.valid));
+  $(errorTarget).textContent = result.message;
+  return result;
+}
+
 function renderEstimator() {
   const unit = state.estimator.unit;
-  $('#baseline-date').value = state.estimator.baselineDate;
-  $('#baseline-length').value = fromCentimetres(state.estimator.baselineLengthCm, unit).toFixed(2);
+  const today = todayDateString();
+  const reconciled = reconcileEstimatorBaseline(today);
+  $('#baseline-date').value = state.estimator.manualBaselineDate;
+  $('#baseline-length').value = fromCentimetres(state.estimator.manualBaselineLengthCm, unit).toFixed(2);
   $('#growth-rate').value = fromCentimetres(state.estimator.growthRateCmPerMonth, unit).toFixed(2);
   $('#target-length').value = fromCentimetres(state.estimator.targetLengthCm, unit).toFixed(2);
   $$('input[name="unit"]').forEach((radio) => { radio.checked = radio.value === unit; });
   $$('[data-unit-label]').forEach((label) => { label.textContent = unit; });
+  setDateFieldValidation($('#baseline-date'), '#baseline-date-error', state.estimator.manualBaselineDate, today);
+  $('#haircut-date').max = today;
+  const sourceLabel = reconciled.source.kind === 'haircut'
+    ? `Active baseline: newest valid haircut on ${reconciled.source.date} at ${displayUnit(reconciled.source.lengthCm, unit)}.`
+    : `Active baseline: retained manual fallback on ${reconciled.source.date} at ${displayUnit(reconciled.source.lengthCm, unit)}.`;
+  const futureCount = reconciled.ignoredFutureIds.length;
+  const futureNote = futureCount ? ` ${futureCount} future-dated haircut ${futureCount === 1 ? 'record is' : 'records are'} excluded while the date remains in the future.` : '';
+  $('#baseline-source').textContent = `${sourceLabel}${futureNote}`;
+  if (!reconciled.source.valid) {
+    $('#current-length-result').textContent = 'Unavailable';
+    $('#elapsed-result').textContent = 'Unavailable';
+    $('#target-date-result').textContent = 'Unavailable';
+    $('#estimate-summary').textContent = `${reconciled.source.message} A future manual baseline is never treated as today's length.`;
+    $('#target-progress').style.width = '0%';
+    return;
+  }
   const baseline = new Date(`${state.estimator.baselineDate}T00:00:00`);
   const now = new Date();
-  const elapsedDays = Math.max(0, (now - baseline) / 86400000);
+  const elapsedDays = (now - baseline) / 86400000;
   const current = Math.max(0, state.estimator.baselineLengthCm + state.estimator.growthRateCmPerMonth * (elapsedDays / 30.4375));
   const remaining = Math.max(0, state.estimator.targetLengthCm - current);
   const months = state.estimator.growthRateCmPerMonth > 0 ? remaining / state.estimator.growthRateCmPerMonth : Infinity;
@@ -433,7 +546,12 @@ function renderHaircuts() {
   const query = $('#haircut-search');
   const records = state.haircuts.filter((record) => matchesSearch(`${record.date} ${record.note} ${record.postCutLengthCm}`, query));
   if (!records.length) { list.innerHTML = '<div class="empty-state">No haircut records match this view.</div>'; return; }
-  list.innerHTML = records.map((record) => `<article class="collection-item" data-record-id="${record.id}" data-element-id="haircut:${record.id}"><input type="checkbox" aria-label="Select haircut on ${escapeHtml(record.date)}" data-select-haircut="${record.id}"><div><h4>${escapeHtml(record.date)} · ${displayUnit(record.postCutLengthCm)}</h4><p>${escapeHtml(record.note || 'No note')}</p></div><button class="text-button" type="button" data-edit-haircut="${record.id}">Edit</button></article>`).join('');
+  const today = todayDateString();
+  list.innerHTML = records.map((record) => {
+    const chronology = validateDateNotFuture(record.date, today);
+    const warning = chronology.valid ? '' : `<p class="field-error">${escapeHtml(chronology.message)} This record is excluded from the active baseline while its date remains in the future.</p>`;
+    return `<article class="collection-item" data-record-id="${record.id}" data-element-id="haircut:${record.id}"><input type="checkbox" aria-label="Select haircut on ${escapeHtml(record.date)}" data-select-haircut="${record.id}"><div><h4>${escapeHtml(record.date)} · ${displayUnit(record.postCutLengthCm)}</h4><p>${escapeHtml(record.note || 'No note')}</p>${warning}</div><button class="text-button" type="button" data-edit-haircut="${record.id}">Edit</button></article>`;
+  }).join('');
   $$('[data-edit-haircut]').forEach((button) => button.addEventListener('click', () => editHaircut(button.dataset.editHaircut)));
   applyLocks();
   applyAppearance();
@@ -446,6 +564,7 @@ function editHaircut(id) {
   $('#haircut-length').value = fromCentimetres(record.postCutLengthCm).toFixed(2);
   $('#haircut-note').value = record.note;
   $('#haircut-form').dataset.editId = id;
+  setDateFieldValidation($('#haircut-date'), '#haircut-date-error', record.date);
   $('#haircut-date').focus();
 }
 
@@ -658,7 +777,7 @@ function renderAll() {
   renderOllamaModels();
   renderTotpEntries();
   startHairAnimation();
-  activateTab(location.hash.slice(1) && currentTabDefinition(location.hash.slice(1)) ? location.hash.slice(1) : state.activeTab);
+  activateTab(location.hash.slice(1) && currentTabDefinition(location.hash.slice(1)) ? location.hash.slice(1) : state.activeTab, null, false);
 }
 
 function createRegexWorkbench(owner) {
@@ -1336,13 +1455,12 @@ function redactedExportRecord() {
 
 function serializeExport(record, format) {
   const json = JSON.stringify(record, null, 2);
-  const flat = { schemaVersion: record.schemaVersion, exportedAt: record.exportedAt, haircutCount: state.haircuts.length, historyCount: state.history.length, notificationCount: state.notifications.length };
   if (format === 'JSON') return { text: `${json}\n`, extension: 'json', type: 'application/json' };
   if (format === 'JSONL') return { text: `${[record, ...state.haircuts.map((haircut) => ({ type: 'haircut', ...haircut }))].map((item) => JSON.stringify(item)).join('\n')}\n`, extension: 'jsonl', type: 'application/x-ndjson' };
   if (format === 'YAML') return { text: `schemaVersion: ${record.schemaVersion}\nexportedAt: "${record.exportedAt}"\nomissions:\n${record.omissions.map((item) => `  - "${item}"`).join('\n')}\ndataJson: |\n${json.split('\n').map((line) => `  ${line}`).join('\n')}\n`, extension: 'yaml', type: 'application/yaml' };
   if (format === 'TOML') return { text: `schemaVersion = ${record.schemaVersion}\nexportedAt = "${record.exportedAt}"\nomissions = [${record.omissions.map((item) => JSON.stringify(item)).join(', ')}]\ndataJson = ${JSON.stringify(json)}\n`, extension: 'toml', type: 'application/toml' };
   if (format === 'XML') return { text: `<?xml version="1.0" encoding="UTF-8"?>\n<hairGrowthExport schemaVersion="1"><exportedAt>${escapeHtml(record.exportedAt)}</exportedAt><omissions>${record.omissions.map((item) => `<item>${escapeHtml(item)}</item>`).join('')}</omissions><json>${escapeHtml(json)}</json></hairGrowthExport>\n`, extension: 'xml', type: 'application/xml' };
-  if (format === 'CSV' || format === 'TSV') { const separator = format === 'CSV' ? ',' : '\t'; return { text: `${Object.keys(flat).join(separator)}\n${Object.values(flat).map((value) => format === 'CSV' ? `"${String(value).replace(/"/g, '""')}"` : value).join(separator)}\n`, extension: format.toLowerCase(), type: format === 'CSV' ? 'text/csv' : 'text/tab-separated-values' }; }
+  if (format === 'CSV' || format === 'TSV') return serializeDelimitedExport(record, format);
   if (format === 'Markdown') return { text: `# Hair Growth Estimator browser export\n\nExported: ${record.exportedAt}\n\n## Omitted private data\n\n${record.omissions.map((item) => `- ${item}`).join('\n')}\n\n## Redacted JSON\n\n\`\`\`json\n${json}\n\`\`\`\n`, extension: 'md', type: 'text/markdown' };
   if (format === 'HTML') return { text: `<!doctype html><meta charset="utf-8"><title>Hair Growth Estimator export</title><h1>Hair Growth Estimator browser export</h1><p>Exported ${escapeHtml(record.exportedAt)}</p><h2>Omitted private data</h2><ul>${record.omissions.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul><pre>${escapeHtml(json)}</pre>`, extension: 'html', type: 'text/html' };
   if (format === 'SQL') return { text: `CREATE TABLE hair_growth_export (schema_version INTEGER, exported_at TEXT, redacted_json TEXT);\nINSERT INTO hair_growth_export VALUES (1, ${sqlString(record.exportedAt)}, ${sqlString(json)});\n`, extension: 'sql', type: 'application/sql' };
@@ -1615,6 +1733,8 @@ function setupEvents() {
   $('#palette-search').addEventListener('input', renderCommandPalette);
   $('#bulk-tab-query').addEventListener('input', updateBulkTabPreview);
   $$('input[name="bulk-mode"], #bulk-include-pinned').forEach((input) => input.addEventListener('change', updateBulkTabPreview));
+  $('#baseline-date').addEventListener('input', () => setDateFieldValidation($('#baseline-date'), '#baseline-date-error', $('#baseline-date').value));
+  $('#haircut-date').addEventListener('input', () => setDateFieldValidation($('#haircut-date'), '#haircut-date-error', $('#haircut-date').value));
 
   $$('[data-go-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.goTab)));
   $$('[data-subtab]').forEach((button) => button.addEventListener('click', () => activateSubtab(button.dataset.subtab)));
@@ -1623,28 +1743,43 @@ function setupEvents() {
 
   $('#estimator-form').addEventListener('submit', (event) => {
     event.preventDefault();
-    state.estimator.baselineDate = $('#baseline-date').value;
-    state.estimator.baselineLengthCm = toCentimetres($('#baseline-length').value);
+    const chronology = setDateFieldValidation($('#baseline-date'), '#baseline-date-error', $('#baseline-date').value);
+    if (!chronology.valid) {
+      $('#baseline-date').focus();
+      $('#baseline-date').reportValidity();
+      return;
+    }
+    state.estimator.manualBaselineDate = $('#baseline-date').value;
+    state.estimator.manualBaselineLengthCm = toCentimetres($('#baseline-length').value);
     state.estimator.growthRateCmPerMonth = toCentimetres($('#growth-rate').value);
     state.estimator.targetLengthCm = toCentimetres($('#target-length').value);
-    persist('Estimate changed', 'Updated browser-local baseline, growth rate, or target.');
+    const reconciled = reconcileEstimatorBaseline();
+    persist('Estimate changed', 'Updated the retained manual fallback, growth rate, or target. The newest valid haircut remains active when present.');
     renderEstimator();
-    showNotification('Estimate updated', friendlyCopy('The browser-local projection was recalculated.', 'The projection got a fresh trim and recalculated itself.', '個估算啱啱梳好晒再計過。'), 'info');
+    const baselineDetail = reconciled.source.kind === 'haircut' ? ' The newest valid haircut remains the active baseline.' : ' The manual fallback is now active.';
+    showNotification('Estimate updated', `${friendlyCopy('The browser-local projection was recalculated.', 'The projection got a fresh trim and recalculated itself.', '個估算啱啱梳好晒再計過。')}${baselineDetail}`, 'info');
   });
   $$('input[name="unit"]').forEach((radio) => radio.addEventListener('change', () => { state.estimator.unit = radio.value; persist('Measurement unit changed', `Changed browser-local display to ${radio.value}.`); renderEstimator(); renderHaircuts(); }));
   $('#haircut-form').addEventListener('submit', (event) => {
     event.preventDefault();
+    const chronology = setDateFieldValidation($('#haircut-date'), '#haircut-date-error', $('#haircut-date').value);
+    if (!chronology.valid) {
+      $('#haircut-date').focus();
+      $('#haircut-date').reportValidity();
+      return;
+    }
     const editing = Boolean(event.currentTarget.dataset.editId);
     const id = event.currentTarget.dataset.editId || crypto.randomUUID();
     const record = { id, date: $('#haircut-date').value, postCutLengthCm: toCentimetres($('#haircut-length').value), note: $('#haircut-note').value.trim().slice(0, 500), updatedAt: new Date().toISOString() };
-    state.haircuts = [record, ...state.haircuts.filter((item) => item.id !== id)].sort((a, b) => b.date.localeCompare(a.date));
-    state.estimator.baselineDate = record.date;
-    state.estimator.baselineLengthCm = record.postCutLengthCm;
+    state.haircuts = [record, ...state.haircuts.filter((item) => item.id !== id)].sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+    const reconciled = reconcileEstimatorBaseline();
     delete event.currentTarget.dataset.editId;
     event.currentTarget.reset();
-    persist(editing ? 'Haircut changed' : 'Haircut recorded', `Recorded a haircut baseline on ${record.date}.`);
+    $('#haircut-date-error').textContent = '';
+    $('#haircut-date').setAttribute('aria-invalid', 'false');
+    persist(editing ? 'Haircut changed' : 'Haircut recorded', `Reconciled the active baseline to the newest valid haircut on ${reconciled.source.date}.`);
     renderHaircuts(); renderEstimator();
-    showNotification('Haircut recorded', 'The browser-local estimate now begins from the post-cut length and date.', 'info');
+    showNotification(editing ? 'Haircut updated' : 'Haircut recorded', `The active estimate now begins from the newest valid haircut on ${reconciled.source.date}.`, 'info');
   });
 
   $('#language-mode').addEventListener('change', (event) => { if (state.settings.schoolMode) return; state.settings.language = event.target.value; persist('Language changed', `Changed website language mode to ${event.target.value}.`); applySettings(); });
@@ -1721,11 +1856,34 @@ function setupEvents() {
   $$('[data-action="restore-tabs"]').forEach((button) => button.addEventListener('click', () => { state.tabs.closed = []; persist('Tabs restored', 'Restored every locally closed tab.'); renderTabs(); }));
   $('#run-bulk-tabs').addEventListener('click', () => { const targets = ($('#run-bulk-tabs').dataset.targets || '').split(',').filter(Boolean); if (!targets.length) return; requestDestructiveAction('Close matching tabs', `${targets.length} tabs will be hidden from this browser view. Restore tabs remains available.`, () => { state.tabs.closed = [...new Set([...state.tabs.closed, ...targets])]; if (targets.includes(state.activeTab)) state.activeTab = 'home'; persist('Tabs closed in bulk', `Closed ${targets.length} matching tabs.`); renderTabs(); activateTab(state.activeTab); $('#bulk-tabs-dialog').close(); }); });
   $$('[data-action="open-appearance-editor"]').forEach((button) => button.addEventListener('click', () => openAppearanceEditor(document.documentElement)));
-  $$('[data-action="reset-appearance"]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Reset all appearance', 'Every browser-local per-element appearance override will be removed.', () => { state.appearance = {}; persist('All appearance reset', 'Removed every browser-local appearance override.'); location.reload(); })));
-  $$('[data-action="clear-site-data"]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Clear all local site data', 'Settings, haircut planning, locks, tickets, authenticator entries, notifications, and history stored by this website will be removed.', () => { localStorage.removeItem(STATE_KEY); location.reload(); })));
+  $$('[data-action="reset-appearance"]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Reset all appearance', 'Every browser-local per-element appearance override will be removed.', () => { state.appearance = {}; persist('All appearance reset', 'Removed every browser-local appearance override.').then((result) => { if (result.ok) location.reload(); }); })));
+  $$('[data-action="clear-site-data"]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Clear all local site data', 'Settings, haircut planning, locks, tickets, authenticator entries, notifications, and history stored by this website will be removed.', () => {
+    const stateBeforeClear = cloneStateSnapshot(state);
+    state = defaultState();
+    reconcileEstimatorBaseline();
+    reconciliationGeneration += 1;
+    const clearGeneration = reconciliationGeneration;
+    const snapshot = cloneStateSnapshot(state);
+    persistQueue = persistQueue.then(async () => {
+      if (clearGeneration !== reconciliationGeneration) return { ok: false, reason: 'superseded-before-clear' };
+      const result = await stateCoordinator.commit({ baseRevision: stateRevision, state: snapshot });
+      if (result.ok) location.reload();
+      else if (result.reason === 'stale-write' && result.current) {
+        adoptStoredEnvelope(result.current, { announce: false });
+        showNotification('Local data was not cleared', `Another tab already saved browser revision ${result.current.revision}. The clear request was refused.`, 'warning', false);
+      } else {
+        state = stateBeforeClear;
+        reconciliationGeneration += 1;
+        reconcileEstimatorBaseline();
+        renderAll();
+        showNotification('Local data was not cleared', 'A safe exclusive browser transaction could not be completed. No stored data was silently replaced.', 'error', false);
+      }
+      return result;
+    });
+  })));
   $$('[data-action="select-all-haircuts"]').forEach((button) => button.addEventListener('click', () => $$('[data-select-haircut]').forEach((input) => { input.checked = true; })));
   $$('[data-action="export-haircuts"]').forEach((button) => button.addEventListener('click', () => downloadText('haircut-records.json', `${JSON.stringify(state.haircuts, null, 2)}\n`, 'application/json')));
-  $$('[data-action="delete-haircuts"]').forEach((button) => button.addEventListener('click', () => { const ids = $$('[data-select-haircut]:checked').map((input) => input.dataset.selectHaircut); if (!ids.length) return showNotification('Nothing selected', 'Select at least one haircut record.', 'warning'); requestDestructiveAction('Delete selected haircut records', `${ids.length} browser-local haircut records will be removed.`, () => { state.haircuts = state.haircuts.filter((record) => !ids.includes(record.id)); persist('Haircut records deleted', `Deleted ${ids.length} selected records.`); renderHaircuts(); }); }));
+  $$('[data-action="delete-haircuts"]').forEach((button) => button.addEventListener('click', () => { const ids = $$('[data-select-haircut]:checked').map((input) => input.dataset.selectHaircut); if (!ids.length) return showNotification('Nothing selected', 'Select at least one haircut record.', 'warning'); requestDestructiveAction('Delete selected haircut records', `${ids.length} browser-local haircut records will be removed.`, () => { state.haircuts = state.haircuts.filter((record) => !ids.includes(record.id)); const reconciled = reconcileEstimatorBaseline(); persist('Haircut records deleted', `Deleted ${ids.length} selected records and reconciled the active ${reconciled.source.kind} baseline on ${reconciled.source.date}.`); renderHaircuts(); renderEstimator(); }); }));
   $$('[data-action="select-all-notifications"]').forEach((button) => button.addEventListener('click', () => $$('[data-select-notification]').forEach((input) => { input.checked = true; })));
   $$('[data-action="delete-notifications"]').forEach((button) => button.addEventListener('click', () => { const ids = $$('[data-select-notification]:checked').map((input) => input.dataset.selectNotification); if (!ids.length) return; requestDestructiveAction('Delete selected notifications', `${ids.length} browser-local notification records will be removed.`, () => { state.notifications = state.notifications.filter((record) => !ids.includes(record.id)); persist('Notifications deleted', `Deleted ${ids.length} notifications.`); renderNotifications(); }); }));
   $$('[data-action="export-history"]').forEach((button) => button.addEventListener('click', () => downloadText('redacted-history.json', `${JSON.stringify(deepRedact(state.history), null, 2)}\n`, 'application/json')));
@@ -1777,22 +1935,38 @@ async function handleStateImport(event) {
     delete imported.vocabulary;
     if (imported.settings?.logo) delete imported.settings.logo.customLogoData;
     state = mergeState(state, { ...imported, schemaVersion: 1 });
+    reconcileEstimatorBaseline();
     persist('State imported', 'Imported compatible redacted browser state. Private credential and vocabulary data was omitted.');
     renderAll();
   } catch (error) { showNotification('Import rejected', error.message, 'error'); }
 }
 
+function handleStateStorageEvent(event) {
+  if (event.key !== STATE_KEY) return;
+  if (event.newValue === null) {
+    adoptStoredEnvelope(decodeStateEnvelope(null, defaultState()), { announce: false });
+    showNotification('Browser storage reset detected', 'Another same-origin tab removed the revisioned state. This tab returned to its local defaults.', 'warning', false);
+    return;
+  }
+  const incoming = decodeStateEnvelope(event.newValue, defaultState());
+  if (incoming.writerId === writerId || incoming.revision <= stateRevision) return;
+  adoptStoredEnvelope(incoming);
+}
+
 function initialize() {
+  reconcileEstimatorBaseline();
   assignStableElementIds();
   mountRegexWorkbench($('#regex-workbench-host'), 'standalone-workbench');
   setupEvents();
   enhanceDropdowns(document);
   renderAll();
   populateVoices();
+  renderStorageRevision();
+  window.addEventListener('storage', handleStateStorageEvent);
   if ('speechSynthesis' in window) speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
   maybeDimSumSurprise();
   scheduleTimer = setInterval(() => { applySchedules(); renderAttentionBar(); momentumCheck(); renderTotpEntries(); }, 1000);
-  window.addEventListener('beforeunload', () => { clearInterval(scheduleTimer); if (heroTimer) clearInterval(heroTimer); if ('speechSynthesis' in window) speechSynthesis.cancel(); });
+  window.addEventListener('beforeunload', () => { clearInterval(scheduleTimer); if (heroTimer) clearInterval(heroTimer); window.removeEventListener('storage', handleStateStorageEvent); if ('speechSynthesis' in window) speechSynthesis.cancel(); });
 }
 
 initialize();
