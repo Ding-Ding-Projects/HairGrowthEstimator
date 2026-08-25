@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "unit": "cm",
+  "stages": [
+    {
+      "length": 0.3,
+      "file": "male-hair-growth-stage-01-buzz-cut-v1.png",
+      "sha256": "a104e9f5b27f8bda3923aecee89ab8b0a500425ae043c5356b3bfb3234af6ae6"
+    },
+    {
+      "length": 1.5,
+      "file": "male-hair-growth-stage-02-short-crop-v1.png",
+      "sha256": "8985d6aebcd2a396145ef8a1417d87c30817a23383907bd54cb65e9a204b7c30"
+    },
+    {
+      "length": 3,
+      "file": "male-hair-growth-stage-03-medium-short-v1.png",
+      "sha256": "2ac4e947a594c21a99e8d90ef9823cf60278e9a0b9b590eafedeb94e82155b0b"
+    },
+    {
+      "length": 5,
+      "file": "male-hair-growth-stage-04-medium-top-v1.png",
+      "sha256": "bddff8e7d88ed57002064e29b294190b1e4d3ee173ab40db0b253df973ad9ee0"
+    },
+    {
+      "length": 9,
+      "file": "male-hair-growth-stage-05-ear-length-v1.png",
+      "sha256": "f592b38535a30333ca17ac5146865c3b1d1f6eced454820ba7b081d3c1b60654"
+    },
+    {
+      "length": 14,
+      "file": "male-hair-growth-stage-06-jaw-length-v1.png",
+      "sha256": "24db58531579f6d4ce667d8e542b54af5a0de63177bea4880d069ccc1da1e401"
+    },
+    {
+      "length": 20,
+      "file": "male-hair-growth-stage-07-neck-length-v1.png",
+      "sha256": "5bd894a5c041eb8f22ddd73c0ed845f0f1abf42796d3501ba179d91cf9069f8d"
+    },
+    {
+      "length": 28,
+      "file": "male-hair-growth-stage-08-shoulder-length-v1.png",
+      "sha256": "e9ea4aa8c5736834cb473a93ad1f5db76f5a7e7e88044d62c23e137d8b999de5"
+    }
+  ]
+}

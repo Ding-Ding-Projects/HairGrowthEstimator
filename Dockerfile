@@ -1,11 +1,34 @@
-FROM node:22-alpine
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+
+ARG BUILD_VERSION=1.0.0
+ARG BUILD_REVISION=unavailable
+ARG SOURCE_DATE_EPOCH=0
+
+LABEL org.opencontainers.image.title="Hair Growth API" \
+      org.opencontainers.image.description="Private hair growth profile and haircut storage service" \
+      org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.revision="${BUILD_REVISION}" \
+      org.opencontainers.image.source="https://github.com/Ding-Ding-Projects/HairGrowthEstimator" \
+      org.opencontainers.image.licenses="MIT" \
+      com.dingdingprojects.source-date-epoch="${SOURCE_DATE_EPOCH}"
+
 WORKDIR /opt/hair-growth
-COPY server ./server
-RUN mkdir -p /data && chown -R node:node /opt/hair-growth /data
-USER node
-ENV HAIR_HOST=127.0.0.1 \
+
+COPY --chown=node:node . ./server
+RUN mkdir -p /data && chown node:node /data
+
+USER node:node
+
+ENV NODE_ENV=production \
+    HAIR_HOST=127.0.0.1 \
     HAIR_PORT=4782 \
     HAIR_DATA_FILE=/data/hair-growth.json
+
 EXPOSE 4782
 VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["node", "-e", "const http=require('node:http');const request=http.get('http://127.0.0.1:4782/health',(response)=>{response.resume();process.exit(response.statusCode===200?0:1)});request.setTimeout(2000,()=>request.destroy(new Error('timeout')));request.on('error',()=>process.exit(1));"]
+
+STOPSIGNAL SIGTERM
 CMD ["node", "server/index.js"]

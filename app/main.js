@@ -1,269 +1,491 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
+'use strict';
+
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, autoUpdater } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const { atomicWriteFile, atomicWriteJson } = require('./core/atomic');
+const { buildSshArguments } = require('./core/ssh');
+const { validateProvenance } = require('./core/provenance');
+const { createDefaultState, validateState } = require('./core/state');
+const { LocalVault } = require('./core/vault');
+const { LocalHistory } = require('./core/history');
 
-const DEFAULT_STATE = Object.freeze({
-  version: 1,
-  profile: {
-    baselineLengthCm: 1.2,
-    baselineDate: new Date().toISOString().slice(0, 10),
-    growthRateCmPerMonth: 1.25,
-    targetLengthCm: 12,
-    displayUnit: 'cm'
-  },
-  haircuts: [],
-  settings: {
-    language: 'en',
-    theme: 'dark',
-    storageMode: 'local',
-    serverUrl: 'http://127.0.0.1:4782',
-    connectionTimeoutMs: 8000,
-    ssh: {
-      host: '',
-      port: 22,
-      username: '',
-      remoteApiPort: 4782,
-      localForwardPort: 14782,
-      keyFile: ''
-    }
-  }
-});
+const execFileAsync = promisify(execFile);
+const MAX_RESPONSE_BYTES = 512 * 1024;
+const MAX_EXPORT_BYTES = 10 * 1024 * 1024;
+const MAX_CONVERTER_SOURCE_BYTES = 10 * 1024 * 1024;
+const CONVERTER_HANDLES = new Map();
+const OLLAMA_ENDPOINTS = new Set(['/api/version', '/api/tags', '/api/ps', '/api/show', '/api/pull', '/api/chat', '/api/generate', '/api/copy', '/api/delete']);
 
-let mainWindow;
+let mainWindow = null;
 let sshProcess = null;
 let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
+let localVault = null;
+let localHistory = null;
+let lastSchoolRecord = '';
+let schoolPoll = null;
 
-function cloneDefaultState() {
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function dataPath(file) {
+function userDataPath(file) {
   return path.join(app.getPath('userData'), file);
 }
 
-async function renameWithRetry(from, to) {
-  const transient = new Set(['EPERM', 'EACCES', 'EBUSY']);
-  let lastError;
-  for (let attempt = 0; attempt < 7; attempt += 1) {
-    try {
-      await fs.rename(from, to);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!transient.has(error.code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
-    }
-  }
-  throw lastError;
+function sharedSchoolPath() {
+  return path.join(app.getPath('appData'), 'Ding Ding Projects', 'shared-school-mode.json');
 }
 
-async function atomicWriteJson(file, value) {
-  const destination = dataPath(file);
-  await fs.mkdir(path.dirname(destination), { recursive: true });
-  const temporary = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+function defaultSchoolRecord() {
+  return { schemaVersion: 1, enabled: false, displayName: 'School mode', updatedAt: null };
+}
+
+async function readSchoolRecord() {
   try {
-    await renameWithRetry(temporary, destination);
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {});
+    const raw = await fs.readFile(sharedSchoolPath(), 'utf8');
+    const value = JSON.parse(raw);
+    if (value?.schemaVersion !== 1 || typeof value.enabled !== 'boolean') return { ...defaultSchoolRecord(), status: 'invalid' };
+    return {
+      schemaVersion: 1,
+      enabled: value.enabled,
+      displayName: typeof value.displayName === 'string' && value.displayName.trim() ? value.displayName.trim().slice(0, 80) : 'School mode',
+      updatedAt: typeof value.updatedAt === 'string' && !Number.isNaN(Date.parse(value.updatedAt)) ? value.updatedAt : null,
+      status: 'available'
+    };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { ...defaultSchoolRecord(), status: 'available' };
+    return { ...defaultSchoolRecord(), status: 'unavailable' };
   }
+}
+
+async function writeSchoolRecord(input) {
+  const current = await readSchoolRecord();
+  const next = {
+    schemaVersion: 1,
+    enabled: Boolean(input?.enabled),
+    displayName: typeof input?.displayName === 'string' && input.displayName.trim() ? input.displayName.trim().slice(0, 80) : current.displayName,
+    updatedAt: new Date().toISOString()
+  };
+  await atomicWriteJson(sharedSchoolPath(), next, { maxBytes: 16 * 1024 });
+  lastSchoolRecord = JSON.stringify(next);
+  mainWindow?.webContents.send('school:changed', { ...next, status: 'available' });
+  return { ...next, status: 'available' };
+}
+
+async function pollSchoolRecord() {
+  const record = await readSchoolRecord();
+  const serialized = JSON.stringify(record);
+  if (serialized !== lastSchoolRecord) {
+    lastSchoolRecord = serialized;
+    mainWindow?.webContents.send('school:changed', record);
+  }
+}
+
+function redactedHistoryState(state) {
+  const clone = structuredClone(state);
+  if (clone.settings?.sync?.ssh?.keyFile) clone.settings.sync.ssh.keyFile = '[omitted from history]';
+  if (clone.settings?.logo?.customDataUrl) clone.settings.logo.customDataUrl = '[local custom image omitted from history]';
+  clone.vocabulary = { loaded: Boolean(clone.vocabulary?.loaded), cacheVersion: clone.vocabulary?.cacheVersion || null };
+  return clone;
 }
 
 async function readState() {
   try {
-    const raw = await fs.readFile(dataPath('hair-growth.json'), 'utf8');
-    const parsed = JSON.parse(raw);
-    return { ...cloneDefaultState(), ...parsed, profile: { ...DEFAULT_STATE.profile, ...parsed.profile }, settings: { ...DEFAULT_STATE.settings, ...parsed.settings, ssh: { ...DEFAULT_STATE.settings.ssh, ...parsed.settings?.ssh } } };
+    const parsed = JSON.parse(await fs.readFile(userDataPath('hair-growth.json'), 'utf8'));
+    return validateState(parsed, todayIso());
   } catch (error) {
-    if (error.code === 'ENOENT' || error.name === 'SyntaxError') return cloneDefaultState();
+    if (error.code === 'ENOENT' || error.name === 'SyntaxError' || error instanceof TypeError || error instanceof RangeError) {
+      return createDefaultState(todayIso());
+    }
     throw error;
   }
 }
 
-async function writeState(state) {
-  await atomicWriteJson('hair-growth.json', state);
+async function writeState(input, event = 'Application state updated') {
+  const state = validateState(input, todayIso());
+  await atomicWriteJson(userDataPath('hair-growth.json'), state, { maxBytes: 1024 * 1024 });
+  localHistory.record(event, redactedHistoryState(state)).catch((error) => {
+    mainWindow?.webContents.send('history:error', { message: error.message });
+  });
   return state;
 }
 
-async function storeApiKey(apiKey) {
-  if (!apiKey) {
-    await fs.rm(dataPath('server-key.enc'), { force: true });
-    return;
-  }
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system encryption is unavailable. The API key was not stored.');
-  const encrypted = safeStorage.encryptString(apiKey);
-  await fs.writeFile(dataPath('server-key.enc'), encrypted, { flag: 'w', mode: 0o600 });
-}
-
-async function readApiKey() {
+async function readProvenance() {
+  let raw;
+  let release = null;
   try {
-    if (!safeStorage.isEncryptionAvailable()) return '';
-    return safeStorage.decryptString(await fs.readFile(dataPath('server-key.enc')));
+    raw = JSON.parse(await fs.readFile(path.join(__dirname, 'provenance.json'), 'utf8'));
   } catch {
-    return '';
+    raw = null;
   }
+  try {
+    const candidate = JSON.parse(await fs.readFile(path.join(__dirname, 'release-metadata.json'), 'utf8'));
+    if (candidate?.schemaVersion === 1 && candidate.version === app.getVersion() && typeof candidate.codeName === 'string' && typeof candidate.publicPhotoUrl === 'string') {
+      release = candidate;
+    }
+  } catch {}
+  return { ...validateProvenance(raw, app.getVersion()), release };
 }
 
 function validatedServerUrl(raw) {
   const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP or HTTPS server URLs are supported.');
-  if (url.username || url.password) throw new Error('Credentials must not be embedded in the server URL.');
+  if (!['http:', 'https:'].includes(url.protocol)) throw new TypeError('Only HTTP or HTTPS server URLs are supported.');
+  if (url.username || url.password) throw new TypeError('Credentials must not be embedded in the server URL.');
   return url;
 }
 
-async function apiRequest(serverUrl, endpoint, options = {}) {
-  const url = new URL(endpoint, validatedServerUrl(serverUrl));
+async function boundedFetch(url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.min(Math.max(Number(options.timeoutMs) || 8000, 1000), 30000));
+  const timeoutMs = Math.max(1000, Math.min(120000, Number(options.timeoutMs) || 8000));
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const apiKey = await readApiKey();
-    const response = await fetch(url, {
-      method: options.method || 'GET',
-      headers: {
-        accept: 'application/json',
-        ...(options.body ? { 'content-type': 'application/json' } : {}),
-        ...(apiKey ? { 'x-api-key': apiKey } : {})
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal
-    });
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : null;
-    if (!response.ok) throw new Error(body?.error || `Server returned HTTP ${response.status}.`);
-    return body;
+    const response = await fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
+    const reader = response.body?.getReader();
+    const chunks = [];
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new RangeError('Response exceeds 512 KiB.');
+        }
+        chunks.push(Buffer.from(value));
+      }
+    }
+    const text = Buffer.concat(chunks).toString('utf8');
+    let body = null;
+    if (text) {
+      try { body = JSON.parse(text); } catch { throw new Error('The service returned invalid JSON.'); }
+    }
+    return { response, body };
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
   }
 }
 
-function sshArguments(config) {
-  const port = Number(config.port);
-  const remoteApiPort = Number(config.remoteApiPort);
-  const localForwardPort = Number(config.localForwardPort);
-  if (!config.host || !/^[a-zA-Z0-9.-]{1,253}$/.test(config.host)) throw new Error('Enter a valid host name or IP address.');
-  if (!config.username || !/^[a-zA-Z0-9._-]{1,64}$/.test(config.username)) throw new Error('Enter a valid SSH username.');
-  for (const [label, value] of [['SSH port', port], ['remote API port', remoteApiPort], ['local forwarded port', localForwardPort]]) {
-    if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${label} must be between 1 and 65535.`);
+async function apiRequest(request) {
+  const base = validatedServerUrl(request.serverUrl);
+  const endpoint = String(request.endpoint || '');
+  if (!/^\/(?:health|version|api\/profiles\/[a-zA-Z0-9_-]{1,64}(?:\/haircuts(?:\/[a-zA-Z0-9-]{8,64})?)?)$/.test(endpoint)) {
+    throw new TypeError('Service endpoint is not allowlisted.');
   }
-  const knownHosts = path.join(app.getPath('home'), '.ssh', 'known_hosts');
-  const args = [
-    '-N',
-    '-T',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=yes',
-    '-o', 'UpdateHostKeys=no',
-    '-o', `UserKnownHostsFile=${knownHosts}`,
-    '-o', 'ExitOnForwardFailure=yes',
-    '-o', 'ServerAliveInterval=30',
-    '-o', 'ServerAliveCountMax=3',
-    '-p', String(port),
-    '-L', `127.0.0.1:${localForwardPort}:127.0.0.1:${remoteApiPort}`
-  ];
-  if (config.keyFile) args.push('-i', path.resolve(config.keyFile));
-  args.push(`${config.username}@${config.host}`);
-  return args;
+  const url = new URL(endpoint, base);
+  const bodyText = request.body === undefined ? null : JSON.stringify(request.body);
+  if (bodyText && Buffer.byteLength(bodyText) > 64 * 1024) throw new RangeError('Request body exceeds 64 KiB.');
+  const apiKey = await localVault.apiKey();
+  const { response, body } = await boundedFetch(url, {
+    method: ['GET', 'PUT', 'POST', 'DELETE'].includes(request.method) ? request.method : 'GET',
+    headers: {
+      accept: 'application/json',
+      ...(bodyText ? { 'content-type': 'application/json' } : {}),
+      ...(apiKey ? { 'x-api-key': apiKey } : {})
+    },
+    body: bodyText,
+    timeoutMs: request.timeoutMs
+  });
+  if (!response.ok) throw new Error(body?.error || `Service returned HTTP ${response.status}.`);
+  return body;
+}
+
+function sendSshState(state) {
+  sshState = state;
+  mainWindow?.webContents.send('ssh:state', state);
+  return state;
 }
 
 async function stopSshTunnel() {
-  if (!sshProcess) {
-    sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
-    return sshState;
-  }
-  const processToStop = sshProcess;
+  if (!sshProcess) return sendSshState({ status: 'disconnected', message: 'No SSH tunnel is active.' });
+  const child = sshProcess;
   sshProcess = null;
-  processToStop.kill('SIGTERM');
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  if (!processToStop.killed) processToStop.kill('SIGKILL');
-  sshState = { status: 'disconnected', message: 'SSH tunnel stopped.' };
-  mainWindow?.webContents.send('ssh:state', sshState);
-  return sshState;
+  child.kill('SIGTERM');
+  await Promise.race([
+    new Promise((resolve) => child.once('exit', resolve)),
+    new Promise((resolve) => setTimeout(resolve, 1500))
+  ]);
+  if (child.exitCode === null) child.kill('SIGKILL');
+  return sendSshState({ status: 'disconnected', message: 'SSH tunnel stopped.' });
 }
 
 async function startSshTunnel(config) {
   await stopSshTunnel();
-  const args = sshArguments(config);
-  sshState = { status: 'connecting', message: 'Starting an SSH tunnel with strict host-key verification.' };
-  mainWindow?.webContents.send('ssh:state', sshState);
+  if (config.keyFile) await fs.access(path.resolve(config.keyFile));
+  const args = buildSshArguments(config, app.getPath('home'));
+  sendSshState({ status: 'connecting', message: 'Starting a tunnel with strict host-key verification.' });
   return new Promise((resolve, reject) => {
     const child = spawn('ssh.exe', args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], shell: false });
     sshProcess = child;
     let errorText = '';
-    const readyTimer = setTimeout(() => {
-      if (sshProcess !== child) return;
-      sshState = { status: 'connected', message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.` };
-      mainWindow?.webContents.send('ssh:state', sshState);
-      resolve(sshState);
-    }, 900);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (sshProcess !== child || settled) return;
+      settled = true;
+      const state = sendSshState({ status: 'connected', message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.` });
+      resolve(state);
+    }, 1200);
     child.stderr.on('data', (chunk) => { errorText = `${errorText}${chunk.toString('utf8')}`.slice(-2000); });
     child.once('error', (error) => {
-      clearTimeout(readyTimer);
-      sshProcess = null;
-      sshState = { status: 'error', message: error.code === 'ENOENT' ? 'OpenSSH client was not found on this computer.' : error.message };
-      mainWindow?.webContents.send('ssh:state', sshState);
-      reject(new Error(sshState.message));
+      clearTimeout(timer);
+      if (sshProcess === child) sshProcess = null;
+      if (!settled) {
+        settled = true;
+        const message = error.code === 'ENOENT' ? 'OpenSSH client was not found on this computer.' : error.message;
+        sendSshState({ status: 'error', message });
+        reject(new Error(message));
+      }
     });
     child.once('exit', (code) => {
-      clearTimeout(readyTimer);
+      clearTimeout(timer);
       if (sshProcess === child) sshProcess = null;
-      if (sshState.status === 'connecting') {
-        const detail = errorText.trim().split(/\r?\n/).slice(-1)[0] || `ssh.exe exited with code ${code}.`;
-        sshState = { status: 'error', message: `SSH tunnel could not start: ${detail}` };
-        reject(new Error(sshState.message));
-      } else if (sshState.status === 'connected') {
-        sshState = { status: 'disconnected', message: `SSH tunnel closed with code ${code}.` };
+      const detail = errorText.trim().split(/\r?\n/).at(-1);
+      if (!settled) {
+        settled = true;
+        const message = detail ? `SSH tunnel could not start: ${detail}` : `ssh.exe exited with code ${code}.`;
+        sendSshState({ status: 'error', message });
+        reject(new Error(message));
+      } else {
+        sendSshState({ status: 'disconnected', message: `SSH tunnel closed with code ${code}.` });
       }
-      mainWindow?.webContents.send('ssh:state', sshState);
     });
   });
 }
 
+async function chooseFile(options) {
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  return result.canceled ? null : result.filePaths[0];
+}
+
+function detectImage(bytes) {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+}
+
+async function readBoundedFile(filePath, maxBytes) {
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) throw new TypeError('The selected item is not a file.');
+  if (stat.size > maxBytes) throw new RangeError(`The selected file exceeds ${maxBytes} bytes.`);
+  return fs.readFile(filePath);
+}
+
+async function chooseVocabularyFile() {
+  const filePath = await chooseFile({ title: 'Choose personal vocabulary JSON', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (!filePath) return { canceled: true };
+  const bytes = await readBoundedFile(filePath, 64 * 1024);
+  return { canceled: false, name: path.basename(filePath), text: bytes.toString('utf8'), bytes: bytes.length };
+}
+
+async function chooseLogoFile() {
+  const filePath = await chooseFile({ title: 'Choose a local logo image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+  if (!filePath) return { canceled: true };
+  const bytes = await readBoundedFile(filePath, 2 * 1024 * 1024);
+  const mimeType = detectImage(bytes);
+  if (!mimeType) throw new TypeError('The selected file is not a supported PNG, JPEG, or WebP image.');
+  return { canceled: false, name: path.basename(filePath), bytes: bytes.length, dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}` };
+}
+
+async function chooseConverterSource() {
+  const filePath = await chooseFile({ title: 'Choose a file to convert', properties: ['openFile'] });
+  if (!filePath) return { canceled: true };
+  const bytes = await readBoundedFile(filePath, MAX_CONVERTER_SOURCE_BYTES);
+  const handle = crypto.randomUUID();
+  CONVERTER_HANDLES.set(handle, { filePath, expiresAt: Date.now() + 15 * 60 * 1000 });
+  return { canceled: false, handle, name: path.basename(filePath), bytes: bytes.length, leadingBytesHex: bytes.subarray(0, 16).toString('hex') };
+}
+
+function converterOutput(bytes, adapter) {
+  if (adapter === 'base64') return { extension: 'txt', content: `${bytes.toString('base64')}\n`, encoding: 'utf8' };
+  if (adapter === 'hex') return { extension: 'txt', content: `${bytes.toString('hex')}\n`, encoding: 'utf8' };
+  const text = bytes.toString('utf8');
+  if (adapter === 'json-pretty') return { extension: 'json', content: `${JSON.stringify(JSON.parse(text), null, 2)}\n`, encoding: 'utf8' };
+  if (adapter === 'normalize-text') return { extension: 'txt', content: `${text.replace(/\r\n|\r|\n/g, '\r\n').replace(/\r\n*$/, '')}\r\n`, encoding: 'utf8' };
+  throw new TypeError('The selected converter adapter is unavailable.');
+}
+
+async function convertFile({ handle, adapter }) {
+  const source = CONVERTER_HANDLES.get(String(handle || ''));
+  if (!source || source.expiresAt <= Date.now()) throw new Error('The local file selection expired. Choose the source again.');
+  const bytes = await readBoundedFile(source.filePath, MAX_CONVERTER_SOURCE_BYTES);
+  const output = converterOutput(bytes, adapter);
+  const baseName = path.basename(source.filePath, path.extname(source.filePath));
+  const save = await dialog.showSaveDialog(mainWindow, { title: 'Save converted file', defaultPath: `${baseName}.${output.extension}`, properties: ['createDirectory', 'showOverwriteConfirmation'] });
+  if (save.canceled || !save.filePath) return { canceled: true };
+  await atomicWriteFile(save.filePath, output.content, { encoding: output.encoding, mode: 0o600 });
+  const written = await fs.readFile(save.filePath, output.encoding);
+  if (written !== output.content) throw new Error('Converted output did not pass post-write validation.');
+  return { canceled: false, name: path.basename(save.filePath), bytes: Buffer.byteLength(output.content) };
+}
+
+async function exportContent({ suggestedName, content }) {
+  const text = String(content || '');
+  if (Buffer.byteLength(text) > MAX_EXPORT_BYTES) throw new RangeError('Export exceeds 10 MiB.');
+  const result = await dialog.showSaveDialog(mainWindow, { title: 'Export data', defaultPath: path.basename(String(suggestedName || 'hair-growth-export.txt')), properties: ['createDirectory', 'showOverwriteConfirmation'] });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  await atomicWriteFile(result.filePath, text, { encoding: 'utf8', mode: 0o600 });
+  return { canceled: false, name: path.basename(result.filePath), bytes: Buffer.byteLength(text) };
+}
+
+async function openInVsCode(targetPath) {
+  const resolved = path.resolve(String(targetPath || app.getPath('documents')));
+  const candidates = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code Insiders', 'bin', 'code-insiders.cmd')
+  ].filter(Boolean);
+  let executable = null;
+  for (const candidate of candidates) {
+    try { await fs.access(candidate); executable = candidate; break; } catch {}
+  }
+  if (!executable) {
+    try {
+      const { stdout } = await execFileAsync('where.exe', ['code.cmd'], { windowsHide: true, timeout: 3000 });
+      executable = stdout.split(/\r?\n/).find(Boolean);
+    } catch {}
+  }
+  if (!executable) return { opened: false, reason: 'Visual Studio Code was not found. The application remains fully usable without it.' };
+  const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${executable}" "${resolved}"`], { windowsHide: true, detached: true, stdio: 'ignore', shell: false });
+  child.unref();
+  return { opened: true };
+}
+
+async function ollamaRequest({ endpoint, method = 'GET', body, timeoutMs = 10000 }) {
+  if (!OLLAMA_ENDPOINTS.has(endpoint)) throw new TypeError('Ollama endpoint is not allowlisted.');
+  const bodyText = body === undefined ? null : JSON.stringify(body);
+  if (bodyText && Buffer.byteLength(bodyText) > 256 * 1024) throw new RangeError('Ollama request exceeds 256 KiB.');
+  const { response, body: responseBody } = await boundedFetch(new URL(endpoint, 'http://127.0.0.1:11434'), {
+    method: ['GET', 'POST', 'DELETE'].includes(method) ? method : 'GET',
+    headers: { accept: 'application/json', ...(bodyText ? { 'content-type': 'application/json' } : {}) },
+    body: bodyText,
+    timeoutMs
+  });
+  if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}.`);
+  return responseBody;
+}
+
+const updateState = { status: 'idle', currentVersion: null, availableVersion: null, message: 'No update check has run.' };
+
+function publishUpdateState(patch) {
+  Object.assign(updateState, patch);
+  mainWindow?.webContents.send('update:state', { ...updateState });
+}
+
+function registerUpdaterEvents() {
+  autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: 'Checking the unsigned HTTPS update feed.' }));
+  autoUpdater.on('update-available', (_event, notes, name) => publishUpdateState({ status: 'available', availableVersion: name || null, message: String(notes || 'An update is available.') }));
+  autoUpdater.on('update-not-available', () => publishUpdateState({ status: 'current', message: 'This version is current.' }));
+  autoUpdater.on('update-downloaded', (_event, notes, name) => publishUpdateState({ status: 'ready', availableVersion: name || null, message: `${String(notes || 'Update downloaded.')} The package is unsigned. Restart only after saving work.` }));
+  autoUpdater.on('error', (error) => publishUpdateState({ status: 'error', message: error.message }));
+}
+
+async function checkForUpdates(feedUrl) {
+  if (!app.isPackaged) return publishUpdateState({ status: 'unavailable', message: 'Update checks are available in packaged builds.' });
+  const url = new URL(feedUrl);
+  if (url.protocol !== 'https:' || url.username || url.password) throw new TypeError('Update feed must be an HTTPS URL without embedded credentials.');
+  autoUpdater.setFeedURL({ url: url.href });
+  publishUpdateState({ status: 'checking', currentVersion: app.getVersion(), message: 'Checking the unsigned HTTPS update feed.' });
+  autoUpdater.checkForUpdates();
+  return { ...updateState };
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 900,
-    minHeight: 650,
+    width: 1380,
+    height: 900,
+    minWidth: 880,
+    minHeight: 640,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#101415',
+    title: 'Hair Growth Estimator',
+    icon: path.join(__dirname, '..', 'assets', 'app-icon.ico'),
+    backgroundColor: '#0c1513',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webSecurity: true,
+      spellcheck: true
     }
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) event.preventDefault();
+  });
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-ipcMain.handle('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
-ipcMain.handle('window:close', () => mainWindow?.close());
-ipcMain.handle('state:read', readState);
-ipcMain.handle('state:write', (_event, state) => writeState(state));
-ipcMain.handle('secret:setApiKey', (_event, value) => storeApiKey(String(value || '')));
-ipcMain.handle('secret:hasApiKey', async () => Boolean(await readApiKey()));
-ipcMain.handle('file:chooseKey', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
-  return result.canceled ? '' : result.filePaths[0];
-});
-ipcMain.handle('file:export', async (_event, { suggestedName, content }) => {
-  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: suggestedName, properties: ['createDirectory', 'showOverwriteConfirmation'] });
-  if (result.canceled || !result.filePath) return { canceled: true };
-  await fs.writeFile(result.filePath, content, 'utf8');
-  return { canceled: false, filePath: result.filePath };
-});
-ipcMain.handle('server:request', (_event, request) => apiRequest(request.serverUrl, request.endpoint, request));
-ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
-ipcMain.handle('ssh:stop', stopSshTunnel);
-ipcMain.handle('ssh:state', () => sshState);
+function registerIpc() {
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
+  ipcMain.handle('window:close', () => mainWindow?.close());
+  ipcMain.handle('window:setTitle', (_event, value) => { mainWindow?.setTitle(String(value || 'Hair Growth Estimator').slice(0, 80)); });
+  ipcMain.handle('provenance:read', readProvenance);
+  ipcMain.handle('state:read', readState);
+  ipcMain.handle('state:write', (_event, { state, event }) => writeState(state, event));
+  ipcMain.handle('school:read', readSchoolRecord);
+  ipcMain.handle('school:write', (_event, value) => writeSchoolRecord(value));
+  ipcMain.handle('secret:setApiKey', (_event, value) => localVault.setApiKey(value));
+  ipcMain.handle('secret:hasApiKey', () => localVault.hasApiKey());
+  ipcMain.handle('lock:set', (_event, value) => localVault.setLock(value));
+  ipcMain.handle('lock:list', () => localVault.listLocks());
+  ipcMain.handle('lock:verify', (_event, value) => localVault.verifyLock(value));
+  ipcMain.handle('lock:remove', (_event, value) => localVault.removeLock(value));
+  ipcMain.handle('auth:createSecret', () => localVault.createTotpSecret());
+  ipcMain.handle('auth:add', (_event, value) => localVault.addAuthenticator(value));
+  ipcMain.handle('auth:list', () => localVault.listAuthenticators());
+  ipcMain.handle('auth:remove', (_event, id) => localVault.removeAuthenticator(id));
+  ipcMain.handle('file:chooseKey', async () => {
+    const filePath = await chooseFile({ title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
+    return filePath || '';
+  });
+  ipcMain.handle('file:chooseVocabulary', chooseVocabularyFile);
+  ipcMain.handle('file:chooseLogo', chooseLogoFile);
+  ipcMain.handle('file:chooseConverterSource', chooseConverterSource);
+  ipcMain.handle('file:convert', (_event, value) => convertFile(value));
+  ipcMain.handle('file:export', (_event, value) => exportContent(value));
+  ipcMain.handle('file:showAppData', async () => { await shell.openPath(app.getPath('userData')); return app.getPath('userData'); });
+  ipcMain.handle('external:openVsCode', (_event, target) => openInVsCode(target));
+  ipcMain.handle('external:openUrl', async (_event, raw) => {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') throw new TypeError('Only HTTPS links can be opened.');
+    await shell.openExternal(url.href);
+    return true;
+  });
+  ipcMain.handle('history:list', (_event, limit) => localHistory.list(limit));
+  ipcMain.handle('history:read', (_event, commit) => localHistory.read(commit));
+  ipcMain.handle('server:request', (_event, request) => apiRequest(request));
+  ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
+  ipcMain.handle('ssh:stop', stopSshTunnel);
+  ipcMain.handle('ssh:state', () => sshState);
+  ipcMain.handle('ollama:request', (_event, request) => ollamaRequest(request));
+  ipcMain.handle('update:state', () => ({ ...updateState, currentVersion: app.getVersion() }));
+  ipcMain.handle('update:check', (_event, feedUrl) => checkForUpdates(feedUrl));
+  ipcMain.handle('update:restart', () => autoUpdater.quitAndInstall());
+}
 
-app.whenReady().then(createWindow);
-app.on('before-quit', () => { if (sshProcess) sshProcess.kill('SIGTERM'); });
+app.whenReady().then(async () => {
+  localVault = new LocalVault({ filePath: userDataPath('credentials.bin'), safeStorage });
+  localHistory = new LocalHistory(userDataPath('history'));
+  registerUpdaterEvents();
+  registerIpc();
+  createWindow();
+  lastSchoolRecord = JSON.stringify(await readSchoolRecord());
+  schoolPoll = setInterval(() => { pollSchoolRecord().catch(() => {}); }, 1500);
+});
+
+app.on('before-quit', () => {
+  if (schoolPoll) clearInterval(schoolPoll);
+  if (sshProcess) sshProcess.kill('SIGTERM');
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

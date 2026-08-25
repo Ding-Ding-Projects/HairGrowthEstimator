@@ -1,24 +1,46 @@
 services:
   hair-growth-api:
-    build: .
+    image: ${HAIR_IMAGE:-hair-growth-api:1.0.0}
+    platform: linux/amd64
+    build:
+      context: ./server
+      dockerfile: ../Dockerfile
+      args:
+        BUILD_VERSION: ${HAIR_BUILD_VERSION:-1.0.0}
+        BUILD_REVISION: ${HAIR_BUILD_REVISION:-unavailable}
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-0}
+    init: true
     restart: unless-stopped
     environment:
-      HAIR_HOST: ${HAIR_HOST:-127.0.0.1}
-      HAIR_PORT: ${HAIR_PORT:-4782}
-      HAIR_API_KEY: ${HAIR_API_KEY:-}
+      HAIR_HOST: 0.0.0.0
+      HAIR_PORT: 4782
+      HAIR_API_KEY: ${HAIR_API_KEY:?HAIR_API_KEY is required}
       HAIR_CORS_ORIGINS: ${HAIR_CORS_ORIGINS:-}
       HAIR_DATA_FILE: /data/hair-growth.json
     ports:
-      - "${HAIR_PUBLISH_ADDRESS:-127.0.0.1}:${HAIR_PUBLISH_PORT:-4782}:4782"
+      - "${HAIR_PUBLISH_ADDRESS:-127.0.0.1}:${HAIR_PUBLISH_PORT:-4782}:4782/tcp"
     volumes:
       - hair-growth-data:/data
     read_only: true
+    user: "1000:1000"
     tmpfs:
-      - /tmp
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    pids_limit: 100
+    stop_grace_period: 10s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "const http=require('node:http');const request=http.get('http://127.0.0.1:4782/health',(response)=>{response.resume();process.exit(response.statusCode===200?0:1)});request.setTimeout(2000,()=>request.destroy(new Error('timeout')));request.on('error',()=>process.exit(1));"
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
 
 volumes:
   hair-growth-data:

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "codeName": "Classic Har Gow · 蝦餃",
+  "catalogRecord": "hk-dish-0001",
+  "catalogCommit": "736e8c1d9e40e1d146f3c3b11bb329b97c4ef515",
+  "publicPhotoUrl": "https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png",
+  "photoStoredLocally": false,
+  "container": {
+    "schemaVersion": 1,
+    "buildContext": "server",
+    "dockerfile": "Dockerfile",
+    "buildInputs": [
+      "Dockerfile",
+      "server/index.js",
+      "server/service.js",
+      "server/store.js"
+    ],
+    "platform": "linux/amd64",
+    "baseImage": "node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
+    "baseImageIndexDigest": "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
+    "localTag": "hair-growth-api:1.0.0",
+    "ociArchive": "hair-growth-api-1.0.0-linux-amd64.oci.tar",
+    "archiveFormat": "oci",
+    "sourceDateEpoch": "required from the release commit timestamp",
+    "optionalRegistryTag": "ghcr.io/ding-ding-projects/hair-growth-estimator-api:1.0.0",
+    "publishByDefault": false
+  }
+}
