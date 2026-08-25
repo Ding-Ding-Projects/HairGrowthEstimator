@@ -12,6 +12,7 @@ const { validateProvenance } = require('./core/provenance');
 const { StateStore, drainStateAndHistory } = require('./core/state-store');
 const { LocalVault } = require('./core/vault');
 const { LocalHistory } = require('./core/history');
+const { LIMITS: VOCABULARY_LIMITS, VocabularyStore, serializeVocabularyCache } = require('./core/vocabulary');
 
 const execFileAsync = promisify(execFile);
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -37,6 +38,10 @@ function todayIso() {
 
 function userDataPath(file) {
   return path.join(app.getPath('userData'), file);
+}
+
+function personalVocabularyCachePath() {
+  return userDataPath('personal-vocabulary.json');
 }
 
 function sharedSchoolPath() {
@@ -90,6 +95,8 @@ async function pollSchoolRecord() {
 
 function redactedHistoryState(state) {
   const clone = structuredClone(state);
+  delete clone.revision;
+  delete clone.updatedAt;
   if (clone.settings?.sync?.ssh?.keyFile) clone.settings.sync.ssh.keyFile = '[omitted from history]';
   if (clone.settings?.logo?.customDataUrl) clone.settings.logo.customDataUrl = '[local custom image omitted from history]';
   clone.vocabulary = { loaded: Boolean(clone.vocabulary?.loaded), cacheVersion: clone.vocabulary?.cacheVersion || null };
@@ -100,12 +107,16 @@ async function readState() {
   return stateStore.read();
 }
 
-async function writeState(input, event = 'Application state updated') {
+async function writeStateWithHistory(input, event = 'Application state updated') {
   const result = await stateStore.write(input, event);
   if (result.history.status === 'degraded' || result.history.status === 'unavailable') {
     mainWindow?.webContents.send('history:error', { message: result.history.message });
   }
-  return result.state;
+  return result;
+}
+
+async function writeState(input, event = 'Application state updated') {
+  return (await writeStateWithHistory(input, event)).state;
 }
 
 async function readProvenance() {
@@ -266,11 +277,56 @@ async function readBoundedFile(filePath, maxBytes) {
   return fs.readFile(filePath);
 }
 
-async function chooseVocabularyFile() {
+async function readVocabularyCacheBytes() {
+  try {
+    return await fs.readFile(personalVocabularyCachePath());
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw new Error('The local personal-vocabulary cache could not be read.');
+  }
+}
+
+function presentVocabularyStatus(result, canceled = false) {
+  return {
+    canceled,
+    status: result.status,
+    loaded: result.loaded,
+    schemaVersion: result.loaded ? 1 : null,
+    entries: result.entries,
+    preservedLastValid: result.preservedLastValid,
+    error: result.error ? { code: result.error.code, message: result.error.message } : null
+  };
+}
+
+async function readVocabularyCache() {
+  const store = new VocabularyStore(await readVocabularyCacheBytes());
+  return presentVocabularyStatus(store.read());
+}
+
+async function replaceVocabularyCache() {
   const filePath = await chooseFile({ title: 'Choose personal vocabulary JSON', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
-  if (!filePath) return { canceled: true };
-  const bytes = await readBoundedFile(filePath, 64 * 1024);
-  return { canceled: false, name: path.basename(filePath), text: bytes.toString('utf8'), bytes: bytes.length };
+  if (!filePath) return { ...(await readVocabularyCache()), canceled: true };
+  const priorBytes = await readVocabularyCacheBytes();
+  const candidateBytes = await readBoundedFile(filePath, VOCABULARY_LIMITS.maxBytes);
+  const store = new VocabularyStore(priorBytes);
+  const result = store.replace(candidateBytes);
+  if (result.status !== 'loaded') {
+    throw new TypeError(result.preservedLastValid
+      ? 'The selected private vocabulary file is invalid. The last valid local cache remains active.'
+      : 'The selected private vocabulary file is invalid. Original shipped wording remains active.');
+  }
+  const serialized = serializeVocabularyCache({ schemaVersion: 1, entries: result.entries });
+  await atomicWriteFile(personalVocabularyCachePath(), serialized, { encoding: 'utf8', mode: 0o600, maxBytes: VOCABULARY_LIMITS.maxBytes });
+  return presentVocabularyStatus(result);
+}
+
+async function clearVocabularyCache() {
+  try {
+    await fs.unlink(personalVocabularyCachePath());
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('The local personal-vocabulary cache could not be cleared.');
+  }
+  return presentVocabularyStatus(new VocabularyStore().clear());
 }
 
 async function chooseLogoFile() {
@@ -439,7 +495,9 @@ function registerIpc() {
     const filePath = await chooseFile({ title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
     return filePath || '';
   });
-  ipcMain.handle('file:chooseVocabulary', chooseVocabularyFile);
+  ipcMain.handle('vocabulary:read', readVocabularyCache);
+  ipcMain.handle('vocabulary:replace', replaceVocabularyCache);
+  ipcMain.handle('vocabulary:clear', clearVocabularyCache);
   ipcMain.handle('file:chooseLogo', chooseLogoFile);
   ipcMain.handle('file:chooseConverterSource', chooseConverterSource);
   ipcMain.handle('file:convert', (_event, value) => convertFile(value));
@@ -452,8 +510,36 @@ function registerIpc() {
     await shell.openExternal(url.href);
     return true;
   });
-  ipcMain.handle('history:list', (_event, limit) => localHistory.list(limit));
-  ipcMain.handle('history:read', (_event, commit) => localHistory.read(commit));
+  ipcMain.handle('history:setCredential', (_event, credential) => localVault.setHistoryPassword(credential));
+  ipcMain.handle('history:list', (_event, options) => localHistory.list(options));
+  ipcMain.handle('history:read', (_event, commit, credential) => localHistory.read(commit, { credential }));
+  ipcMain.handle('history:diff', async (_event, fromCommit, toCommit, credential) => {
+    const result = await localHistory.diff(fromCommit, toCommit, { credential });
+    return `${JSON.stringify(result, null, 2)}\n`;
+  });
+  ipcMain.handle('history:restore', async (_event, commit, credential) => {
+    const historySnapshot = await localHistory.read(commit, { credential });
+    const current = await stateStore.read();
+    const restored = historySnapshot.state && typeof historySnapshot.state === 'object' ? structuredClone(historySnapshot.state) : {};
+    restored.revision = current.revision;
+    restored.settings = restored.settings && typeof restored.settings === 'object' ? restored.settings : {};
+    restored.settings.sync = restored.settings.sync && typeof restored.settings.sync === 'object' ? restored.settings.sync : {};
+    restored.settings.sync.ssh = restored.settings.sync.ssh && typeof restored.settings.sync.ssh === 'object' ? restored.settings.sync.ssh : {};
+    restored.settings.sync.ssh.keyFile = current.settings.sync.ssh.keyFile;
+    restored.settings.logo = restored.settings.logo && typeof restored.settings.logo === 'object' ? restored.settings.logo : {};
+    restored.settings.logo.customDataUrl = current.settings.logo.customDataUrl;
+    restored.vocabulary = current.vocabulary;
+    const result = await writeStateWithHistory(restored, 'Restored local history revision');
+    return {
+      recorded: result.history.recorded,
+      commit: result.history.commit || null,
+      restoredFrom: String(commit).toLowerCase(),
+      state: result.state
+    };
+  });
+  ipcMain.handle('history:label', (_event, commit, label, credential) => localHistory.label(commit, label, { credential }));
+  ipcMain.handle('history:prune', (_event, maxEntries, credential) => localHistory.prune({ maxEntries, credential }));
+  ipcMain.handle('history:export', async (_event, options) => `${JSON.stringify(await localHistory.exportRedacted(options), null, 2)}\n`);
   ipcMain.handle('server:request', (_event, request) => apiRequest(request));
   ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
   ipcMain.handle('ssh:stop', stopSshTunnel);
@@ -466,7 +552,9 @@ function registerIpc() {
 
 app.whenReady().then(async () => {
   localVault = new LocalVault({ filePath: userDataPath('credentials.bin'), safeStorage });
-  localHistory = new LocalHistory(userDataPath('history'));
+  localHistory = new LocalHistory(userDataPath('history'), {
+    authenticate: ({ credential }) => localVault.verifyHistoryPassword(credential)
+  });
   stateStore = new StateStore({
     filePath: userDataPath('hair-growth.json'),
     history: localHistory,

@@ -60,3 +60,16 @@ test('renderer surfaces explicit local-history degradation without invalidating 
   const renderer = await source('app/renderer/app.js');
   assert.match(renderer, /^    bridge\.history\.onError\(\(value\) => notify\('Local history degraded', `\$\{value\.message\} The primary state save remains valid\.`, 'warning', false\)\);$/m);
 });
+
+test('history restore saves primary state before reporting the appended history revision', async () => {
+  const main = await source('app/main.js');
+  const start = main.indexOf("ipcMain.handle('history:restore'");
+  const end = main.indexOf("ipcMain.handle('history:label'", start);
+  assert.ok(start >= 0 && end > start, 'history restore handler boundaries must exist');
+  const handler = main.slice(start, end);
+  const read = handler.indexOf('localHistory.read(commit, { credential })');
+  const save = handler.indexOf("writeStateWithHistory(restored, 'Restored local history revision')");
+  assert.ok(read >= 0 && save > read, 'restored state must be read and then persisted through the authoritative state queue');
+  assert.doesNotMatch(handler, /localHistory\.restore\(/);
+  assert.match(handler, /recorded: result\.history\.recorded/);
+});

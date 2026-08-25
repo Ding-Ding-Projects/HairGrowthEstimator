@@ -48,7 +48,9 @@ function createDefaultState(todayIso) {
         timeAwareness: false,
         oneThing: false,
         momentum: false,
-        nextAction: ''
+        nextAction: '',
+        lastMeaningfulChangeAt: new Date().toISOString(),
+        momentumDismissedUntil: null
       },
       sync: {
         mode: 'local',
@@ -148,7 +150,13 @@ function validateState(input, todayIso) {
         timeAwareness: Boolean(adhd.timeAwareness),
         oneThing: Boolean(adhd.oneThing),
         momentum: Boolean(adhd.momentum),
-        nextAction: boundedString(adhd.nextAction, 240)
+        nextAction: boundedString(adhd.nextAction, 240),
+        lastMeaningfulChangeAt: typeof adhd.lastMeaningfulChangeAt === 'string' && !Number.isNaN(Date.parse(adhd.lastMeaningfulChangeAt))
+          ? new Date(adhd.lastMeaningfulChangeAt).toISOString()
+          : defaults.settings.adhd.lastMeaningfulChangeAt,
+        momentumDismissedUntil: typeof adhd.momentumDismissedUntil === 'string' && !Number.isNaN(Date.parse(adhd.momentumDismissedUntil))
+          ? new Date(adhd.momentumDismissedUntil).toISOString()
+          : null
       },
       sync: {
         mode: ['local', 'server', 'ssh'].includes(sync.mode) ? sync.mode : 'local',
@@ -203,7 +211,15 @@ function validateState(input, todayIso) {
       timestamp: typeof item?.timestamp === 'string' && !Number.isNaN(Date.parse(item.timestamp)) ? item.timestamp : new Date().toISOString(),
       dismissed: Boolean(item?.dismissed)
     })),
-    supportTickets: boundedArray(input.supportTickets, 500),
+    supportTickets: boundedArray(input.supportTickets, 500).map((item) => ({
+      id: /^[A-Z0-9-]{8,64}$/.test(item?.id) ? item.id : `LOCAL-${Date.now().toString(36).toUpperCase()}`,
+      category: boundedString(item?.category, 80, 'Locked out'),
+      severity: boundedString(item?.severity, 80, 'Formally inconvenient'),
+      description: boundedString(item?.description, 1000),
+      status: ['Open', 'In review', 'Resolved'].includes(item?.status) ? item.status : 'Open',
+      createdAt: typeof item?.createdAt === 'string' && !Number.isNaN(Date.parse(item.createdAt)) ? new Date(item.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: typeof item?.updatedAt === 'string' && !Number.isNaN(Date.parse(item.updatedAt)) ? new Date(item.updatedAt).toISOString() : new Date().toISOString()
+    })),
     converterHistory: boundedArray(input.converterHistory, 500),
     vocabulary: { loaded: Boolean(input.vocabulary?.loaded), cacheVersion: Number(input.vocabulary?.cacheVersion) || null },
     updatedAt: typeof input.updatedAt === 'string' && !Number.isNaN(Date.parse(input.updatedAt))

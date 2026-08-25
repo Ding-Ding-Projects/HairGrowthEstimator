@@ -23,12 +23,20 @@ class LocalVault {
 
   async read() {
     this.ensureAvailable();
+    const empty = { schemaVersion: 1, apiKey: '', locks: {}, authenticators: {}, historyAccess: null };
     try {
       const encrypted = await fs.readFile(this.filePath);
       const parsed = JSON.parse(this.safeStorage.decryptString(encrypted));
-      return parsed?.schemaVersion === 1 ? parsed : { schemaVersion: 1, apiKey: '', locks: {}, authenticators: {} };
+      if (parsed?.schemaVersion !== 1) return empty;
+      return {
+        ...empty,
+        ...parsed,
+        locks: parsed.locks && typeof parsed.locks === 'object' ? parsed.locks : {},
+        authenticators: parsed.authenticators && typeof parsed.authenticators === 'object' ? parsed.authenticators : {},
+        historyAccess: parsed.historyAccess && typeof parsed.historyAccess === 'object' ? parsed.historyAccess : null
+      };
     } catch (error) {
-      if (error.code === 'ENOENT') return { schemaVersion: 1, apiKey: '', locks: {}, authenticators: {} };
+      if (error.code === 'ENOENT') return empty;
       throw new Error('The local credential store could not be read.');
     }
   }
@@ -65,6 +73,23 @@ class LocalVault {
 
   async hasApiKey() {
     return Boolean(await this.apiKey());
+  }
+
+  async setHistoryPassword(value) {
+    const record = hashSecret(value, 'password');
+    await this.transact((vault) => {
+      vault.historyAccess = { type: 'password', record, updatedAt: new Date().toISOString() };
+    });
+    return { configured: true };
+  }
+
+  async hasHistoryPassword() {
+    return Boolean((await this.read()).historyAccess?.record);
+  }
+
+  async verifyHistoryPassword(value) {
+    const historyAccess = (await this.read()).historyAccess;
+    return Boolean(historyAccess?.type === 'password' && verifySecret(value, historyAccess.record, 'password'));
   }
 
   async setLock({ elementId, label, policy, pin, password, totpSecret }) {

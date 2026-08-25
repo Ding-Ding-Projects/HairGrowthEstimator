@@ -21,8 +21,8 @@
       </div>
     </div>
     <div class="title-actions" aria-label="Window controls">
-      <button type="button" class="icon-button" id="open-palette" aria-label="Open command palette" title="Command palette, Ctrl+Shift+F">⌕</button>
-      <button type="button" class="icon-button" id="open-notifications" aria-label="Open notification history" title="Notification history">◉</button>
+      <button type="button" class="icon-button" id="open-palette" data-command-id="open-palette" aria-label="Open command palette">⌕</button>
+      <button type="button" class="icon-button" id="open-notifications" data-command-id="open-notifications" aria-label="Open notification history">◉</button>
       <button type="button" class="window-button" id="window-minimize" aria-label="Minimize">−</button>
       <button type="button" class="window-button" id="window-maximize" aria-label="Maximize or restore">□</button>
       <button type="button" class="window-button close" id="window-close" aria-label="Close">×</button>
@@ -33,13 +33,13 @@
     <div class="provenance-mark" aria-hidden="true">✓</div>
     <div>
       <h1 id="provenance-title">Running artifact</h1>
-      <p id="provenance-detail">Reading version and updated-at provenance…</p>
+      <p id="provenance-detail" data-vocabulary-preserve>Reading version and updated-at provenance…</p>
     </div>
     <span id="provenance-state" class="state-chip pending">Checking</span>
   </section>
 
   <div class="app-shell">
-    <nav id="tab-strip" class="tab-strip" aria-label="Application tabs" aria-orientation="vertical" data-element-id="main-tab-strip">
+    <nav id="tab-strip" class="tab-strip" role="tablist" aria-label="Application tabs" aria-orientation="vertical" data-element-id="main-tab-strip">
       <div class="tab-search-wrap">
         <label class="search-field compact">
           <span class="visually-hidden">Search current tab strip</span>
@@ -50,19 +50,19 @@
       <div class="tab-group" data-group-id="daily">
         <button type="button" class="group-header" data-action="toggle-group" aria-expanded="true">Daily care <span>3</span></button>
         <div class="group-tabs">
-          <button type="button" class="tab active pinned" data-tab="dashboard" data-element-id="tab-dashboard" role="tab" aria-selected="true">⌂ <span>Dashboard</span></button>
-          <button type="button" class="tab" data-tab="haircuts" data-element-id="tab-haircuts" role="tab" aria-selected="false">✂ <span>Haircuts</span></button>
-          <button type="button" class="tab" data-tab="gallery" data-element-id="tab-gallery" role="tab" aria-selected="false">▧ <span>Growth gallery</span></button>
+          <button type="button" class="tab active pinned" id="tab-dashboard" data-tab="dashboard" data-element-id="tab-dashboard" role="tab" aria-controls="view-dashboard" aria-selected="true" tabindex="0">⌂ <span>Dashboard</span></button>
+          <button type="button" class="tab" id="tab-haircuts" data-tab="haircuts" data-element-id="tab-haircuts" role="tab" aria-controls="view-haircuts" aria-selected="false" tabindex="-1">✂ <span>Haircuts</span></button>
+          <button type="button" class="tab" id="tab-gallery" data-tab="gallery" data-element-id="tab-gallery" role="tab" aria-controls="view-gallery" aria-selected="false" tabindex="-1">▧ <span>Growth gallery</span></button>
         </div>
       </div>
       <div class="tab-group" data-group-id="manage">
         <button type="button" class="group-header" data-action="toggle-group" aria-expanded="true">Manage <span>5</span></button>
         <div class="group-tabs">
-          <button type="button" class="tab" data-tab="tools" data-element-id="tab-tools" role="tab" aria-selected="false">⌘ <span>Tools</span></button>
-          <button type="button" class="tab" data-tab="integrations" data-element-id="tab-integrations" role="tab" aria-selected="false">⇄ <span>Connections</span></button>
-          <button type="button" class="tab" data-tab="settings" data-element-id="tab-settings" role="tab" aria-selected="false">⚙ <span>Settings</span></button>
-          <button type="button" class="tab" data-tab="docs" data-element-id="tab-docs" role="tab" aria-selected="false">? <span>Guide and history</span></button>
-          <button type="button" class="tab" data-tab="status" data-element-id="tab-status" role="tab" aria-selected="false">● <span>Status</span></button>
+          <button type="button" class="tab" id="tab-tools" data-tab="tools" data-element-id="tab-tools" role="tab" aria-controls="view-tools" aria-selected="false" tabindex="-1">⌘ <span>Tools</span></button>
+          <button type="button" class="tab" id="tab-integrations" data-tab="integrations" data-element-id="tab-integrations" role="tab" aria-controls="view-integrations" aria-selected="false" tabindex="-1">⇄ <span>Connections</span></button>
+          <button type="button" class="tab" id="tab-settings" data-tab="settings" data-element-id="tab-settings" role="tab" aria-controls="view-settings" aria-selected="false" tabindex="-1">⚙ <span>Settings</span></button>
+          <button type="button" class="tab" id="tab-docs" data-tab="docs" data-element-id="tab-docs" role="tab" aria-controls="view-docs" aria-selected="false" tabindex="-1">? <span>Guide and history</span></button>
+          <button type="button" class="tab" id="tab-status" data-tab="status" data-element-id="tab-status" role="tab" aria-controls="view-status" aria-selected="false" tabindex="-1">● <span>Status</span></button>
         </div>
       </div>
       <div class="tab-strip-footer">
@@ -72,7 +72,16 @@
     </nav>
 
     <main id="main-content" class="main-content">
-      <section class="view active" id="view-dashboard" data-view="dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+      <section id="one-thing-banner" class="attention-banner" aria-labelledby="one-thing-title" hidden>
+        <div><strong id="one-thing-title">One thing at a time</strong><p id="one-thing-current"></p></div>
+        <button type="button" class="tonal-button" id="complete-next-action">Mark current action complete</button>
+      </section>
+      <section id="momentum-banner" class="attention-banner momentum" aria-labelledby="momentum-title" hidden>
+        <div><strong id="momentum-title">Momentum</strong><p id="momentum-message"></p></div>
+        <button type="button" class="tonal-button" id="momentum-not-now">Not now for 60 minutes</button>
+      </section>
+
+      <section class="view active" id="view-dashboard" data-view="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
         <header class="view-header">
           <div>
             <span class="eyebrow">TODAY</span>
@@ -142,7 +151,7 @@
         </article>
       </section>
 
-      <section class="view" id="view-haircuts" data-view="haircuts" role="tabpanel" aria-labelledby="tab-haircuts" hidden>
+      <section class="view" id="view-haircuts" data-view="haircuts" role="tabpanel" aria-labelledby="tab-haircuts" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">RESET AND REMEMBER</span><h2>Haircut journal</h2><p>Each haircut stores the before and after lengths and becomes the next baseline.</p></div></header>
         <div class="two-column">
           <article class="surface">
@@ -170,12 +179,12 @@
         </article>
       </section>
 
-      <section class="view" id="view-gallery" data-view="gallery" role="tabpanel" aria-labelledby="tab-gallery" hidden>
+      <section class="view" id="view-gallery" data-view="gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">LOCALLY BUNDLED</span><h2>Male hair growth reference</h2><p>Eight generated photographs show one fictional adult man at deterministic reference lengths. They illustrate estimates, not guaranteed outcomes.</p></div></header>
         <div id="gallery-grid" class="gallery-grid"></div>
       </section>
 
-      <section class="view" id="view-tools" data-view="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+      <section class="view" id="view-tools" data-view="tools" role="tabpanel" aria-labelledby="tab-tools" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">LOCAL TOOLS</span><h2>Workbenches</h2><p>Regex work, local conversion, and authenticators stay on this computer.</p></div></header>
         <article class="surface regex-workbench" data-element-id="regex-workbench">
           <div class="surface-heading"><div><span class="eyebrow">ECMASCRIPT ENGINE</span><h3>Advanced regex workbench</h3></div><span class="state-chip">JavaScript RegExp</span></div>
@@ -213,7 +222,7 @@
         </article>
       </section>
 
-      <section class="view" id="view-integrations" data-view="integrations" role="tabpanel" aria-labelledby="tab-integrations" hidden>
+      <section class="view" id="view-integrations" data-view="integrations" role="tabpanel" aria-labelledby="tab-integrations" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">OPTIONAL CONNECTIONS</span><h2>Private sync and local models</h2><p>Local mode works alone. Direct private-LAN and SSH tunnel modes are explicit choices.</p></div></header>
         <div class="two-column">
           <article class="surface" data-element-id="server-sync">
@@ -247,7 +256,7 @@
         </article>
       </section>
 
-      <section class="view" id="view-settings" data-view="settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <section class="view" id="view-settings" data-view="settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">PERSISTED PREFERENCES</span><h2>Settings</h2><p>Search, change, schedule, export, and reset preferences from one tabbed surface.</p></div></header>
         <label class="search-field settings-search"><span class="visually-hidden">Search settings</span><input id="settings-search" type="search" placeholder="Search settings"><button type="button" class="regex-trigger" aria-label="Open regex builder for settings search">.*</button></label>
         <div class="settings-grid">
@@ -297,11 +306,17 @@
             <p id="logo-state">No custom logo selected.</p>
           </article>
 
-          <article class="surface settings-card" data-settings-keywords="personal vocabulary JSON upload replace clear local private">
-            <h3>Personal vocabulary JSON</h3>
-            <p>Original shipped wording remains active until a valid private local JSON file is selected. No mappings ship with this application.</p>
-            <div class="form-actions"><button type="button" class="tonal-button" id="choose-vocabulary">Choose JSON</button><button type="button" class="text-button" id="clear-vocabulary">Clear local cache</button></div>
-            <p id="vocabulary-state">No file loaded.</p>
+          <article class="surface settings-card" data-settings-keywords="personal vocabulary JSON upload replace clear local private" data-school-feature="vocabulary">
+            <h3 data-vocabulary-owned>Personal vocabulary JSON</h3>
+            <p data-vocabulary-owned>Original shipped wording remains active until a valid private local JSON file is selected. No mappings ship with this application.</p>
+            <div class="form-actions"><button type="button" class="tonal-button" id="choose-vocabulary" data-vocabulary-owned>Choose JSON</button><button type="button" class="text-button" id="clear-vocabulary" data-vocabulary-owned>Clear local cache</button></div>
+            <p id="vocabulary-state" aria-live="polite" data-vocabulary-owned>No file loaded.</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="locks recovery support tickets local help">
+            <h3 data-vocabulary-owned>Lock recovery</h3>
+            <p data-vocabulary-owned>The local Support Tickets desk explains the self-service reset route and never sends data.</p>
+            <button type="button" class="tonal-button" id="open-support-from-settings" data-vocabulary-owned>Open Support Tickets</button>
           </article>
 
           <article class="surface settings-card" data-settings-keywords="ADHD focus stimulation time awareness next action momentum">
@@ -326,7 +341,7 @@
         </div>
       </section>
 
-      <section class="view" id="view-docs" data-view="docs" role="tabpanel" aria-labelledby="tab-docs" hidden>
+      <section class="view" id="view-docs" data-view="docs" role="tabpanel" aria-labelledby="tab-docs" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">OFFLINE</span><h2>Guide, changelog, and local history</h2><p>Bundled help remains available without a network connection.</p></div></header>
         <div class="two-column docs-layout">
           <article class="surface">
@@ -336,12 +351,29 @@
           <article class="surface docs-reader"><div id="docs-content"><h3>Choose an article</h3><p>Guide articles are bundled with the application.</p></div></article>
         </div>
         <div class="two-column">
-          <article class="surface"><h3>Released changes</h3><label><span>From date</span><input id="changelog-date" type="date"></label><label class="search-field"><span class="visually-hidden">Search changelog</span><input id="changelog-search" type="search" placeholder="Search released changes"><button type="button" class="regex-trigger" aria-label="Open regex builder for changelog search">.*</button></label><div id="changelog-list"></div></article>
-          <article class="surface"><h3>Local version history</h3><div class="form-actions"><button type="button" class="tonal-button" id="refresh-history">Refresh history</button><button type="button" class="tonal-button" id="open-app-data">Open local application-data folder</button></div><div id="history-list"></div></article>
+          <article class="surface"><h3>Released changes</h3><label><span>From date</span><input id="changelog-date" type="date"></label><label class="search-field"><span class="visually-hidden">Search changelog</span><input id="changelog-search" type="search" placeholder="Search released changes"><button type="button" class="regex-trigger" aria-label="Open regex builder for changelog search">.*</button></label><div id="changelog-list"></div><button type="button" class="tonal-button" id="open-support-from-help">Open Support Tickets help</button></article>
+          <article class="surface history-manager" aria-labelledby="history-manager-title">
+            <h3 id="history-manager-title">Protected local version history</h3>
+            <p class="plain-disclosure">History access uses its own password. Snapshots and exports are redacted, and a restore always adds a new revision.</p>
+            <div class="form-grid">
+              <label class="wide"><span>History password</span><input id="history-password" type="password" autocomplete="current-password"></label>
+              <div class="form-actions wide"><button type="button" class="tonal-button" id="history-set-credential">Set or replace history password</button><button type="button" class="filled-button" id="history-unlock">Unlock history</button></div>
+              <label class="search-field wide"><span class="visually-hidden">Search local history</span><input id="history-search" type="search" placeholder="Search actions and labels"><button type="button" class="regex-trigger" aria-label="Open regex builder for local history search">.*</button></label>
+              <label><span>From date</span><input id="history-date-from" type="date"></label>
+              <label><span>To date</span><input id="history-date-to" type="date"></label>
+              <label class="wide"><span>Action</span><select id="history-action"><option value="">Every action</option></select></label>
+              <label class="wide"><span>Revision label</span><input id="history-label-text" maxlength="80"></label>
+              <label><span>Keep newest revisions</span><input id="history-retention" type="number" min="10" max="1000" value="500"></label>
+            </div>
+            <div class="form-actions"><button type="button" class="tonal-button" id="refresh-history">Refresh history</button><button type="button" class="tonal-button" id="history-diff">Diff selected</button><button type="button" class="tonal-button" id="history-label">Label selected</button><button type="button" class="danger-button" id="history-restore">Restore selected</button><button type="button" class="danger-button" id="history-prune">Prune by retention</button><button type="button" class="tonal-button" id="history-export">Export redacted history</button><button type="button" class="tonal-button" id="open-app-data">Open local application-data folder</button></div>
+            <p id="history-status" aria-live="polite">History is locked.</p>
+            <div id="history-list"></div>
+            <pre id="history-diff-output" aria-label="Selected revision diff"></pre>
+          </article>
         </div>
       </section>
 
-      <section class="view" id="view-status" data-view="status" role="tabpanel" aria-labelledby="tab-status" hidden>
+      <section class="view" id="view-status" data-view="status" role="tabpanel" aria-labelledby="tab-status" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">EVIDENCE FIRST</span><h2>Application status</h2><p>Unrun checks remain unrun. Pending work never appears as verified.</p></div></header>
         <div class="status-grid">
           <article class="surface"><h3>Running build</h3><dl id="status-provenance" class="fact-list"></dl></article>
@@ -357,8 +389,8 @@
 
   <div id="context-menu" class="context-menu overlay" role="menu" hidden>
     <label class="search-field compact"><span class="visually-hidden">Filter context menu</span><input id="context-search" type="search" placeholder="Filter actions"><button type="button" class="regex-trigger" aria-label="Open regex builder for context menu">.*</button></label>
-    <button type="button" role="menuitem" data-context-action="appearance">Edit appearance… <kbd>Shift+F10</kbd></button>
-    <button type="button" role="menuitem" data-context-action="lock">Lock this element… <kbd>Ctrl+L</kbd></button>
+    <button type="button" role="menuitem" data-context-action="appearance" data-command-id="edit-appearance"><span class="command-label">Edit appearance…</span> <kbd>Shift+F10</kbd></button>
+    <button type="button" role="menuitem" data-context-action="lock" data-command-id="lock-element"><span class="command-label">Lock this element…</span> <kbd>Ctrl+L</kbd></button>
     <button type="button" role="menuitem" data-context-action="copy-label">Copy visible text</button>
   </div>
 
@@ -371,20 +403,22 @@
     <div class="form-actions"><button type="button" class="filled-button" id="apply-regex-popover">Apply to this search</button><button type="button" class="text-button" id="open-full-regex">Open full workbench</button></div>
   </div>
 
-  <dialog id="command-palette" class="palette-dialog">
-    <div class="dialog-header"><div><span class="eyebrow">CTRL+SHIFT+F</span><h3>Command palette</h3></div><button type="button" class="icon-button" data-close-dialog="command-palette" aria-label="Close command palette">×</button></div>
+  <dialog id="command-palette" class="palette-dialog" aria-labelledby="command-palette-title">
+    <div class="dialog-header"><div><span class="eyebrow">CTRL+SHIFT+F</span><h3 id="command-palette-title" data-vocabulary-owned>Command palette</h3></div><button type="button" class="icon-button" data-close-dialog="command-palette" aria-label="Close command palette">×</button></div>
     <label class="search-field"><span class="visually-hidden">Search commands</span><input id="palette-search" type="search" placeholder="Search every destination and setting"><button type="button" class="regex-trigger" aria-label="Open regex builder for command palette">.*</button></label>
     <div id="palette-results" class="palette-results"></div>
   </dialog>
 
-  <dialog id="notification-dialog" class="side-dialog">
-    <div class="dialog-header"><h3>Notification history</h3><button type="button" class="icon-button" data-close-dialog="notification-dialog" aria-label="Close notification history">×</button></div>
-    <div class="form-actions"><button type="button" class="tonal-button" id="dismiss-all-notices">Dismiss all visible</button><button type="button" class="tonal-button" id="export-notices">Export visible</button></div>
+  <dialog id="notification-dialog" class="side-dialog" aria-labelledby="notification-dialog-title">
+    <div class="dialog-header"><h3 id="notification-dialog-title" data-vocabulary-owned>Notification history</h3><button type="button" class="icon-button" data-close-dialog="notification-dialog" aria-label="Close notification history">×</button></div>
+    <label class="search-field"><span class="visually-hidden">Search notification history</span><input id="notification-search" type="search" placeholder="Search notifications"><button type="button" class="regex-trigger" aria-label="Open regex builder for notification search">.*</button></label>
+    <div class="form-actions"><button type="button" class="tonal-button" id="select-all-notices">Select all visible</button><button type="button" class="tonal-button" id="invert-notices">Invert visible selection</button><button type="button" class="tonal-button" id="dismiss-selected-notices">Dismiss selected</button><button type="button" class="danger-button" id="delete-selected-notices">Delete selected</button><button type="button" class="tonal-button" id="export-notices">Export visible</button></div>
+    <p id="notification-selection-status" aria-live="polite">0 selected.</p>
     <div id="notification-list"></div>
   </dialog>
 
-  <dialog id="appearance-dialog" class="editor-dialog">
-    <div class="dialog-header"><div><span class="eyebrow">NON-DESTRUCTIVE</span><h3>Edit appearance</h3><p id="appearance-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="appearance-dialog" aria-label="Close appearance editor">×</button></div>
+  <dialog id="appearance-dialog" class="editor-dialog" aria-labelledby="appearance-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">NON-DESTRUCTIVE</span><h3 id="appearance-dialog-title">Edit appearance</h3><p id="appearance-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="appearance-dialog" aria-label="Close appearance editor">×</button></div>
     <label class="search-field"><span class="visually-hidden">Search appearance properties</span><input id="appearance-search" type="search" placeholder="Search properties"><button type="button" class="regex-trigger" aria-label="Open regex builder for appearance property search">.*</button></label>
     <div class="editor-layout">
       <aside><h4>Layers</h4><button type="button" class="layer active">Element surface</button><button type="button" class="layer">Text</button><button type="button" class="layer">Effects</button><button type="button" class="tonal-button" id="duplicate-layer">Duplicate layer</button></aside>
@@ -406,8 +440,8 @@
     <p class="plain-disclosure">Unsupported image masks, warp, channels, smart objects, and vector paths remain unavailable in this bounded release and are listed in the feature inventory.</p>
   </dialog>
 
-  <dialog id="lock-dialog" class="lock-dialog">
-    <div class="dialog-header"><div><span class="eyebrow">FOR FUN ONLY</span><h3>Lock this element</h3><p id="lock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="lock-dialog" aria-label="Close lock wizard">×</button></div>
+  <dialog id="lock-dialog" class="lock-dialog" aria-labelledby="lock-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">FOR FUN ONLY</span><h3 id="lock-dialog-title">Lock this element</h3><p id="lock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="lock-dialog" aria-label="Close lock wizard">×</button></div>
     <p class="plain-disclosure">This is a self-imposed speed bump, not security or encryption. Delete this application's local data folder to reset all locks.</p>
     <form id="lock-form" class="form-grid">
       <label class="wide"><span>Credential policy</span><select id="lock-policy"><option value="pin">PIN</option><option value="password">Password</option><option value="pin+password">PIN plus password</option><option value="password+totp">Password plus TOTP</option><option value="pin+totp">PIN plus TOTP</option><option value="password+pin+totp">Password plus PIN plus TOTP</option></select></label>
@@ -419,26 +453,32 @@
     </form>
   </dialog>
 
-  <dialog id="unlock-dialog" class="lock-dialog">
-    <div class="dialog-header"><div><span class="eyebrow">LOCKED</span><h3>Unlock element</h3><p id="unlock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="unlock-dialog" aria-label="Cancel unlock">×</button></div>
+  <dialog id="unlock-dialog" class="lock-dialog" aria-labelledby="unlock-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">LOCKED</span><h3 id="unlock-dialog-title">Unlock element</h3><p id="unlock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="unlock-dialog" aria-label="Cancel unlock">×</button></div>
     <form id="unlock-form" class="form-grid"><label><span>PIN</span><input id="unlock-pin" type="password" inputmode="numeric"></label><label><span>Password</span><input id="unlock-password" type="password"></label><label class="wide"><span>TOTP code</span><input id="unlock-totp" inputmode="numeric" maxlength="8"></label><div class="form-actions wide"><button type="submit" class="filled-button">Unlock</button><button type="button" class="text-button" id="open-support">Forgotten your password?</button></div></form>
     <p id="unlock-state">Successful verification unlocks this surface for this application session only.</p>
   </dialog>
 
-  <dialog id="support-dialog" class="support-dialog">
-    <div class="dialog-header"><div><span class="eyebrow">FICTIONAL LOCAL DESK</span><h3>Support Tickets</h3></div><button type="button" class="icon-button" data-close-dialog="support-dialog" aria-label="Close support tickets">×</button></div>
+  <dialog id="support-dialog" class="support-dialog" aria-labelledby="support-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">FICTIONAL LOCAL DESK</span><h3 id="support-dialog-title">Support Tickets</h3></div><button type="button" class="icon-button" data-close-dialog="support-dialog" aria-label="Close support tickets">×</button></div>
     <p class="plain-disclosure">Nothing is sent anywhere. No ticket exists outside this computer, no network request is made, no data is collected, and nobody is reading it.</p>
     <form id="support-form" class="form-grid"><label><span>Category</span><select id="support-category"><option>Locked out</option><option>Forgotten credential</option><option>Authenticator unavailable</option></select></label><label><span>Severity nobody will honour</span><select id="support-severity"><option>Extremely ceremonial</option><option>Formally inconvenient</option><option>Catastrophically local</option></select></label><label class="wide"><span>Description</span><textarea id="support-description" rows="3"></textarea></label><button type="submit" class="filled-button wide">Create local ticket</button></form>
-    <div id="support-result"></div>
+    <div id="support-result" aria-live="polite"></div>
+    <label class="search-field"><span class="visually-hidden">Search local support tickets</span><input id="support-search" type="search" placeholder="Search local tickets"><button type="button" class="regex-trigger" aria-label="Open regex builder for support ticket search">.*</button></label>
+    <label><span>Ticket status</span><select id="support-status-filter"><option value="">Every status</option><option value="Open">Open</option><option value="In review">In review</option><option value="Resolved">Resolved</option></select></label>
+    <div class="form-actions"><button type="button" class="tonal-button" id="select-all-support">Select all visible</button><button type="button" class="tonal-button" id="invert-support">Invert visible selection</button><button type="button" class="tonal-button" id="advance-support">Advance selected status</button><button type="button" class="tonal-button" id="export-support">Export visible tickets</button><button type="button" class="danger-button" id="delete-support">Delete selected</button></div>
+    <p id="support-selection-status" aria-live="polite">0 selected.</p>
+    <div id="support-list" class="support-list"></div>
     <button type="button" class="tonal-button" id="support-open-folder">Open application-data folder</button>
   </dialog>
 
-  <dialog id="super-confirm-dialog" class="confirm-dialog">
+  <dialog id="super-confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
     <div class="dialog-header"><div><span class="eyebrow">DESTRUCTIVE ACTION</span><h3 id="confirm-title">Confirm deletion</h3></div><button type="button" class="icon-button" id="confirm-emergency" aria-label="Emergency exit">×</button></div>
     <p id="confirm-description"></p>
-    <div class="two-keys"><button type="button" id="confirm-key-one">Arm key one</button><button type="button" id="confirm-key-two">Arm key two</button></div>
-    <label class="range-field"><span>Slide fully to authorize</span><input id="confirm-slider" type="range" min="0" max="100" value="0" disabled></label>
-    <div class="confirm-progress"><span id="confirm-progress-fill"></span></div>
+    <div class="two-keys"><button type="button" id="confirm-key-one" aria-pressed="false">Arm key one</button><button type="button" id="confirm-key-two" aria-pressed="false">Arm key two</button></div>
+    <label class="range-field"><span>Slide fully to authorize</span><input id="confirm-slider" type="range" min="0" max="100" value="0" disabled aria-describedby="confirm-status"></label>
+    <div class="confirm-progress" id="confirm-progress" role="progressbar" aria-label="Destructive confirmation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="confirm-progress-fill"></span></div>
+    <p id="confirm-status" aria-live="polite">Arm both keys to enable the slider.</p>
     <button type="button" class="danger-button" id="confirm-run" disabled>Complete destructive action</button>
   </dialog>
 

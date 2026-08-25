@@ -45,20 +45,30 @@ contextBridge.exposeInMainWorld('hairGrowth', Object.freeze({
   }),
   files: Object.freeze({
     chooseKey: () => ipcRenderer.invoke('file:chooseKey'),
-    chooseVocabulary: () => ipcRenderer.invoke('file:chooseVocabulary'),
     chooseLogo: () => ipcRenderer.invoke('file:chooseLogo'),
     chooseConverterSource: () => ipcRenderer.invoke('file:chooseConverterSource'),
     convert: (value) => ipcRenderer.invoke('file:convert', value),
     export: (value) => ipcRenderer.invoke('file:export', value),
     showAppData: () => ipcRenderer.invoke('file:showAppData')
   }),
+  vocabulary: Object.freeze({
+    read: () => ipcRenderer.invoke('vocabulary:read'),
+    replace: () => ipcRenderer.invoke('vocabulary:replace'),
+    clear: () => ipcRenderer.invoke('vocabulary:clear')
+  }),
   external: Object.freeze({
     openVsCode: (target) => ipcRenderer.invoke('external:openVsCode', target),
     openUrl: (url) => ipcRenderer.invoke('external:openUrl', url)
   }),
   history: Object.freeze({
-    list: (limit) => ipcRenderer.invoke('history:list', limit),
-    read: (commit) => ipcRenderer.invoke('history:read', commit),
+    setCredential: (credential) => ipcRenderer.invoke('history:setCredential', credential),
+    list: (options) => ipcRenderer.invoke('history:list', options),
+    read: (commit, credential) => ipcRenderer.invoke('history:read', commit, credential),
+    diff: (fromCommit, toCommit, credential) => ipcRenderer.invoke('history:diff', fromCommit, toCommit, credential),
+    restore: (commit, credential) => ipcRenderer.invoke('history:restore', commit, credential),
+    label: (commit, label, credential) => ipcRenderer.invoke('history:label', commit, label, credential),
+    prune: (maxEntries, credential) => ipcRenderer.invoke('history:prune', maxEntries, credential),
+    export: (options) => ipcRenderer.invoke('history:export', options),
     onError: (callback) => subscribe('history:error', callback)
   }),
   server: Object.freeze({

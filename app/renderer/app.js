@@ -6,8 +6,13 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const regexState = new WeakMap();
+  const dialogOpeners = new WeakMap();
+  let contextMenuOpener = null;
+  let regexPopoverOpener = null;
   const unlockedForSession = new Set();
   const lockedElements = new Map();
+  const selectedNotifications = new Set();
+  const selectedSupportTickets = new Set();
   let state;
   let provenance;
   let schoolRecord;
@@ -26,6 +31,20 @@
   let narratorQueue = [];
   let narratorSpeaking = false;
   let sessionOpenedAt = Date.now();
+  let vocabularyCache = { status: 'missing', schemaVersion: null, entries: Object.freeze({}) };
+  let historyCredential = '';
+  let historyItems = [];
+  let selectedHistoryCommit = '';
+  let activeGrowthStageIndex = 0;
+
+  const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+
+  const COMMAND_REGISTRY = Object.freeze({
+    'open-palette': Object.freeze({ label: 'Open command palette', shortcut: 'Ctrl+Shift+F', run: () => openPalette() }),
+    'open-notifications': Object.freeze({ label: 'Open notification history', shortcut: 'Ctrl+Shift+N', run: () => openManagedDialog($('#notification-dialog')) }),
+    'edit-appearance': Object.freeze({ label: 'Edit appearance…', shortcut: 'Shift+F10', run: (target) => openAppearance(target) }),
+    'lock-element': Object.freeze({ label: 'Lock this element…', shortcut: 'Ctrl+L', run: (target) => openLockWizard(target) })
+  });
 
   const translations = {
     en: {
@@ -33,14 +52,28 @@
       saved: 'Saved',
       haircutSaved: 'Haircut saved and baseline reset.',
       estimate: 'Estimate',
-      noHaircuts: 'No haircuts match this view yet.'
+      noHaircuts: 'No haircuts match this view yet.',
+      vocabularyNoFile: 'No private file is loaded. Original shipped wording is active.',
+      vocabularyLoading: 'Validating the selected private file locally.',
+      vocabularyLoaded: 'Loaded locally. Approved wording is active.',
+      vocabularyInvalid: 'The selected or cached file is invalid. Original shipped wording is active.',
+      vocabularyChoose: 'Choose private JSON',
+      vocabularyReplace: 'Replace private JSON',
+      vocabularyClear: 'Clear local cache'
     },
     yue: {
       subtitle: '私人本機生髮日記，啲頭髮慢慢行，資料唔使周圍飛',
       saved: '已經收好，穩陣過夾萬入面再放夾萬',
       haircutSaved: '剪髮紀錄收好，條生長線由新長度再出發。',
       estimate: '估算',
-      noHaircuts: '暫時搵唔到剪髮紀錄，個清單光滑過新剃頭。'
+      noHaircuts: '暫時搵唔到剪髮紀錄，個清單光滑過新剃頭。',
+      vocabularyNoFile: '未載入私人檔案，而家用返原裝字句。',
+      vocabularyLoading: '正喺本機驗證揀選嘅私人檔案。',
+      vocabularyLoaded: '已經喺本機載入，核准字句而家生效。',
+      vocabularyInvalid: '揀選或快取嘅檔案無效，而家用返原裝字句。',
+      vocabularyChoose: '揀選私人 JSON',
+      vocabularyReplace: '更換私人 JSON',
+      vocabularyClear: '清除本機快取'
     }
   };
 
@@ -68,12 +101,12 @@
     {
       id: 'persistence',
       title: 'Local persistence and version history',
-      body: `<h3>Local persistence and version history</h3><p>Main-process saves run through one serialized queue. Each accepted write must carry the current authoritative revision; a stale candidate is refused rather than overwriting newer data. The primary state file is written atomically before a redacted local-history revision is attempted.</p><p>If local Git history cannot record a revision, the primary save remains valid and the application reports the history degradation. Orderly shutdown waits for both the state queue and history queue before closing, then stops any active SSH tunnel.</p><h4>Recovery boundary</h4><p>History snapshots omit SSH key paths, custom logo bytes, private vocabulary content, and credentials. Restoring revisions remains a separate user action; shutdown draining does not rewrite or prune history.</p><h4>Suggested articles</h4><p>Haircut resets and history, Private synchronization, Privacy and local credentials.</p>`
+      body: `<h3>Local persistence and version history</h3><p>Main-process saves run through one serialized queue. Each accepted write must carry the current authoritative revision; a stale candidate is refused rather than overwriting newer data. The primary state file is written atomically before a redacted local-history revision is attempted.</p><p>If local Git history cannot record a revision, the primary save remains valid and the application reports the history degradation. Orderly shutdown waits for both the state queue and history queue before closing, then stops any active SSH tunnel.</p><h4>Protected history manager</h4><p>The history manager requires its own credential stored through operating-system protection. It can search redacted revisions, filter by typed date range and actions discovered from the history itself, show action counts, compare two revisions, add labels, restore, prune by an explicit retention value, and export the filtered redacted view. A restore is appended as a new revision, so it never rewrites the revision selected for recovery.</p><h4>Recovery boundary</h4><p>History snapshots omit SSH key paths, custom logo bytes, private vocabulary content, and credentials. A history write failure never reverses a successful primary save. Shutdown draining does not rewrite or prune history.</p><h4>Suggested articles</h4><p>Haircut resets and history, Private synchronization, Privacy and local credentials.</p>`
     },
     {
       id: 'privacy',
       title: 'Privacy and local credentials',
-      body: `<h3>Privacy and local credentials</h3><p>Hair records remain on this computer unless you explicitly use service sync. API keys, toy-lock credentials, and authenticator secrets use operating-system protection. Secrets are omitted from ordinary exports, local history, notifications, and logs.</p><p>Personal vocabulary validation is local. No private mapping ships in the application, and clearing the cache restores the original wording.</p><h4>Suggested articles</h4><p>Private synchronization, Toy locks, Local version history.</p>`
+      body: `<h3>Privacy and local credentials</h3><p>Hair records remain on this computer unless you explicitly use service sync. API keys, toy-lock credentials, and authenticator secrets use operating-system protection. Secrets are omitted from ordinary exports, local history, notifications, and logs.</p><h4>Personal vocabulary file</h4><p>The optional local JSON file uses one root object with <code>schemaVersion: 1</code> and an <code>entries</code> object. The complete UTF-8 payload is limited to 256 KiB, 4,096 entries, depth 2, keys from 1 through 160 Unicode code points, and string values through 1,000 Unicode code points. Malformed UTF-8, duplicate keys, unknown fields or versions, unsafe keys, and out-of-bound values are rejected before anything is applied.</p><p>Validation, replacement, and the private application-data cache remain local and make no network request. Every cache load is revalidated. A rejected replacement keeps the last valid cache, while an explicitly cleared cache is purged and immediately restores the original shipped wording. School mode suppresses the vocabulary controls and replacements without deleting the last valid private cache.</p><p>No private mapping, source filename, source path, entry count, or mapping value appears in source, status copy, logs, exports, notifications, or local history.</p><h4>Suggested articles</h4><p>Private synchronization, Toy locks, Local version history.</p>`
     },
     {
       id: 'tools',
@@ -92,7 +125,7 @@
       version: '1.0.0',
       date: '2026-08-24',
       commit: 'pending-release-commit',
-      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
+      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Strict local personal-vocabulary validation, cache recovery, clear, and School-mode suppression', 'Complete tab relationships, axis-aware roving focus, named dialogs, opener focus restoration, reduced-motion progression, and 44-pixel interaction targets', 'Protected searchable history, dismissible notification history, local Support Tickets management, and persisted attention accommodations', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
     }
   ];
 
@@ -122,6 +155,73 @@
     return translations.en[key] || key;
   }
 
+  function vocabularyEnabledForSurface() {
+    return !schoolRecord?.enabled && vocabularyCache.status === 'loaded';
+  }
+
+  function escapeVocabularyPattern(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function applyVocabularyCopy(value, boundary) {
+    const source = String(value ?? '');
+    if (!vocabularyEnabledForSurface() || !['owned-visible', 'owned-accessible'].includes(boundary)) return source;
+    const keys = Object.keys(vocabularyCache.entries || {}).sort((left, right) => right.length - left.length || left.localeCompare(right));
+    if (!keys.length) return source;
+    const pattern = new RegExp(keys.map(escapeVocabularyPattern).join('|'), 'g');
+    return source.replace(pattern, (match) => vocabularyCache.entries[match]);
+  }
+
+  function setOwnedText(element, value) {
+    if (!element || element.hasAttribute('data-vocabulary-preserve')) return;
+    element.dataset.vocabularyBaseText = String(value ?? '');
+    element.textContent = applyVocabularyCopy(element.dataset.vocabularyBaseText, 'owned-visible');
+  }
+
+  function setOwnedAttribute(element, name, value) {
+    if (!element || element.hasAttribute('data-vocabulary-preserve')) return;
+    const dataName = `vocabularyBase${name.replace(/(^|-)([a-z])/g, (_match, _separator, letter) => letter.toUpperCase())}`;
+    element.dataset[dataName] = String(value ?? '');
+    element.setAttribute(name, applyVocabularyCopy(element.dataset[dataName], 'owned-accessible'));
+  }
+
+  function applyOwnedVocabularyBoundaries() {
+    $$('[data-vocabulary-owned]').forEach((element) => {
+      if (element.closest('[data-vocabulary-preserve]')) return;
+      if (!element.dataset.vocabularyBaseText && element.childElementCount === 0) element.dataset.vocabularyBaseText = element.textContent;
+      if (element.dataset.vocabularyBaseText !== undefined && element.childElementCount === 0) {
+        element.textContent = applyVocabularyCopy(element.dataset.vocabularyBaseText, 'owned-visible');
+      }
+      for (const name of ['aria-label', 'placeholder', 'title']) {
+        if (!element.hasAttribute(name)) continue;
+        const dataName = `vocabularyBase${name.replace(/(^|-)([a-z])/g, (_match, _separator, letter) => letter.toUpperCase())}`;
+        if (!element.dataset[dataName]) element.dataset[dataName] = element.getAttribute(name);
+        element.setAttribute(name, applyVocabularyCopy(element.dataset[dataName], 'owned-accessible'));
+      }
+    });
+  }
+
+  function renderVocabularyStatus(status = vocabularyCache.status) {
+    if (schoolRecord?.enabled) return;
+    const key = status === 'loaded' ? 'vocabularyLoaded' : status === 'loading' ? 'vocabularyLoading' : status === 'invalid' ? 'vocabularyInvalid' : 'vocabularyNoFile';
+    setOwnedText($('#vocabulary-state'), text(key));
+    setOwnedText($('#choose-vocabulary'), text(status === 'loaded' ? 'vocabularyReplace' : 'vocabularyChoose'));
+    setOwnedText($('#clear-vocabulary'), text('vocabularyClear'));
+  }
+
+  async function loadVocabularyCache() {
+    const result = await bridge.vocabulary.read();
+    vocabularyCache = {
+      status: result.status === 'loaded' ? 'loaded' : result.status === 'invalid' ? 'invalid' : 'missing',
+      schemaVersion: result.schemaVersion || null,
+      entries: Object.freeze({ ...(result.entries || {}) })
+    };
+    state.vocabulary = { loaded: vocabularyCache.status === 'loaded', cacheVersion: vocabularyCache.schemaVersion };
+    applyOwnedVocabularyBoundaries();
+    renderVocabularyStatus();
+    return vocabularyCache;
+  }
+
   function formatLength(cm, unit = state.profile.displayUnit, digits = 2) {
     const value = Hair.fromCm(cm, unit);
     return `${value.toFixed(digits)} ${unit}`;
@@ -136,12 +236,34 @@
     }
     const toast = document.createElement('div');
     toast.className = `toast ${kind}`;
+    toast.dataset.noticeId = item.id;
+    if (['error', 'warning'].includes(kind)) toast.setAttribute('role', 'alert');
     toast.innerHTML = `<strong></strong><span></span>`;
-    $('strong', toast).textContent = state?.settings.showDialogEmoji ? `${kind === 'error' ? '⚠ ' : kind === 'success' ? '✓ ' : '• '}${title}` : title;
-    $('span', toast).textContent = body;
+    setOwnedText($('strong', toast), title);
+    setOwnedText($('span', toast), body);
+    if (['error', 'warning'].includes(kind)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'toast-dismiss';
+      button.dataset.dismissNotice = item.id;
+      setOwnedText(button, 'Dismiss notification');
+      setOwnedAttribute(button, 'aria-label', `Dismiss ${title}`);
+      button.addEventListener('click', () => dismissNotification(item.id));
+      toast.append(button);
+    }
     $('#toast-region').append(toast);
     if (!['error', 'warning'].includes(kind)) setTimeout(() => toast.remove(), 5200);
     narrate(`${title}. ${body}`, kind);
+    renderNotifications();
+  }
+
+  function dismissNotification(id) {
+    const notice = state?.notifications.find((item) => item.id === id);
+    if (notice) {
+      notice.dismissed = true;
+      scheduleSave('Notification dismissed');
+    }
+    $(`.toast[data-notice-id="${CSS.escape(id)}"]`)?.remove();
     renderNotifications();
   }
 
@@ -170,6 +292,7 @@
 
   function scheduleSave(event = 'Settings changed') {
     stateMutationSequence += 1;
+    if (!/^(Notification|Momentum prompt|History view)/.test(event) && state?.settings?.adhd) state.settings.adhd.lastMeaningfulChangeAt = new Date().toISOString();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try { await queueStateWrite(event); } catch (error) { handleError(error, 'Local save failed'); }
@@ -178,13 +301,18 @@
 
   async function saveNow(event) {
     stateMutationSequence += 1;
+    if (state?.settings?.adhd) state.settings.adhd.lastMeaningfulChangeAt = new Date().toISOString();
     clearTimeout(saveTimer);
     return queueStateWrite(event);
   }
 
   function applyTranslations() {
-    $$('[data-i18n]').forEach((element) => { element.textContent = text(element.dataset.i18n); });
+    $$('[data-i18n]').forEach((element) => { setOwnedText(element, text(element.dataset.i18n)); });
     document.documentElement.lang = schoolRecord?.enabled || state.settings.language === 'en' ? 'en' : state.settings.language === 'yue' ? 'yue-Hant-HK' : 'en';
+  }
+
+  function prefersReducedMotion() {
+    return Boolean(state?.settings.reducedMotion || reducedMotionQuery.matches);
   }
 
   function applySettings() {
@@ -194,9 +322,10 @@
     document.documentElement.style.setProperty('--accent', state.settings.accent);
     const rainbowDurations = [20, 13, 8, 5, 3];
     document.documentElement.style.setProperty('--rainbow-duration', `${rainbowDurations[state.settings.rainbowSpeedLevel - 1]}s`);
-    document.body.classList.toggle('low-stimulation', state.settings.adhd.lowStimulation || state.settings.reducedMotion);
+    document.body.classList.toggle('low-stimulation', state.settings.adhd.lowStimulation || prefersReducedMotion());
     document.body.classList.toggle('focus-mode', state.settings.adhd.focus);
     document.body.classList.toggle('school-active', Boolean(schoolRecord?.enabled));
+    if (!growthAnimation) setOwnedText($('#play-growth'), prefersReducedMotion() ? 'Show next stage' : 'Play growth');
     $('#app-name').textContent = state.settings.displayName;
     bridge.window.setTitle(state.settings.displayName);
     $('#app-logo').src = state.settings.logo.customDataUrl || '../../assets/app-icon-48.png';
@@ -207,7 +336,6 @@
     applyTranslations();
     applySavedAppearances();
     if (schoolRecord?.enabled) {
-      state.settings.language = 'en';
       $$('[data-settings-keywords]').forEach((card) => {
         const words = card.dataset.settingsKeywords.toLowerCase();
         card.hidden = /language|funny|cantonese|vocabulary|dim.sum/.test(words);
@@ -215,6 +343,79 @@
     } else {
       $$('[data-settings-keywords]').forEach((card) => { card.hidden = false; });
     }
+    $$('[data-school-feature="vocabulary"]').forEach((element) => { element.hidden = Boolean(schoolRecord?.enabled); });
+    applyOwnedVocabularyBoundaries();
+    renderVocabularyStatus();
+    renderAttentionAccommodations();
+  }
+
+  function syncDialogEmoji(dialog) {
+    if (!dialog) return;
+    const heading = $('.dialog-header h3', dialog);
+    if (!heading) return;
+    let emoji = $('.dialog-emoji', dialog);
+    if (!emoji) {
+      emoji = document.createElement('span');
+      emoji.className = 'dialog-emoji';
+      emoji.setAttribute('aria-hidden', 'true');
+      heading.prepend(emoji);
+    }
+    const symbols = { 'command-palette': '⌕', 'notification-dialog': '◉', 'appearance-dialog': '🎨', 'lock-dialog': '🔒', 'unlock-dialog': '🔓', 'support-dialog': '🎫', 'super-confirm-dialog': '⚠' };
+    emoji.textContent = symbols[dialog.id] || '•';
+    dialog.classList.toggle('show-dialog-emoji', Boolean(state?.settings.showDialogEmoji));
+  }
+
+  function openManagedDialog(dialog, options = {}) {
+    if (!dialog) return;
+    if (!dialog.open) dialogOpeners.set(dialog, options.opener || document.activeElement);
+    syncDialogEmoji(dialog);
+    if (!dialog.open) {
+      if (options.modal) dialog.showModal();
+      else dialog.show();
+    }
+    const focusTarget = options.focus || $('input:not([type="hidden"]), button, select, textarea, [tabindex="0"]', dialog);
+    focusTarget?.focus({ preventScroll: true });
+  }
+
+  function restoreDialogFocus(dialog) {
+    const opener = dialogOpeners.get(dialog);
+    dialogOpeners.delete(dialog);
+    if (opener?.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true });
+  }
+
+  function closeManagedDialog(dialog) {
+    if (dialog?.open) dialog.close();
+  }
+
+  function applyCommandRegistry() {
+    $$('[data-command-id]').forEach((control) => {
+      const command = COMMAND_REGISTRY[control.dataset.commandId];
+      if (!command) return;
+      const label = $('.command-label', control);
+      if (label) setOwnedText(label, command.label);
+      setOwnedAttribute(control, 'aria-label', command.label);
+      control.title = command.shortcut ? `${command.label}, ${command.shortcut}` : command.label;
+      const shortcut = $('kbd', control);
+      if (shortcut) shortcut.textContent = command.shortcut;
+    });
+  }
+
+  function shortcutMatches(event, shortcut) {
+    const pieces = shortcut.toLocaleLowerCase().split('+');
+    const key = pieces.at(-1);
+    return event.key.toLocaleLowerCase() === key
+      && event.ctrlKey === pieces.includes('ctrl')
+      && event.shiftKey === pieces.includes('shift')
+      && event.altKey === pieces.includes('alt');
+  }
+
+  function clonePaletteControl(source, entry) {
+    const clone = source.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.id = `palette-control-${entry.id}`;
+    clone.setAttribute('aria-label', entry.label);
+    clone.dataset.vocabularyOwned = '';
+    return clone;
   }
 
   function displayProvenance() {
@@ -253,6 +454,7 @@
 
   function updateVisual(lengthCm) {
     const stage = Hair.stageForLength(lengthCm);
+    activeGrowthStageIndex = Math.max(0, Hair.HAIR_STAGES.findIndex((item) => item.id === stage.id));
     const frame = $('.portrait-frame');
     frame.classList.add('changing');
     setTimeout(() => {
@@ -262,9 +464,13 @@
       $('#visual-stage-label').textContent = stage.label;
       $('#visual-length').textContent = formatLength(lengthCm);
       $('#visual-date').textContent = `Reference image near ${formatLength(stage.targetCm)}`;
-      $$('.stage-dot').forEach((dot) => dot.classList.toggle('active', dot.dataset.stageId === stage.id));
+      $$('.stage-dot').forEach((dot) => {
+        const selected = dot.dataset.stageId === stage.id;
+        dot.classList.toggle('active', selected);
+        dot.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
       frame.classList.remove('changing');
-    }, state.settings.reducedMotion ? 0 : 180);
+    }, prefersReducedMotion() ? 0 : 180);
   }
 
   function renderStageDots() {
@@ -276,7 +482,10 @@
       button.className = 'stage-dot';
       button.dataset.stageId = stage.id;
       button.dataset.elementId = `stage-dot-${stage.id}`;
-      button.textContent = index + 1;
+      button.dataset.vocabularyPreserve = '';
+      button.textContent = stage.label;
+      button.setAttribute('aria-label', `${stage.label} stage, about ${stage.targetCm} centimetres`);
+      button.setAttribute('aria-pressed', 'false');
       button.title = `${stage.label}, about ${stage.targetCm} cm`;
       button.addEventListener('click', () => {
         $('#growth-scrubber').value = stage.targetCm;
@@ -284,6 +493,26 @@
       });
       container.append(button);
     });
+  }
+
+  function advanceGrowthStage() {
+    activeGrowthStageIndex = (activeGrowthStageIndex + 1) % Hair.HAIR_STAGES.length;
+    const stage = Hair.HAIR_STAGES[activeGrowthStageIndex];
+    $('#growth-scrubber').value = stage.targetCm;
+    updateVisual(stage.targetCm);
+    return stage;
+  }
+
+  function toggleGrowthPlayback() {
+    if (growthAnimation) {
+      clearInterval(growthAnimation);
+      growthAnimation = null;
+      setOwnedText($('#play-growth'), 'Play growth');
+      return;
+    }
+    if (prefersReducedMotion()) return advanceGrowthStage();
+    setOwnedText($('#play-growth'), 'Pause growth');
+    growthAnimation = setInterval(advanceGrowthStage, 650);
   }
 
   function renderGallery() {
@@ -443,18 +672,60 @@
     const button = $(`.tab[data-tab="${CSS.escape(tab)}"]`);
     if (!button) return;
     activeTab = tab;
-    $$('.tab').forEach((item) => { item.classList.toggle('active', item === button); item.setAttribute('aria-selected', item === button ? 'true' : 'false'); });
+    $$('.tab').forEach((item) => { item.classList.toggle('active', item === button); item.setAttribute('aria-selected', item === button ? 'true' : 'false'); item.setAttribute('tabindex', item === button ? '0' : '-1'); });
     $$('.view').forEach((view) => { const active = view.dataset.view === tab; view.hidden = !active; view.classList.toggle('active', active); });
     button.focus({ preventScroll: true });
     if (tab === 'status') displayProvenance();
   }
 
+  function handleTabRovingKey(event) {
+    const orientation = $('#tab-strip').getAttribute('aria-orientation');
+    const forwardKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
+    const backwardKey = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
+    if (![forwardKey, backwardKey, 'Home', 'End'].includes(event.key)) return;
+    const visible = $$('.tab').filter((tab) => {
+      const group = tab.closest('.tab-group');
+      const groupHeader = group && $('.group-header', group);
+      return !tab.hidden && (!groupHeader || groupHeader.getAttribute('aria-expanded') === 'true');
+    });
+    if (!visible.length) return;
+    event.preventDefault();
+    const current = visible.indexOf(event.currentTarget);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? visible.length - 1
+        : event.key === forwardKey
+          ? (current + 1 + visible.length) % visible.length
+          : (current - 1 + visible.length) % visible.length;
+    switchTab(visible[nextIndex].dataset.tab);
+  }
+
   function openPalette(query = '') {
     const dialog = $('#command-palette');
-    if (!dialog.open) dialog.show();
     $('#palette-search').value = query;
     renderPalette();
-    $('#palette-search').focus();
+    openManagedDialog(dialog, { focus: $('#palette-search') });
+  }
+
+  function activatePaletteEntry(entry) {
+    const dialog = $('#command-palette');
+    if (!entry.action) return;
+    if (!dialog.open) return entry.action();
+    dialog.addEventListener('close', () => entry.action(), { once: true });
+    closeManagedDialog(dialog);
+  }
+
+  function teleportToElement(tab, selector) {
+    switchTab(tab);
+    const target = $(selector);
+    if (!target) return;
+    target.hidden = false;
+    target.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    if (!target.matches('button, input, select, textarea, a, [tabindex]')) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    target.classList.remove('teleport-highlight');
+    requestAnimationFrame(() => target.classList.add('teleport-highlight'));
   }
 
   function paletteEntries() {
@@ -464,9 +735,18 @@
       { id: 'language', label: 'Language mode', kind: 'Setting', control: 'language' },
       { id: 'funny-en', label: 'English funny level', kind: 'Setting', control: 'funny-en' },
       { id: 'funny-yue', label: 'Cantonese funny level', kind: 'Setting', control: 'funny-yue' },
-      { id: 'tab-dock', label: 'Tab dock', kind: 'Setting', control: 'tab-dock' }
+      { id: 'tab-dock', label: 'Tab dock', kind: 'Setting', control: 'tab-dock' },
+      { id: 'vocabulary-choose', label: 'Choose or replace personal vocabulary JSON', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#choose-vocabulary') },
+      { id: 'vocabulary-status', label: 'Personal vocabulary status', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#vocabulary-state') },
+      { id: 'vocabulary-clear', label: 'Clear personal vocabulary cache', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#clear-vocabulary') },
+      { id: 'support-tickets', label: 'Open local Support Tickets', kind: 'Destination', action: () => openManagedDialog($('#support-dialog')) },
+      { id: 'notification-history', label: 'Open notification history', kind: 'Destination', action: () => openManagedDialog($('#notification-dialog')) },
+      { id: 'history-manager', label: 'Protected local version history', kind: 'Destination', action: () => teleportToElement('docs', '#history-manager-title') },
+      { id: 'one-thing', label: 'One thing at a time current action', kind: 'Setting', action: () => teleportToElement('settings', '#adhd-next-action') },
+      { id: 'momentum', label: 'Momentum accommodation', kind: 'Setting', action: () => teleportToElement('settings', '[data-adhd="momentum"]') }
     ];
-    return [...destinations, ...settings, ...docs.map((article) => ({ id: `docs-${article.id}`, label: article.title, kind: 'Offline article', action: () => openDoc(article.id) }))];
+    return [...destinations, ...settings, ...docs.map((article) => ({ id: `docs-${article.id}`, label: article.title, kind: 'Offline article', action: () => openDoc(article.id) }))]
+      .filter((entry) => !schoolRecord?.enabled || entry.feature !== 'vocabulary');
   }
 
   function renderPalette() {
@@ -474,17 +754,17 @@
     const input = $('#palette-search');
     paletteEntries().filter((entry) => matchesSearch(input, `${entry.label} ${entry.kind}`)).forEach((entry) => {
       const row = document.createElement('div'); row.className = 'palette-row';
-      const button = document.createElement('button'); button.type = 'button'; button.innerHTML = `<strong></strong><small></small>`; $('strong', button).textContent = entry.label; $('small', button).textContent = entry.kind;
-      button.addEventListener('click', () => { entry.action?.(); if (entry.id.startsWith('go-') || entry.id.startsWith('docs-')) $('#command-palette').close(); });
+      const button = document.createElement('button'); button.type = 'button'; button.innerHTML = `<strong></strong><small></small>`; setOwnedText($('strong', button), entry.label); setOwnedText($('small', button), entry.kind); setOwnedAttribute(button, 'aria-label', `${entry.label}, ${entry.kind}`);
+      button.addEventListener('click', () => activatePaletteEntry(entry));
       row.append(button);
       if (entry.control === 'theme') {
-        const select = $('#setting-theme').cloneNode(true); select.value = state.settings.theme; select.removeAttribute('id'); select.addEventListener('change', () => { state.settings.theme = select.value; applySettings(); scheduleSave('Theme changed from command palette'); }); row.append(select);
+        const select = clonePaletteControl($('#setting-theme'), entry); select.value = state.settings.theme; select.addEventListener('change', () => { state.settings.theme = select.value; applySettings(); scheduleSave('Theme changed from command palette'); }); row.append(select);
       } else if (entry.control === 'language') {
-        const select = $('#setting-language').cloneNode(true); select.value = state.settings.language; select.removeAttribute('id'); select.addEventListener('change', () => { state.settings.language = select.value; applySettings(); scheduleSave('Language changed from command palette'); }); row.append(select);
+        const select = clonePaletteControl($('#setting-language'), entry); select.value = state.settings.language; select.addEventListener('change', () => { state.settings.language = select.value; applySettings(); scheduleSave('Language changed from command palette'); }); row.append(select);
       } else if (entry.control === 'funny-en' || entry.control === 'funny-yue') {
         const range = document.createElement('input'); range.type = 'range'; range.min = 1; range.max = 5; range.value = entry.control === 'funny-en' ? state.settings.funnyEnglish : state.settings.funnyCantonese; range.setAttribute('aria-label', entry.label); range.addEventListener('input', () => { state.settings[entry.control === 'funny-en' ? 'funnyEnglish' : 'funnyCantonese'] = Number(range.value); scheduleSave(`${entry.label} changed from command palette`); }); row.append(range);
       } else if (entry.control === 'tab-dock') {
-        const select = $('#setting-tab-dock').cloneNode(true); select.value = state.settings.tabDock; select.removeAttribute('id'); select.addEventListener('change', () => { state.settings.tabDock = select.value; applySettings(); scheduleSave('Tab dock changed from command palette'); }); row.append(select);
+        const select = clonePaletteControl($('#setting-tab-dock'), entry); select.value = state.settings.tabDock; select.addEventListener('change', () => { state.settings.tabDock = select.value; applySettings(); scheduleSave('Tab dock changed from command palette'); }); row.append(select);
       }
       container.append(row);
     });
@@ -512,6 +792,7 @@
     const field = trigger.closest('.search-field');
     const input = $('input', field);
     const popover = $('#regex-popover');
+    regexPopoverOpener = trigger;
     const current = regexState.get(input) || { enabled: false, pattern: input.value || '', flags: 'iu' };
     popover._targetInput = input;
     $('#popover-pattern').value = current.pattern;
@@ -524,6 +805,13 @@
     popover.style.left = `${Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width))}px`;
     popover.style.top = `${Math.max(76, Math.min(window.innerHeight - popover.offsetHeight - 12, rect.bottom + 8))}px`;
     $('#popover-pattern').focus();
+  }
+
+  function closeRegexPopover({ restoreFocus = true } = {}) {
+    $('#regex-popover').hidden = true;
+    const opener = regexPopoverOpener;
+    regexPopoverOpener = null;
+    if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
   }
 
   function validatePopoverRegex() {
@@ -540,7 +828,7 @@
     if (!input) return;
     regexState.set(input, { enabled: $('#popover-enabled').checked, pattern: $('#popover-pattern').value, flags: $('#popover-flags').value });
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    $('#regex-popover').hidden = true;
+    closeRegexPopover();
   }
 
   function runRegexWorkbench() {
@@ -653,25 +941,125 @@
 
   async function renderHistory() {
     const list = $('#history-list'); list.replaceChildren();
+    if (!historyCredential) {
+      $('#history-status').textContent = 'History is locked. Enter its separate password to continue.';
+      list.innerHTML = '<div class="empty-state">Unlock local history to browse revisions.</div>';
+      return;
+    }
     try {
-      const items = await bridge.history.list(200);
-      items.forEach((item) => {
-        const row = document.createElement('article'); row.className = 'history-row';
-        const heading = document.createElement('strong'); heading.textContent = item.subject;
-        const detail = document.createElement('p'); detail.textContent = `${new Date(item.date).toLocaleString()} · ${item.commit.slice(0, 12)}`; row.append(heading, detail); list.append(row);
+      const action = $('#history-action').value;
+      const filters = { credential: historyCredential, limit: 500, from: $('#history-date-from').value || null, to: $('#history-date-to').value || null, actions: action ? [action] : [], query: $('#history-search').value };
+      const allHistoryItems = await bridge.history.list({ credential: historyCredential, limit: 500 });
+      historyItems = !filters.from && !filters.to && !filters.actions.length && !filters.query ? allHistoryItems : await bridge.history.list(filters);
+      const actionSelect = $('#history-action');
+      const selectedAction = actionSelect.value;
+      const actionCounts = allHistoryItems.reduce((counts, item) => counts.set(item.action, (counts.get(item.action) || 0) + 1), new Map());
+      const actions = [...actionCounts.keys()].filter(Boolean).sort();
+      actionSelect.replaceChildren(new Option(`Every action (${allHistoryItems.length})`, ''), ...actions.map((value) => new Option(`${value} (${actionCounts.get(value)})`, value)));
+      actionSelect.value = actions.includes(selectedAction) ? selectedAction : '';
+      historyItems.forEach((item) => {
+        const row = document.createElement('article'); row.className = `history-row${selectedHistoryCommit === item.commit ? ' selected' : ''}`;
+        const select = document.createElement('input'); select.type = 'radio'; select.name = 'history-revision'; select.value = item.commit; select.checked = selectedHistoryCommit === item.commit; select.setAttribute('aria-label', `Select history revision ${item.subject}`); select.addEventListener('change', () => { selectedHistoryCommit = item.commit; renderHistory(); });
+        const copyBlock = document.createElement('div');
+        const heading = document.createElement('strong'); heading.textContent = item.label || item.subject;
+        const detail = document.createElement('p'); detail.textContent = `${new Date(item.date).toLocaleString()} · ${item.action || 'updated'} · ${item.commit.slice(0, 12)}`; copyBlock.append(heading, detail);
+        const marker = document.createElement('span'); marker.className = 'state-chip'; marker.textContent = item.label ? 'Labelled' : 'Revision';
+        row.append(select, copyBlock, marker); list.append(row);
       });
-    } catch (error) { list.innerHTML = '<div class="empty-state">Local history could not be read.</div>'; handleError(error, 'History unavailable'); }
+      $('#history-status').textContent = `${historyItems.length} redacted revision${historyItems.length === 1 ? '' : 's'} visible. Restores append a new revision.`;
+      if (!historyItems.length) list.innerHTML = '<div class="empty-state">No revisions match the active filters.</div>';
+    } catch (error) {
+      historyCredential = '';
+      list.innerHTML = '<div class="empty-state">Local history could not be read with that credential.</div>';
+      $('#history-status').textContent = 'History remains locked.';
+      handleError(error, 'History unavailable');
+    }
+  }
+
+  function visibleNotifications() {
+    const search = $('#notification-search');
+    return state.notifications.filter((notice) => !search || matchesSearch($('#notification-search'), `${notice.title} ${notice.body} ${notice.kind} ${notice.timestamp}`));
+  }
+
+  function selectedNotificationIds() {
+    return [...selectedNotifications];
   }
 
   function renderNotifications() {
     const list = $('#notification-list'); if (!list || !state) return; list.replaceChildren();
-    state.notifications.forEach((notice) => {
-      const row = document.createElement('article'); row.className = 'notice-row';
-      const heading = document.createElement('strong'); heading.textContent = notice.title;
+    const visible = visibleNotifications();
+    for (const notice of visible) {
+      const row = document.createElement('article'); row.className = `notice-row${selectedNotifications.has(notice.id) ? ' selected' : ''}`;
+      const select = document.createElement('input'); select.type = 'checkbox'; select.checked = selectedNotifications.has(notice.id); select.setAttribute('aria-label', `Select notification ${notice.title}`); select.addEventListener('change', () => { if (select.checked) selectedNotifications.add(notice.id); else selectedNotifications.delete(notice.id); renderNotifications(); });
+      const copyBlock = document.createElement('div');
+      const heading = document.createElement('strong'); setOwnedText(heading, notice.title);
       const detail = document.createElement('p'); detail.textContent = notice.body;
-      const time = document.createElement('small'); time.textContent = new Date(notice.timestamp).toLocaleString(); row.append(heading, detail, time); list.append(row);
-    });
-    if (!state.notifications.length) list.innerHTML = '<div class="empty-state">No notifications recorded.</div>';
+      const time = document.createElement('small'); time.textContent = `${new Date(notice.timestamp).toLocaleString()} · ${notice.kind} · ${notice.dismissed ? 'dismissed' : 'active'}`; copyBlock.append(heading, detail, time);
+      const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.className = 'tonal-button'; dismiss.disabled = notice.dismissed; setOwnedText(dismiss, notice.dismissed ? 'Dismissed' : 'Dismiss'); dismiss.addEventListener('click', () => dismissNotification(notice.id));
+      row.append(select, copyBlock, dismiss); list.append(row);
+    }
+    if (!visible.length) list.innerHTML = '<div class="empty-state">No notifications match the active search.</div>';
+    const selectedVisible = visible.filter((notice) => selectedNotifications.has(notice.id)).length;
+    $('#notification-selection-status').textContent = `${selectedVisible} selected in this view. ${visible.length} visible.`;
+  }
+
+  function visibleSupportTickets() {
+    const status = $('#support-status-filter')?.value || '';
+    return state.supportTickets.filter((ticket) => (!status || ticket.status === status) && matchesSearch($('#support-search'), `${ticket.id} ${ticket.category} ${ticket.severity} ${ticket.description} ${ticket.status}`));
+  }
+
+  function selectedSupportTicketIds() {
+    return [...selectedSupportTickets];
+  }
+
+  function renderSupportTickets() {
+    const list = $('#support-list');
+    if (!list || !state) return;
+    list.replaceChildren();
+    const visible = visibleSupportTickets();
+    for (const ticket of visible) {
+      const row = document.createElement('article');
+      row.className = `support-row${selectedSupportTickets.has(ticket.id) ? ' selected' : ''}`;
+      const select = document.createElement('input'); select.type = 'checkbox'; select.checked = selectedSupportTickets.has(ticket.id); select.setAttribute('aria-label', `Select local ticket ${ticket.id}`); select.addEventListener('change', () => { if (select.checked) selectedSupportTickets.add(ticket.id); else selectedSupportTickets.delete(ticket.id); renderSupportTickets(); });
+      const copyBlock = document.createElement('div');
+      const heading = document.createElement('strong'); heading.textContent = `${ticket.id} · ${ticket.category}`;
+      const description = document.createElement('p'); description.textContent = ticket.description || 'No description supplied.';
+      const detail = document.createElement('small'); detail.textContent = `${ticket.status} · ${ticket.severity} · ${new Date(ticket.createdAt).toLocaleString()}`; copyBlock.append(heading, description, detail);
+      const status = document.createElement('span'); status.className = `state-chip ${ticket.status === 'Resolved' ? 'success' : ticket.status === 'Open' ? 'pending' : ''}`; status.textContent = ticket.status;
+      row.append(select, copyBlock, status); list.append(row);
+    }
+    if (!visible.length) list.innerHTML = '<div class="empty-state">No local tickets match the active filters.</div>';
+    $('#support-selection-status').textContent = `${visible.filter((ticket) => selectedSupportTickets.has(ticket.id)).length} selected in this view. ${visible.length} visible.`;
+  }
+
+  function advanceSupportStatus(ids) {
+    const next = { Open: 'In review', 'In review': 'Resolved', Resolved: 'Resolved' };
+    const now = new Date().toISOString();
+    state.supportTickets = state.supportTickets.map((ticket) => ids.includes(ticket.id) ? { ...ticket, status: next[ticket.status] || 'Open', updatedAt: now } : ticket);
+    scheduleSave('Local support ticket status advanced');
+    renderSupportTickets();
+  }
+
+  function evaluateMomentumPrompt(now = Date.now()) {
+    const settings = state.settings.adhd;
+    if (!settings.momentum) return { visible: false, reason: 'disabled' };
+    const lastChange = Date.parse(settings.lastMeaningfulChangeAt);
+    const dismissedUntil = settings.momentumDismissedUntil ? Date.parse(settings.momentumDismissedUntil) : 0;
+    if (!Number.isFinite(lastChange)) return { visible: false, reason: 'unknown' };
+    if (dismissedUntil > now) return { visible: false, reason: 'dismissed', dismissedUntil };
+    const minutes = Math.max(0, Math.floor((now - lastChange) / 60000));
+    return minutes >= 40 ? { visible: true, minutes } : { visible: false, reason: 'recent', minutes };
+  }
+
+  function renderAttentionAccommodations() {
+    if (!state?.settings?.adhd) return;
+    const settings = state.settings.adhd;
+    const currentAction = settings.nextAction.trim();
+    $('#one-thing-banner').hidden = !(settings.oneThing && currentAction);
+    $('#one-thing-current').textContent = currentAction || 'No current action is set.';
+    const momentum = evaluateMomentumPrompt();
+    $('#momentum-banner').hidden = !momentum.visible;
+    $('#momentum-message').textContent = momentum.visible ? `Nothing has changed here for ${momentum.minutes} minutes.` : '';
   }
 
   function renderSchedules() {
@@ -755,7 +1143,7 @@
     $('#appearance-target-label').textContent = label;
     const saved = state.appearance[id] || {};
     $('#appearance-color').value = saved.color || '#e7f2ed'; $('#appearance-background').value = saved.background || '#172622'; $('#appearance-font').value = saved.font || 'inherit'; $('#appearance-size').value = saved.size || 15; $('#appearance-weight').value = saved.weight || 400; $('#appearance-radius').value = saved.radius ?? 16; $('#appearance-opacity').value = saved.opacity || 1; $('#appearance-shadow').value = saved.shadow || 0; $('#appearance-rainbow').checked = Boolean(saved.rainbow); $('#appearance-underline').checked = Boolean(saved.underline); $('#appearance-italic').checked = Boolean(saved.italic);
-    const dialog = $('#appearance-dialog'); if (!dialog.open) dialog.show();
+    const dialog = $('#appearance-dialog'); openManagedDialog(dialog, { opener: target, focus: $('#appearance-search') });
   }
 
   function applyAppearance() {
@@ -768,7 +1156,7 @@
   function openLockWizard(target) {
     lockTarget = target; const label = target.getAttribute('aria-label') || target.textContent.trim().slice(0, 80) || target.tagName;
     $('#lock-target-label').textContent = label; updateLockRows();
-    const dialog = $('#lock-dialog'); if (!dialog.open) dialog.show();
+    const dialog = $('#lock-dialog'); openManagedDialog(dialog, { opener: target, focus: $('#lock-policy') });
   }
 
   function updateLockRows() {
@@ -780,15 +1168,32 @@
     unlockTarget = target; const lock = lockedElements.get(target.dataset.elementId); if (!lock) return;
     $('#unlock-target-label').textContent = `${lock.label} requires ${lock.policy.replaceAll('+', ' plus ')}.`;
     $('#unlock-pin').value = ''; $('#unlock-password').value = ''; $('#unlock-totp').value = ''; $('#unlock-state').textContent = 'Successful verification unlocks this surface for this application session only.';
-    const dialog = $('#unlock-dialog'); if (!dialog.open) dialog.show();
+    const dialog = $('#unlock-dialog'); openManagedDialog(dialog, { opener: target, focus: $('#unlock-pin') });
   }
 
   function openSuperConfirm(title, description, action) {
-    confirmAction = action; $('#confirm-title').textContent = title; $('#confirm-description').textContent = description; $('#confirm-key-one').classList.remove('armed'); $('#confirm-key-two').classList.remove('armed'); $('#confirm-slider').value = 0; $('#confirm-slider').disabled = true; $('#confirm-run').disabled = true; $('#confirm-progress-fill').style.width = '0%'; $('#super-confirm-dialog').showModal();
+    confirmAction = action;
+    setOwnedText($('#confirm-title'), title);
+    $('#confirm-description').textContent = description;
+    for (const key of [$('#confirm-key-one'), $('#confirm-key-two')]) { key.classList.remove('armed'); key.setAttribute('aria-pressed', 'false'); }
+    $('#confirm-slider').value = 0;
+    $('#confirm-slider').disabled = true;
+    $('#confirm-run').disabled = true;
+    $('#confirm-progress-fill').style.width = '0%';
+    $('#confirm-progress').classList.remove('complete');
+    $('#confirm-progress').setAttribute('aria-valuenow', '0');
+    $('#confirm-status').textContent = 'Arm both keys to enable the slider.';
+    openManagedDialog($('#super-confirm-dialog'), { modal: true, focus: $('#confirm-key-one') });
   }
 
   function updateConfirmState() {
-    const armed = $('#confirm-key-one').classList.contains('armed') && $('#confirm-key-two').classList.contains('armed'); $('#confirm-slider').disabled = !armed; const progress = Number($('#confirm-slider').value); $('#confirm-progress-fill').style.width = `${progress}%`; $('#confirm-run').disabled = !(armed && progress === 100);
+    const armed = $('#confirm-key-one').classList.contains('armed') && $('#confirm-key-two').classList.contains('armed');
+    $('#confirm-slider').disabled = !armed;
+    const progress = Number($('#confirm-slider').value);
+    $('#confirm-progress-fill').style.width = `${progress}%`;
+    $('#confirm-progress').setAttribute('aria-valuenow', String(progress));
+    $('#confirm-run').disabled = !(armed && progress === 100);
+    $('#confirm-status').textContent = !armed ? 'Arm both keys to enable the slider.' : progress < 100 ? `Confirmation is ${progress} percent complete.` : 'Confirmation is fully armed. The destructive action is ready.';
   }
 
   function syncFromForm() {
@@ -840,7 +1245,7 @@
   }
 
   function renderEverything() {
-    applySettings(); displayProvenance(); renderStageDots(); renderGallery(); renderDashboard(); renderHaircuts(); renderConverter(); renderSettingsForm(); renderSyncForm(); renderDocs(); renderNotifications(); clearHaircutForm(); populateVoices(); renderLocks();
+    applySettings(); displayProvenance(); renderStageDots(); renderGallery(); renderDashboard(); renderHaircuts(); renderConverter(); renderSettingsForm(); renderSyncForm(); renderDocs(); renderNotifications(); renderSupportTickets(); renderAttentionAccommodations(); clearHaircutForm(); populateVoices(); renderLocks(); applyCommandRegistry();
   }
 
   function bindNewRegexTriggers(root = document) {
@@ -849,15 +1254,15 @@
 
   function bindEvents() {
     $('#window-minimize').addEventListener('click', bridge.window.minimize); $('#window-maximize').addEventListener('click', bridge.window.maximize); $('#window-close').addEventListener('click', bridge.window.close);
-    $('#open-palette').addEventListener('click', () => openPalette()); $('#open-notifications').addEventListener('click', () => $('#notification-dialog').show());
-    $$('.tab').forEach((tab) => tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
+    $('#open-palette').addEventListener('click', () => COMMAND_REGISTRY['open-palette'].run()); $('#open-notifications').addEventListener('click', () => COMMAND_REGISTRY['open-notifications'].run());
+    $$('.tab').forEach((tab) => { tab.addEventListener('click', () => switchTab(tab.dataset.tab)); tab.addEventListener('keydown', handleTabRovingKey); });
     $$('.group-header').forEach((button) => button.addEventListener('click', () => button.setAttribute('aria-expanded', button.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')));
     $('#tab-search').addEventListener('input', () => $$('.tab').forEach((tab) => { tab.hidden = !matchesSearch($('#tab-search'), tab.textContent); }));
     $('#tab-master-search').addEventListener('click', () => openPalette('Open'));
-    $('#tab-group-search').addEventListener('click', () => { const query = prompt('Group name search'); if (query) $$('.group-header').find((item) => item.textContent.toLowerCase().includes(query.toLowerCase()))?.focus(); });
+    $('#tab-group-search').addEventListener('click', () => openPalette('Group'));
     $('#quick-haircut').addEventListener('click', () => { switchTab('haircuts'); clearHaircutForm(); $('#haircut-date').focus(); });
     $('#growth-scrubber').addEventListener('input', () => updateVisual(Number($('#growth-scrubber').value)));
-    $('#play-growth').addEventListener('click', () => { if (growthAnimation) { clearInterval(growthAnimation); growthAnimation = null; $('#play-growth').textContent = 'Play growth'; return; } let value = 0; $('#play-growth').textContent = 'Pause'; growthAnimation = setInterval(() => { value = value >= 30 ? 0 : value + .3; $('#growth-scrubber').value = value; updateVisual(value); }, state.settings.reducedMotion ? 1200 : 650); });
+    $('#play-growth').addEventListener('click', toggleGrowthPlayback);
     $('#profile-form').addEventListener('submit', async (event) => { event.preventDefault(); try { const unit = $('#display-unit').value; const requestedProfile = Hair.validateProfile({ baselineDate: $('#baseline-date').value, baselineLengthCm: Hair.toCm($('#baseline-length').value, unit), growthRateCmPerMonth: Hair.toCm($('#growth-rate').value, unit), targetLengthCm: Hair.toCm($('#target-length').value, unit), displayUnit: unit }); state.manualBaseline = Hair.manualBaselineFromProfile(requestedProfile); state.profile = Hair.reconcileBaseline(requestedProfile, state.haircuts, state.manualBaseline); await saveNow('Hair growth baseline changed'); renderDashboard(); notify(text('saved'), 'The manual fallback, growth rate, and target estimate were updated. The newest haircut remains the active baseline while one exists.', 'success'); } catch (error) { handleError(error, 'Profile is invalid'); } });
     $('#display-unit').addEventListener('change', () => { const old = state.profile.displayUnit; const next = $('#display-unit').value; ['baseline-length', 'growth-rate', 'target-length'].forEach((id) => { const input = $(`#${id}`); input.value = Hair.fromCm(Hair.toCm(input.value, old), next); }); state.profile.displayUnit = next; renderDashboard(); scheduleSave('Measurement unit changed'); });
     $('#reset-profile').addEventListener('click', fillProfileForm);
@@ -878,45 +1283,181 @@
     bridge.history.onError((value) => notify('Local history degraded', `${value.message} The primary state save remains valid.`, 'warning', false));
     $('#ollama-check').addEventListener('click', checkOllama); $('#ollama-refresh').addEventListener('click', () => refreshOllama().catch((error) => handleError(error, 'Model refresh failed'))); $('#ollama-chat-model').addEventListener('change', () => { $('#ollama-chat').disabled = !$('#ollama-chat-model').value; }); $('#ollama-chat').addEventListener('click', async () => { try { const result = await bridge.ollama.request({ endpoint: '/api/chat', method: 'POST', body: { model: $('#ollama-chat-model').value, stream: false, messages: [{ role: 'user', content: $('#ollama-prompt').value }], options: { temperature: 0.7 } }, timeoutMs: 120000 }); $('#ollama-response').textContent = result.message?.content || 'No response content.'; } catch (error) { handleError(error, 'Local chat failed'); } });
     $('#settings-search').addEventListener('input', () => $$('.settings-card').forEach((card) => card.classList.toggle('filtered-out', !matchesSearch($('#settings-search'), `${card.textContent} ${card.dataset.settingsKeywords}`))));
-    $('#setting-language').addEventListener('change', () => { state.settings.language = $('#setting-language').value; applySettings(); scheduleSave('Language mode changed'); }); $('#funny-en').addEventListener('input', () => { state.settings.funnyEnglish = Number($('#funny-en').value); $('#funny-en-value').value = state.settings.funnyEnglish; scheduleSave('English funny level changed'); }); $('#funny-yue').addEventListener('input', () => { state.settings.funnyCantonese = Number($('#funny-yue').value); $('#funny-yue-value').value = state.settings.funnyCantonese; scheduleSave('Cantonese funny level changed'); }); $('#setting-emoji').addEventListener('change', () => { state.settings.showDialogEmoji = $('#setting-emoji').checked; scheduleSave('Dialog emoji setting changed'); });
+    $('#setting-language').addEventListener('change', () => { state.settings.language = $('#setting-language').value; applySettings(); scheduleSave('Language mode changed'); }); $('#funny-en').addEventListener('input', () => { state.settings.funnyEnglish = Number($('#funny-en').value); $('#funny-en-value').value = state.settings.funnyEnglish; scheduleSave('English funny level changed'); }); $('#funny-yue').addEventListener('input', () => { state.settings.funnyCantonese = Number($('#funny-yue').value); $('#funny-yue-value').value = state.settings.funnyCantonese; scheduleSave('Cantonese funny level changed'); }); $('#setting-emoji').addEventListener('change', () => { state.settings.showDialogEmoji = $('#setting-emoji').checked; $$('dialog').forEach(syncDialogEmoji); scheduleSave('Dialog emoji setting changed'); });
     $('#school-enabled').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); applySettings(); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode could not change'); } }); $('#school-name').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode name could not change'); } }); bridge.school.onChanged((record) => { schoolRecord = record; updateSchoolUi(); applySettings(); });
     ['setting-theme', 'setting-density', 'setting-accent', 'setting-tab-dock', 'rainbow-speed'].forEach((id) => $(`#${id}`).addEventListener('input', () => { const map = { 'setting-theme': 'theme', 'setting-density': 'density', 'setting-accent': 'accent', 'setting-tab-dock': 'tabDock', 'rainbow-speed': 'rainbowSpeedLevel' }; state.settings[map[id]] = id === 'rainbow-speed' ? Number($(`#${id}`).value) : $(`#${id}`).value; applySettings(); scheduleSave(`${map[id]} setting changed`); }));
     $('#setting-display-name').addEventListener('change', () => { state.settings.displayName = $('#setting-display-name').value.trim() || 'Hair Growth Estimator'; applySettings(); scheduleSave('Display name changed'); }); $('#logo-preset').addEventListener('change', () => { state.settings.logo.preset = $('#logo-preset').value; scheduleSave('Logo preset changed'); }); $('#logo-fit').addEventListener('change', () => { state.settings.logo.fit = $('#logo-fit').value; applySettings(); scheduleSave('Logo fit changed'); }); $('#logo-background').addEventListener('input', () => { state.settings.logo.background = $('#logo-background').value; applySettings(); scheduleSave('Logo background changed'); });
     $('#choose-custom-logo').addEventListener('click', async () => { try { const result = await bridge.files.chooseLogo(); if (result.canceled) return; state.settings.logo.customDataUrl = result.dataUrl; applySettings(); renderSettingsForm(); scheduleSave('Custom logo changed'); notify('Custom logo applied', `${result.name}, ${result.bytes} bytes, passed byte-signature validation.`, 'success'); } catch (error) { handleError(error, 'Custom logo rejected'); } }); $('#clear-custom-logo').addEventListener('click', () => { state.settings.logo.customDataUrl = ''; applySettings(); renderSettingsForm(); scheduleSave('Custom logo reset'); });
-    $('#choose-vocabulary').addEventListener('click', async () => { try { const result = await bridge.files.chooseVocabulary(); if (result.canceled) return; const parsed = parseVocabulary(result.text); localStorage.setItem('hair-growth-personal-vocabulary', JSON.stringify(parsed)); state.vocabulary = { loaded: true, cacheVersion: parsed.schemaVersion }; $('#vocabulary-state').textContent = `${result.name} loaded locally with ${Object.keys(parsed.replacements).length} replacements.`; scheduleSave('Personal vocabulary cache changed'); } catch (error) { handleError(error, 'Vocabulary file rejected'); } }); $('#clear-vocabulary').addEventListener('click', () => { localStorage.removeItem('hair-growth-personal-vocabulary'); state.vocabulary = { loaded: false, cacheVersion: null }; $('#vocabulary-state').textContent = 'No file loaded. Original shipped wording is active.'; scheduleSave('Personal vocabulary cache cleared'); });
-    $$('[data-adhd]').forEach((input) => input.addEventListener('change', () => { state.settings.adhd[input.dataset.adhd] = input.checked; applySettings(); scheduleSave(`${input.dataset.adhd} accommodation changed`); })); $('#adhd-next-action').addEventListener('change', () => { state.settings.adhd.nextAction = $('#adhd-next-action').value; scheduleSave('Current next action changed'); });
+    $('#choose-vocabulary').addEventListener('click', async () => {
+      const previous = vocabularyCache;
+      try {
+        renderVocabularyStatus('loading');
+        const result = await bridge.vocabulary.replace();
+        if (result.canceled) { renderVocabularyStatus(previous.status); return; }
+        vocabularyCache = { status: 'loaded', schemaVersion: result.schemaVersion, entries: Object.freeze({ ...(result.entries || {}) }) };
+        state.vocabulary = { loaded: true, cacheVersion: result.schemaVersion };
+        applyOwnedVocabularyBoundaries(); renderVocabularyStatus(); renderPalette(); scheduleSave('Personal vocabulary cache changed');
+      } catch (error) {
+        vocabularyCache = previous;
+        renderVocabularyStatus(previous.status);
+        setOwnedText($('#vocabulary-state'), `${text('vocabularyInvalid')} ${previous.status === 'loaded' ? text('vocabularyLoaded') : ''}`.trim());
+        handleError(error, 'Vocabulary file rejected');
+      }
+    });
+    $('#clear-vocabulary').addEventListener('click', async () => {
+      try {
+        await bridge.vocabulary.clear();
+        vocabularyCache = { status: 'missing', schemaVersion: null, entries: Object.freeze({}) };
+        state.vocabulary = { loaded: false, cacheVersion: null };
+        applyOwnedVocabularyBoundaries(); renderVocabularyStatus(); renderPalette(); scheduleSave('Personal vocabulary cache cleared');
+      } catch (error) { handleError(error, 'Vocabulary cache could not be cleared'); }
+    });
+    $$('[data-adhd]').forEach((input) => input.addEventListener('change', () => { state.settings.adhd[input.dataset.adhd] = input.checked; applySettings(); renderAttentionAccommodations(); scheduleSave(`${input.dataset.adhd} accommodation changed`); })); $('#adhd-next-action').addEventListener('change', () => { state.settings.adhd.nextAction = $('#adhd-next-action').value; state.settings.adhd.momentumDismissedUntil = null; renderAttentionAccommodations(); scheduleSave('Current next action changed'); });
+    $('#complete-next-action').addEventListener('click', () => { state.settings.adhd.nextAction = ''; $('#adhd-next-action').value = ''; renderAttentionAccommodations(); scheduleSave('Current next action completed'); });
+    $('#momentum-not-now').addEventListener('click', () => { state.settings.adhd.momentumDismissedUntil = new Date(Date.now() + 60 * 60000).toISOString(); renderAttentionAccommodations(); scheduleSave('Momentum prompt dismissed for 60 minutes'); });
     $('#add-schedule').addEventListener('click', () => { state.schedules.push({ id: `schedule-${Date.now()}`, label: $('#schedule-label').value.trim() || 'Every-day theme rule', enabled: true, weekdays: [0,1,2,3,4,5,6], startTime: $('#schedule-start').value, endTime: $('#schedule-end').value, theme: state.settings.theme, language: state.settings.language }); renderSchedules(); scheduleSave('Scheduled settings rule added'); });
     $('#narrator-enabled').addEventListener('change', () => { state.settings.narrator.enabled = $('#narrator-enabled').checked; scheduleSave('Narrator enabled setting changed'); }); $('#narrator-language').addEventListener('change', () => { state.settings.narrator.language = $('#narrator-language').value; scheduleSave('Narrator language changed'); }); $('#narrator-en-voice').addEventListener('change', () => { state.settings.narrator.englishVoiceId = $('#narrator-en-voice').value; scheduleSave('English narrator voice changed'); }); $('#narrator-yue-voice').addEventListener('change', () => { state.settings.narrator.cantoneseVoiceId = $('#narrator-yue-voice').value; scheduleSave('Cantonese narrator voice changed'); }); $('#narrator-rate').addEventListener('input', () => { state.settings.narrator.rate = Number($('#narrator-rate').value); $('#narrator-rate-value').value = state.settings.narrator.rate; scheduleSave('Narrator rate changed'); }); $('#narrator-pitch').addEventListener('input', () => { state.settings.narrator.pitch = Number($('#narrator-pitch').value); $('#narrator-pitch-value').value = state.settings.narrator.pitch; scheduleSave('Narrator pitch changed'); }); $('#narrator-test').addEventListener('click', () => narrate('Estimated hair length updated. This is an estimate, not a promise.', 'test'));
     speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
     $('#docs-search').addEventListener('input', renderDocs); $('#changelog-search').addEventListener('input', renderChangelog); $('#changelog-date').addEventListener('change', renderChangelog); $('#refresh-history').addEventListener('click', renderHistory); $('#open-app-data').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
-    $('#palette-search').addEventListener('input', renderPalette); $('#dismiss-all-notices').addEventListener('click', () => { state.notifications = []; renderNotifications(); scheduleSave('Notification history dismissed'); }); $('#export-notices').addEventListener('click', () => bridge.files.export({ suggestedName: 'notification-history.json', content: `${JSON.stringify(state.notifications, null, 2)}\n` }));
-    $$('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.closeDialog}`).close()));
-    $('#close-regex-popover').addEventListener('click', () => { $('#regex-popover').hidden = true; }); $('#popover-pattern').addEventListener('input', validatePopoverRegex); $('#popover-flags').addEventListener('input', validatePopoverRegex); $('#popover-enabled').addEventListener('change', validatePopoverRegex); $('#apply-regex-popover').addEventListener('click', applyRegexPopover); $('#open-full-regex').addEventListener('click', () => { $('#regex-popover').hidden = true; switchTab('tools'); $('#regex-pattern').focus(); });
+    $('#palette-search').addEventListener('input', renderPalette);
+    $('#notification-search').addEventListener('input', renderNotifications);
+    $('#select-all-notices').addEventListener('click', () => { visibleNotifications().forEach((notice) => selectedNotifications.add(notice.id)); renderNotifications(); });
+    $('#invert-notices').addEventListener('click', () => { visibleNotifications().forEach((notice) => { if (selectedNotifications.has(notice.id)) selectedNotifications.delete(notice.id); else selectedNotifications.add(notice.id); }); renderNotifications(); });
+    $('#dismiss-selected-notices').addEventListener('click', () => { const ids = selectedNotificationIds(); state.notifications.forEach((notice) => { if (ids.includes(notice.id)) notice.dismissed = true; }); selectedNotifications.clear(); renderNotifications(); scheduleSave('Notification history bulk dismissed'); });
+    $('#delete-selected-notices').addEventListener('click', () => { const ids = selectedNotificationIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one notification first.', 'warning'); openSuperConfirm(`Delete ${ids.length} notification record${ids.length === 1 ? '' : 's'}`, 'This removes the selected records from local notification history.', async () => { state.notifications = state.notifications.filter((notice) => !ids.includes(notice.id)); selectedNotifications.clear(); await saveNow('Notification history records deleted'); renderNotifications(); }); });
+    $('#export-notices').addEventListener('click', () => bridge.files.export({ suggestedName: 'notification-history.json', content: `${JSON.stringify({ schemaVersion: 1, notifications: visibleNotifications(), omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Notification export failed')));
+    $$('dialog').forEach((dialog) => { dialog.addEventListener('close', () => restoreDialogFocus(dialog)); dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeManagedDialog(dialog); }); syncDialogEmoji(dialog); });
+    $$('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => closeManagedDialog($(`#${button.dataset.closeDialog}`))));
+    $('#history-set-credential').addEventListener('click', async () => {
+      const credential = $('#history-password').value;
+      try {
+        await bridge.history.setCredential(credential);
+        historyCredential = credential;
+        $('#history-password').value = '';
+        await renderHistory();
+        notify('History password configured', 'Protected history operations now require this separate password.', 'success');
+      } catch (error) { handleError(error, 'History password was not changed'); }
+    });
+    $('#history-unlock').addEventListener('click', async () => {
+      const credential = $('#history-password').value;
+      try {
+        await bridge.history.list({ credential, limit: 1 });
+        historyCredential = credential;
+        $('#history-password').value = '';
+        await renderHistory();
+      } catch (error) { historyCredential = ''; handleError(error, 'History remains locked'); }
+    });
+    ['history-search', 'history-date-from', 'history-date-to', 'history-action'].forEach((id) => $(`#${id}`).addEventListener(id === 'history-search' ? 'input' : 'change', () => renderHistory()));
+    $('#history-diff').addEventListener('click', async () => {
+      const index = historyItems.findIndex((item) => item.commit === selectedHistoryCommit);
+      if (index < 0 || index + 1 >= historyItems.length) return notify('Two revisions are needed', 'Select a revision that has an older visible neighbor.', 'warning');
+      try { $('#history-diff-output').textContent = await bridge.history.diff(selectedHistoryCommit, historyItems[index + 1].commit, historyCredential); } catch (error) { handleError(error, 'History diff failed'); }
+    });
+    $('#history-label').addEventListener('click', async () => {
+      if (!selectedHistoryCommit) return notify('No revision selected', 'Select one revision to label.', 'warning');
+      try { await bridge.history.label(selectedHistoryCommit, $('#history-label-text').value, historyCredential); $('#history-label-text').value = ''; await renderHistory(); } catch (error) { handleError(error, 'History label failed'); }
+    });
+    $('#history-restore').addEventListener('click', () => {
+      if (!selectedHistoryCommit) return notify('No revision selected', 'Select one revision to restore.', 'warning');
+      openSuperConfirm('Restore selected local revision', 'The selected redacted snapshot becomes the live state, and the restore is appended as a new revision.', async () => {
+        const result = await bridge.history.restore(selectedHistoryCommit, historyCredential);
+        state = result.state;
+        selectedHistoryCommit = result.commit || '';
+        renderEverything();
+        await renderHistory();
+      });
+    });
+    $('#history-prune').addEventListener('click', () => {
+      const maxEntries = Number($('#history-retention').value);
+      openSuperConfirm('Prune older local history revisions', `The newest ${maxEntries} revisions remain. Older revisions are removed according to this explicit retention value.`, async () => { await bridge.history.prune(maxEntries, historyCredential); selectedHistoryCommit = ''; await renderHistory(); });
+    });
+    $('#history-export').addEventListener('click', async () => {
+      try {
+        const content = await bridge.history.export({ credential: historyCredential, from: $('#history-date-from').value || null, to: $('#history-date-to').value || null, actions: $('#history-action').value ? [$('#history-action').value] : [], query: $('#history-search').value });
+        await bridge.files.export({ suggestedName: 'local-history-redacted.json', content });
+      } catch (error) { handleError(error, 'History export failed'); }
+    });
+    $('#close-regex-popover').addEventListener('click', () => closeRegexPopover()); $('#popover-pattern').addEventListener('input', validatePopoverRegex); $('#popover-flags').addEventListener('input', validatePopoverRegex); $('#popover-enabled').addEventListener('change', validatePopoverRegex); $('#apply-regex-popover').addEventListener('click', applyRegexPopover); $('#open-full-regex').addEventListener('click', () => { closeRegexPopover({ restoreFocus: false }); switchTab('tools'); $('#regex-pattern').focus(); });
     $('#appearance-search').addEventListener('input', () => $$('.property-grid label').forEach((row) => { row.hidden = !matchesSearch($('#appearance-search'), row.textContent); })); $('#apply-appearance').addEventListener('click', applyAppearance); $('#reset-appearance').addEventListener('click', () => { if (!appearanceTarget) return; delete state.appearance[appearanceTarget.dataset.elementId]; appearanceTarget.removeAttribute('style'); appearanceTarget.dataset.customRainbow = 'false'; scheduleSave(`Appearance reset for ${appearanceTarget.dataset.elementId}`); });
     $('#lock-policy').addEventListener('change', updateLockRows); $('#generate-lock-totp').addEventListener('click', async () => { $('#lock-totp').value = await bridge.authenticator.createSecret(); }); $$('#lock-keypad button').forEach((button) => button.addEventListener('click', () => { const input = $('#lock-pin'); if (button.dataset.key === 'clear') input.value = ''; else if (button.dataset.key === 'backspace') input.value = input.value.slice(0, -1); else if (input.value.length < 12) input.value += button.textContent; }));
-    $('#lock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!lockTarget) return; try { await bridge.locks.set({ elementId: lockTarget.dataset.elementId, label: lockTarget.getAttribute('aria-label') || lockTarget.textContent.trim().slice(0, 120) || lockTarget.tagName, policy: $('#lock-policy').value, pin: $('#lock-pin').value, password: $('#lock-password').value, totpSecret: $('#lock-totp').value }); $('#lock-dialog').close(); event.currentTarget.reset(); await renderLocks(); notify('Element locked', 'The element is disabled until its own factors verify. This is for fun, not security.', 'success'); } catch (error) { handleError(error, 'Lock could not be created'); } }); $('#remove-current-lock').addEventListener('click', async () => { if (!lockTarget) return; await bridge.locks.remove(lockTarget.dataset.elementId); unlockedForSession.delete(lockTarget.dataset.elementId); $('#lock-dialog').close(); await renderLocks(); notify('Lock removed', 'The element is available again.', 'success'); });
-    $('#unlock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!unlockTarget) return; try { const result = await bridge.locks.verify({ elementId: unlockTarget.dataset.elementId, pin: $('#unlock-pin').value, password: $('#unlock-password').value, totpCode: $('#unlock-totp').value }); if (!result.ok) { $('#unlock-state').textContent = result.retryAfterMs ? `Values did not match. Try again in ${Math.ceil(result.retryAfterMs / 1000)} seconds, or delete the local application-data folder to reset.` : `Values did not match. ${result.remainingBeforeDelay} attempts remain before a 30-second delay.`; return; } unlockedForSession.add(unlockTarget.dataset.elementId); $('#unlock-dialog').close(); await renderLocks(); notify('Element unlocked', 'This element is unlocked until the application closes.', 'success'); } catch (error) { handleError(error, 'Unlock failed'); } }); $('#open-support').addEventListener('click', () => { $('#unlock-dialog').close(); $('#support-dialog').show(); });
-    $('#support-form').addEventListener('submit', (event) => { event.preventDefault(); const ticket = { id: `LOCAL-${Date.now().toString(36).toUpperCase()}`, category: $('#support-category').value, severity: $('#support-severity').value, description: $('#support-description').value.slice(0, 1000), status: 'Resolved with the same manual that opened the desk', createdAt: new Date().toISOString() }; state.supportTickets.unshift(ticket); scheduleSave('Local support ticket created'); $('#support-result').innerHTML = `<article class="notice-row"><strong></strong><p></p></article>`; $('strong', $('#support-result')).textContent = ticket.id; $('p', $('#support-result')).textContent = 'First response: the local data folder contains the lock record. Open it, close the application, and delete the folder yourself to reset every local lock.'; }); $('#support-open-folder').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
-    $('#confirm-key-one').addEventListener('click', () => { $('#confirm-key-one').classList.toggle('armed'); updateConfirmState(); }); $('#confirm-key-two').addEventListener('click', () => { $('#confirm-key-two').classList.toggle('armed'); updateConfirmState(); }); $('#confirm-slider').addEventListener('input', updateConfirmState); $('#confirm-emergency').addEventListener('click', () => { confirmAction = null; $('#super-confirm-dialog').close(); }); $('#confirm-run').addEventListener('click', async () => { if (!confirmAction) return; const action = confirmAction; confirmAction = null; $('#super-confirm-dialog').close(); try { await action(); } catch (error) { handleError(error, 'Destructive action failed'); } });
+    $('#lock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!lockTarget) return; try { await bridge.locks.set({ elementId: lockTarget.dataset.elementId, label: lockTarget.getAttribute('aria-label') || lockTarget.textContent.trim().slice(0, 120) || lockTarget.tagName, policy: $('#lock-policy').value, pin: $('#lock-pin').value, password: $('#lock-password').value, totpSecret: $('#lock-totp').value }); closeManagedDialog($('#lock-dialog')); event.currentTarget.reset(); await renderLocks(); notify('Element locked', 'The element is disabled until its own factors verify. This is for fun, not security.', 'success'); } catch (error) { handleError(error, 'Lock could not be created'); } }); $('#remove-current-lock').addEventListener('click', async () => { if (!lockTarget) return; await bridge.locks.remove(lockTarget.dataset.elementId); unlockedForSession.delete(lockTarget.dataset.elementId); closeManagedDialog($('#lock-dialog')); await renderLocks(); notify('Lock removed', 'The element is available again.', 'success'); });
+    $('#unlock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!unlockTarget) return; try { const result = await bridge.locks.verify({ elementId: unlockTarget.dataset.elementId, pin: $('#unlock-pin').value, password: $('#unlock-password').value, totpCode: $('#unlock-totp').value }); if (!result.ok) { $('#unlock-state').textContent = result.retryAfterMs ? `Values did not match. Try again in ${Math.ceil(result.retryAfterMs / 1000)} seconds, or delete the local application-data folder to reset.` : `Values did not match. ${result.remainingBeforeDelay} attempts remain before a 30-second delay.`; return; } unlockedForSession.add(unlockTarget.dataset.elementId); closeManagedDialog($('#unlock-dialog')); await renderLocks(); notify('Element unlocked', 'This element is unlocked until the application closes.', 'success'); } catch (error) { handleError(error, 'Unlock failed'); } });
+    const openSupportTickets = (opener) => { renderSupportTickets(); openManagedDialog($('#support-dialog'), { opener, focus: $('#support-category') }); };
+    $('#open-support').addEventListener('click', () => { const opener = dialogOpeners.get($('#unlock-dialog')); closeManagedDialog($('#unlock-dialog')); openSupportTickets(opener); });
+    $('#open-support-from-settings').addEventListener('click', (event) => openSupportTickets(event.currentTarget));
+    $('#open-support-from-help').addEventListener('click', (event) => openSupportTickets(event.currentTarget));
+    $('#support-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const now = new Date().toISOString();
+      const ticket = { id: `LOCAL-${Date.now().toString(36).toUpperCase()}`, category: $('#support-category').value, severity: $('#support-severity').value, description: $('#support-description').value.slice(0, 1000), status: 'Open', createdAt: now, updatedAt: now };
+      state.supportTickets.unshift(ticket);
+      scheduleSave('Local support ticket created');
+      $('#support-result').innerHTML = `<article class="notice-row"><strong></strong><p></p></article>`;
+      $('strong', $('#support-result')).textContent = ticket.id;
+      $('p', $('#support-result')).textContent = 'First response: the local data folder contains the lock record. Open it, close the application, and delete the folder yourself to reset every local lock.';
+      event.currentTarget.reset(); renderSupportTickets();
+    });
+    $('#support-search').addEventListener('input', renderSupportTickets); $('#support-status-filter').addEventListener('change', renderSupportTickets);
+    $('#select-all-support').addEventListener('click', () => { visibleSupportTickets().forEach((ticket) => selectedSupportTickets.add(ticket.id)); renderSupportTickets(); });
+    $('#invert-support').addEventListener('click', () => { visibleSupportTickets().forEach((ticket) => { if (selectedSupportTickets.has(ticket.id)) selectedSupportTickets.delete(ticket.id); else selectedSupportTickets.add(ticket.id); }); renderSupportTickets(); });
+    $('#advance-support').addEventListener('click', () => { const ids = selectedSupportTicketIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one local ticket first.', 'warning'); advanceSupportStatus(ids); selectedSupportTickets.clear(); });
+    $('#export-support').addEventListener('click', () => bridge.files.export({ suggestedName: 'local-support-tickets.json', content: `${JSON.stringify({ schemaVersion: 1, tickets: visibleSupportTickets(), networkSent: false, omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Support ticket export failed')));
+    $('#delete-support').addEventListener('click', () => { const ids = selectedSupportTicketIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one local ticket first.', 'warning'); openSuperConfirm(`Delete ${ids.length} local support ticket${ids.length === 1 ? '' : 's'}`, 'This removes the selected fictional local desk records.', async () => { state.supportTickets = state.supportTickets.filter((ticket) => !ids.includes(ticket.id)); selectedSupportTickets.clear(); await saveNow('Local support tickets deleted'); renderSupportTickets(); }); });
+    $('#support-open-folder').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
+    [$('#confirm-key-one'), $('#confirm-key-two')].forEach((key) => key.addEventListener('click', () => { const armed = !key.classList.contains('armed'); key.classList.toggle('armed', armed); key.setAttribute('aria-pressed', armed ? 'true' : 'false'); updateConfirmState(); }));
+    $('#confirm-slider').addEventListener('input', updateConfirmState);
+    $('#confirm-emergency').addEventListener('click', () => { confirmAction = null; $('#confirm-status').textContent = 'Destructive action cancelled.'; closeManagedDialog($('#super-confirm-dialog')); });
+    $('#confirm-run').addEventListener('click', async () => {
+      if (!confirmAction || $('#confirm-run').disabled) return;
+      const action = confirmAction;
+      confirmAction = null;
+      $('#confirm-run').disabled = true;
+      $('#confirm-slider').disabled = true;
+      $('#confirm-status').textContent = 'Destructive action is running.';
+      try {
+        await action();
+        $('#confirm-progress').classList.add('complete');
+        $('#confirm-progress').setAttribute('aria-valuenow', '100');
+        $('#confirm-status').textContent = 'Destructive action completed.';
+        if (!prefersReducedMotion()) await new Promise((resolve) => setTimeout(resolve, 300));
+        closeManagedDialog($('#super-confirm-dialog'));
+      } catch (error) {
+        $('#confirm-status').textContent = 'Destructive action failed. No success was reported.';
+        handleError(error, 'Destructive action failed');
+      }
+    });
     $('#check-updates').addEventListener('click', () => bridge.updates.check(state.settings.updateFeedUrl).catch((error) => handleError(error, 'Update check failed'))); $('#restart-update').addEventListener('click', bridge.updates.restart); bridge.updates.onState(updateUpdateUi);
     $('#open-status-hub').addEventListener('click', async () => { const url = $('#status-hub-url').value; if (!url) return notify('No status URL configured', 'Enter an HTTPS address first.', 'warning'); state.settings.statusHubUrl = url; scheduleSave('Status Hub URL changed'); try { await bridge.external.openUrl(url); } catch (error) { handleError(error, 'Status URL could not open'); } });
-    $('#context-search').addEventListener('input', () => $$('[data-context-action]').forEach((item) => { item.hidden = !matchesSearch($('#context-search'), item.textContent); })); $$('[data-context-action]').forEach((item) => item.addEventListener('click', async () => { $('#context-menu').hidden = true; if (!activeContextTarget) return; if (item.dataset.contextAction === 'appearance') openAppearance(activeContextTarget); if (item.dataset.contextAction === 'lock') openLockWizard(activeContextTarget); if (item.dataset.contextAction === 'copy-label') await navigator.clipboard.writeText(activeContextTarget.textContent.trim()); }));
+    $('#context-search').addEventListener('input', () => $$('[data-context-action]').forEach((item) => { item.hidden = !matchesSearch($('#context-search'), item.textContent); })); $$('[data-context-action]').forEach((item) => item.addEventListener('click', async () => { const target = activeContextTarget; closeContextMenu({ restoreFocus: false }); if (!target) return; const command = COMMAND_REGISTRY[item.dataset.commandId]; if (command) command.run(target); if (item.dataset.contextAction === 'copy-label') { await navigator.clipboard.writeText(target.textContent.trim()); target.focus?.({ preventScroll: true }); } }));
     document.addEventListener('contextmenu', (event) => { const target = event.target.closest('[data-element-id]'); if (!target || target.closest('.context-menu')) return; event.preventDefault(); showContextMenu(target, event.clientX, event.clientY); });
-    document.addEventListener('keydown', (event) => { if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); openPalette(); } else if (event.shiftKey && event.key === 'F10') { event.preventDefault(); const target = document.activeElement.closest?.('[data-element-id]') || document.activeElement; showContextMenu(target, 120, 120); } else if (event.key === 'Escape') { $('#context-menu').hidden = true; $('#regex-popover').hidden = true; } const locked = event.target.closest?.('.locked-element'); if (locked && ['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopImmediatePropagation(); openUnlock(locked); } }, true);
-    document.addEventListener('click', (event) => { const locked = event.target.closest?.('.locked-element'); if (locked && !event.target.closest('dialog')) { event.preventDefault(); event.stopImmediatePropagation(); openUnlock(locked); return; } if (!event.target.closest('#context-menu')) $('#context-menu').hidden = true; }, true);
+    document.addEventListener('keydown', (event) => {
+      const target = document.activeElement.closest?.('[data-element-id]') || document.activeElement;
+      if (shortcutMatches(event, COMMAND_REGISTRY['open-palette'].shortcut)) { event.preventDefault(); COMMAND_REGISTRY['open-palette'].run(); }
+      else if (shortcutMatches(event, COMMAND_REGISTRY['open-notifications'].shortcut)) { event.preventDefault(); COMMAND_REGISTRY['open-notifications'].run(); }
+      else if (shortcutMatches(event, COMMAND_REGISTRY['edit-appearance'].shortcut)) { event.preventDefault(); COMMAND_REGISTRY['edit-appearance'].run(target); }
+      else if (shortcutMatches(event, COMMAND_REGISTRY['lock-element'].shortcut)) { event.preventDefault(); COMMAND_REGISTRY['lock-element'].run(target); }
+      else if (event.key === 'ContextMenu') { event.preventDefault(); showContextMenu(target, 120, 120); }
+      else if (event.key === 'Escape') { if (!$('#regex-popover').hidden) closeRegexPopover(); else closeContextMenu(); }
+      const locked = event.target.closest?.('.locked-element'); if (locked && ['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopImmediatePropagation(); openUnlock(locked); }
+    }, true);
+    document.addEventListener('click', (event) => { const locked = event.target.closest?.('.locked-element'); if (locked && !event.target.closest('dialog')) { event.preventDefault(); event.stopImmediatePropagation(); openUnlock(locked); return; } if (!event.target.closest('#context-menu')) closeContextMenu({ restoreFocus: false }); }, true);
     bindNewRegexTriggers();
   }
 
   function showContextMenu(target, x, y) {
-    activeContextTarget = target; const menu = $('#context-menu'); $('#context-search').value = ''; $$('[data-context-action]').forEach((item) => { item.hidden = false; }); menu.hidden = false; const width = menu.offsetWidth; const height = menu.offsetHeight; menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, x))}px`; menu.style.top = `${Math.max(72, Math.min(window.innerHeight - height - 8, y))}px`; $('#context-search').focus();
+    activeContextTarget = target; contextMenuOpener = target; const menu = $('#context-menu'); $('#context-search').value = ''; $$('[data-context-action]').forEach((item) => { item.hidden = false; }); menu.hidden = false; const width = menu.offsetWidth; const height = menu.offsetHeight; menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, x))}px`; menu.style.top = `${Math.max(72, Math.min(window.innerHeight - height - 8, y))}px`; $('#context-search').focus();
+  }
+
+  function closeContextMenu({ restoreFocus = true } = {}) {
+    $('#context-menu').hidden = true;
+    activeContextTarget = null;
+    const opener = contextMenuOpener;
+    contextMenuOpener = null;
+    if (restoreFocus && opener?.isConnected) opener.focus?.({ preventScroll: true });
   }
 
   function updateSchoolUi() {
     $('#school-enabled').checked = Boolean(schoolRecord?.enabled); $('#school-name').value = schoolRecord?.displayName || 'School mode'; $('#school-heading').textContent = schoolRecord?.displayName || 'School mode'; $('#school-toggle-label').textContent = `Enable ${schoolRecord?.displayName || 'School mode'}`; $('#school-status').textContent = schoolRecord?.status === 'available' ? `Shared record available. Last change: ${schoolRecord.updatedAt ? new Date(schoolRecord.updatedAt).toLocaleString() : 'not yet changed'}.` : 'The shared record is unavailable. The control cannot honestly report a shared change.';
-  }
-
-  function parseVocabulary(raw) {
-    if (new TextEncoder().encode(raw).length > 64 * 1024) throw new RangeError('Vocabulary file exceeds 64 KiB.'); const value = JSON.parse(raw); if (!value || value.schemaVersion !== 1 || Object.keys(value).some((key) => !['schemaVersion', 'replacements'].includes(key)) || !value.replacements || typeof value.replacements !== 'object' || Array.isArray(value.replacements)) throw new TypeError('Vocabulary must contain schemaVersion 1 and one replacements object.'); const entries = Object.entries(value.replacements); if (entries.length > 500) throw new RangeError('Vocabulary exceeds 500 entries.'); for (const [key, replacement] of entries) { if (!/^[^\0]{1,120}$/.test(key) || typeof replacement !== 'string' || replacement.length > 240 || ['__proto__', 'prototype', 'constructor'].includes(key)) throw new TypeError('Vocabulary contains an unsafe or out-of-bounds entry.'); } return value;
   }
 
   function updateUpdateUi(value) {
@@ -926,10 +1467,13 @@
   async function initialize() {
     try {
       [state, provenance, schoolRecord] = await Promise.all([bridge.state.read(), bridge.provenance.read(), bridge.school.read()]);
+      await loadVocabularyCache();
       ensureElementIds(); bindEvents(); renderEverything(); updateSchoolUi(); renderHistory(); renderAuthenticators();
       const update = await bridge.updates.state(); updateUpdateUi(update);
       setInterval(() => { if (state.settings.adhd.timeAwareness) $('#metric-current-date').textContent = `${new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(new Date())} · session open ${Math.floor((Date.now() - sessionOpenedAt) / 60000)} minutes`; }, 30000);
       setInterval(renderAuthenticators, 10000);
+      setInterval(renderAttentionAccommodations, 30000);
+      reducedMotionQuery.addEventListener?.('change', () => { if (prefersReducedMotion() && growthAnimation) { clearInterval(growthAnimation); growthAnimation = null; setOwnedText($('#play-growth'), 'Show next stage'); } applySettings(); });
       notify('Ready', 'Hair growth estimates and local haircut history are ready.', 'success', false);
     } catch (error) {
       document.body.innerHTML = `<main class="view"><section class="surface"><h1>Hair Growth Estimator could not start</h1><p id="fatal-message"></p></section></main>`;
