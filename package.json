@@ -1,0 +1,50 @@
+{
+  "name": "hair-growth-estimator",
+  "version": "1.0.0",
+  "description": "Estimate hair growth, record haircuts, and optionally synchronize with a private LAN server.",
+  "main": "app/main.js",
+  "author": "Ding Ding Projects",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "start": "electron .",
+    "start:server": "node server/index.js",
+    "dist": "electron-builder --win squirrel",
+    "compose-site": "node scripts/compose-site.mjs"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "electron-builder-squirrel-windows": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.dingdingprojects.hairgrowthestimator",
+    "productName": "Hair Growth Estimator",
+    "asar": true,
+    "directories": {
+      "output": "dist/squirrel-windows"
+    },
+    "files": [
+      "app/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["squirrel"],
+      "icon": "assets/app-icon.png",
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false
+    },
+    "squirrelWindows": {
+      "iconUrl": "https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/app-icon.png",
+      "artifactName": "HairGrowthEstimator-${version}-${arch}-${name}.${ext}",
+      "msi": false
+    }
+  }
+}

@@ -1,0 +1,24 @@
+services:
+  hair-growth-api:
+    build: .
+    restart: unless-stopped
+    environment:
+      HAIR_HOST: ${HAIR_HOST:-127.0.0.1}
+      HAIR_PORT: ${HAIR_PORT:-4782}
+      HAIR_API_KEY: ${HAIR_API_KEY:-}
+      HAIR_CORS_ORIGINS: ${HAIR_CORS_ORIGINS:-}
+      HAIR_DATA_FILE: /data/hair-growth.json
+    ports:
+      - "${HAIR_PUBLISH_ADDRESS:-127.0.0.1}:${HAIR_PUBLISH_PORT:-4782}:4782"
+    volumes:
+      - hair-growth-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  hair-growth-data:
