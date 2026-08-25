@@ -1,0 +1,14 @@
+{
+  "info": {
+    "name": "Hair Growth Estimator Master API Collection",
+    "description": "Master collection index for the project's HTTP APIs. The current service is the Hair Growth Estimator API documented in the sibling collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Collection index",
+      "description": "Import docs/api/hair-growth-api.postman_collection.json for runnable requests. This index intentionally contains no copied request definitions and no credentials.",
+      "item": []
+    }
+  ]
+}

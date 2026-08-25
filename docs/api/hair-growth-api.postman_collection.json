@@ -1,0 +1,71 @@
+{
+  "info": {
+    "name": "Hair Growth Estimator API",
+    "description": "Local and private-LAN API requests. Set apiKey only in Postman's private environment. The collection contains no credential value.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:4782" },
+    { "key": "profileId", "value": "default" },
+    { "key": "haircutId", "value": "replace-with-returned-id" },
+    { "key": "apiKey", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "Version",
+      "request": { "method": "GET", "url": "{{baseUrl}}/version" }
+    },
+    {
+      "name": "Read profile",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "x-api-key", "value": "{{apiKey}}", "type": "text" }],
+        "url": "{{baseUrl}}/api/profiles/{{profileId}}"
+      }
+    },
+    {
+      "name": "Write profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "content-type", "value": "application/json" },
+          { "key": "x-api-key", "value": "{{apiKey}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"profile\": {\n    \"baselineLengthCm\": 1.2,\n    \"baselineDate\": \"2026-08-24\",\n    \"growthRateCmPerMonth\": 1.25,\n    \"targetLengthCm\": 12,\n    \"displayUnit\": \"cm\"\n  }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/profiles/{{profileId}}"
+      }
+    },
+    {
+      "name": "Create haircut",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "content-type", "value": "application/json" },
+          { "key": "x-api-key", "value": "{{apiKey}}", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"date\": \"2026-08-24\",\n  \"postCutLengthCm\": 1.2,\n  \"note\": \"Example created by the collection user\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/api/profiles/{{profileId}}/haircuts"
+      }
+    },
+    {
+      "name": "Delete haircut",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "x-api-key", "value": "{{apiKey}}", "type": "text" }],
+        "url": "{{baseUrl}}/api/profiles/{{profileId}}/haircuts/{{haircutId}}"
+      }
+    }
+  ]
+}
