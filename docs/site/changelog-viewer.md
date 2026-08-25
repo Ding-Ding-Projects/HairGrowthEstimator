@@ -23,7 +23,7 @@ Changelog content comes from the repository record and is rendered through the s
 
 ## Verification
 
-Source inspection confirmed embedded-array parsing, date-range and text filtering, exact 40-character commit validation before linking, unavailable commit copy, empty results, and Markdown export. The current export writes the entire embedded catalog rather than the active filtered view, and the date controls are native inputs without the required advanced calendar behavior. Runtime composition, commit existence validation, localized copy, focused tests, keyboard flow, and built-artifact evidence are pending.
+Source inspection confirmed embedded-array parsing, date-range and text filtering, exact 40-character commit validation before linking, unavailable commit copy, empty results, and Markdown export. The current export writes the entire embedded catalog rather than the active filtered view, and the date controls are native inputs without the required advanced calendar behavior. English and Cantonese source copy is present through the validated changelog mirror. Runtime composition, commit existence validation, focused interaction, keyboard flow, and built-artifact evidence remain pending.
 
 ## Suggested articles
 

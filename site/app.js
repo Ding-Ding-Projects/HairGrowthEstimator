@@ -4,6 +4,11 @@ const STATE_KEY = 'hairGrowthEstimator.websiteState.v1';
 const STATE_LOCK_NAME = 'hairGrowthEstimator.websiteState.transaction.v1';
 const WRITER_SESSION_KEY = 'hairGrowthEstimator.websiteState.writer.v1';
 const STATE_QUARANTINE_KEY = 'hairGrowthEstimator.websiteState.quarantine.v1';
+const SCHOOL_RECORD_KEY = 'hairGrowthEstimator.sharedSchoolPresentation.v1';
+const LAST_SEEN_VERSION_KEY = 'hairGrowthEstimator.lastSeenVersion.v1';
+const SCHOOL_RECORD_VERSION = 1;
+const MAX_EXTERNAL_SCHEDULE_BYTES = 16 * 1024;
+const SCHEDULE_REFRESH_MS = 60_000;
 const PRIVATE_KEYS = new Set(['totpSecret', 'lockHash', 'pinHash', 'passwordHash', 'vocabularyMappings', 'customLogoData']);
 const INCHES_PER_CM = 1 / 2.54;
 const CM_PER_INCH = 2.54;
@@ -13,12 +18,27 @@ const MAX_FILE_BYTES = 1024 * 1024;
 const StateContract = globalThis.HairGrowthStateContract;
 const SecurityContract = globalThis.HairGrowthSecurityContract;
 const RegexClientContract = globalThis.HairGrowthRegexClient;
+const PresentationContract = globalThis.HairGrowthPresentationContract;
+const LocalizationContract = globalThis.HairGrowthLocalizationContract;
 if (!StateContract) throw new Error('The browser state contract did not load.');
 if (!SecurityContract) throw new Error('The browser security contract did not load.');
 if (!RegexClientContract) throw new Error('The disposable regex client did not load.');
+if (!PresentationContract) throw new Error('The language and attention presentation contract did not load.');
+if (!LocalizationContract) throw new Error('The localization contract did not load.');
 const { calculateGrowthProjection, createStateCoordinator, decodeStateEnvelope, reconcileBaseline, serializeDelimitedExport, todayDateString, validateDateNotFuture } = StateContract;
 const { MAX_VOCABULARY_BYTES, buildRedactedExportState, parseJsonStrict, sanitizeImportedState, validateAppearanceMap, validateBrowserState, validatePersonalVocabularyCache, validatePersonalVocabularyText, validateStoredStateEnvelopeText } = SecurityContract;
 const { createRegexWorkerClient } = RegexClientContract;
+const ATTENTION_SETTING_IDS = Object.freeze({ focus: 'adhd-focus', lowStim: 'adhd-low-stim', time: 'adhd-time', one: 'adhd-one', momentum: 'adhd-momentum' });
+const MESSAGE_PREVIEW_FACTS = Object.freeze({
+  'informational.saved': { item: 'browser setting' },
+  'success.applied': { item: 'browser setting' },
+  'progress.working': { item: 'browser setting', percent: '50' },
+  'warning.review': { item: 'browser setting', reason: 'review is required' },
+  'error.failed': { item: 'browser setting', reason: 'validation failed', action: 'review the value' },
+  'destructive.confirm': { action: 'delete', target: 'browser setting', consequence: 'it cannot be restored from this view' },
+  'security.blocked': { action: 'load the value', reason: 'validation failed', recovery: 'keep the last valid value' },
+  'accessibility.status': { feature: 'narrator', state: 'off' }
+});
 const DIM_SUM = Object.freeze({
   nameEn: 'Classic Har Gow',
   nameYue: '蝦餃',
@@ -55,6 +75,10 @@ const FEATURE_COMMANDS = Object.freeze([
   ['Review notifications', 'history'],
   ['Search the changelog', 'changelog'],
   ['Change language mode', 'settings', 'language-mode'],
+  ['Change English funny level', 'settings', 'funny-en'],
+  ['Change Cantonese funny level', 'settings', 'funny-yue'],
+  ['Configure shared presentation mode', 'settings', 'school-mode'],
+  ['Rename shared presentation mode', 'settings', 'school-mode-name'],
   ['Change theme', 'settings', 'theme-select'],
   ['Customize the logo', 'settings', 'custom-logo'],
   ['Upload local personal-vocabulary JSON', 'settings', 'vocabulary-file'],
@@ -62,7 +86,17 @@ const FEATURE_COMMANDS = Object.freeze([
   ['Replace local personal-vocabulary JSON', 'settings', 'replace-vocabulary'],
   ['Clear local personal-vocabulary cache', 'settings', 'clear-vocabulary'],
   ['Configure scheduled settings', 'settings', 'schedule-label'],
+  ['Choose narrated language', 'settings', 'narrator-language'],
+  ['Choose English narrator voice', 'settings', 'voice-en'],
+  ['Choose Cantonese narrator voice', 'settings', 'voice-yue'],
+  ['Set narrator rate', 'settings', 'narrator-rate'],
+  ['Set narrator pitch', 'settings', 'narrator-pitch'],
+  ['Set assistive-technology yielding', 'settings', 'assistive-tech-active'],
   ['Configure attention modes', 'settings', 'adhd-focus'],
+  ['Configure low stimulation', 'settings', 'adhd-low-stim'],
+  ['Configure time awareness', 'settings', 'adhd-time'],
+  ['Configure one thing at a time', 'settings', 'adhd-one'],
+  ['Configure momentum prompts', 'settings', 'adhd-momentum'],
   ['Open Support Tickets', 'settings', 'support']
 ]);
 
@@ -102,6 +136,8 @@ const SETTING_CONTROL_NAMES = Object.freeze({
   'funny-yue': 'Cantonese funny level',
   'dialog-emoji': 'Show emojis in dialogs and message boxes',
   'school-mode': 'Presentation mode',
+  'school-mode-name': 'Presentation mode display name',
+  'reset-school-mode-name': 'Reset presentation mode display name',
   'theme-select': 'Theme',
   'density-select': 'Density',
   'accent-color': 'Accent color',
@@ -118,27 +154,43 @@ const SETTING_CONTROL_NAMES = Object.freeze({
   'display-name-input': 'Display name',
   'reset-display-name': 'Reset display name',
   'narrator-enabled': 'Narrator enabled',
+  'narrator-language': 'Narrated language',
   'voice-en': 'English narrator voice',
   'voice-yue': 'Cantonese narrator voice',
   'narrator-rate': 'Narrator rate',
   'narrator-pitch': 'Narrator pitch',
+  'assistive-tech-active': 'Assistive technology is active',
   'reduced-motion': 'Reduced motion',
   'vocabulary-file': 'Choose local personal vocabulary JSON',
   'replace-vocabulary': 'Choose or replace local personal vocabulary JSON',
   'clear-vocabulary': 'Clear local personal vocabulary cache',
   'schedule-label': 'Scheduled rule label',
+  'schedule-priority': 'Scheduled rule priority',
+  'schedule-start-date': 'Scheduled rule start date',
+  'schedule-end-date': 'Scheduled rule end date',
   'schedule-start': 'Scheduled rule start time',
   'schedule-end': 'Scheduled rule end time',
+  'schedule-every-day': 'Scheduled rule applies every day',
+  'schedule-language': 'Scheduled rule language',
   'schedule-theme': 'Scheduled rule theme',
+  'schedule-density': 'Scheduled rule density',
+  'schedule-accent': 'Scheduled rule accent color',
+  'schedule-font-scale': 'Scheduled rule font scale',
+  'schedule-motion': 'Scheduled rule motion',
+  'schedule-source': 'Scheduled rule source',
+  'schedule-source-url': 'Scheduled rule source URL',
+  'schedule-entity-id': 'Scheduled rule Home Assistant entity',
+  'schedule-session-token': 'Session-only Home Assistant access token',
   'add-schedule': 'Add scheduled rule',
   'adhd-focus': 'Focus mode',
   'adhd-low-stim': 'Low stimulation mode',
   'adhd-time': 'Time awareness mode',
   'adhd-one': 'One thing at a time mode',
   'next-action': 'Next action',
-  'adhd-momentum': 'Momentum mode'
+  'adhd-momentum': 'Momentum mode',
+  'momentum-snooze': 'Dismiss momentum prompt for one hour'
 });
-const SCHOOL_SENSITIVE_REGEX_OWNERS = new Set(['language-mode', 'funny-en', 'funny-yue', 'voice-yue', 'vocabulary-file', 'replace-vocabulary', 'clear-vocabulary']);
+const SCHOOL_SENSITIVE_REGEX_OWNERS = new Set(['language-mode', 'funny-en', 'funny-yue', 'narrator-language', 'voice-yue', 'schedule-language', 'vocabulary-file', 'replace-vocabulary', 'clear-vocabulary']);
 
 const defaultState = () => ({
   schemaVersion: 1,
@@ -162,7 +214,7 @@ const defaultState = () => ({
     displayName: 'Hair Growth Estimator',
     paletteSize: 'card',
     reducedMotion: false,
-    narrator: { enabled: false, voiceEn: 'auto', voiceYue: 'auto', rate: 1, pitch: 1 },
+    narrator: { schemaVersion: 1, enabled: false, language: 'en', voiceURIEn: 'auto', voiceURIYue: 'auto', rate: 1, pitch: 1, assistiveTechnologyActive: false, quietHours: false, reducedSound: false },
     logo: { preset: 'strand', customLogoData: '', fit: 'contain', background: '#101415' },
     attention: { focus: false, lowStim: false, time: false, one: false, momentum: false, nextAction: '', snoozedUntil: 0 }
   },
@@ -207,6 +259,14 @@ function readJsonScript(id, fallback) {
 }
 
 const provenance = readJsonScript('build-provenance', null);
+let localeCatalogUnavailable = false;
+let bundledLocaleCatalog;
+try {
+  bundledLocaleCatalog = LocalizationContract.validateLocaleCatalog(readJsonScript('locale-catalog', null));
+} catch {
+  localeCatalogUnavailable = true;
+  bundledLocaleCatalog = LocalizationContract.validateLocaleCatalog({ schemaVersion: 1, locale: 'yue-HK', scope: 'unavailable', entries: [] });
+}
 const bundledDocs = readJsonScript('bundled-docs', []);
 const bundledChangelog = readJsonScript('bundled-changelog', []);
 const bundledHairAssets = readJsonScript('bundled-hair-assets', []);
@@ -225,6 +285,61 @@ function createWriterIdentity() {
 }
 
 const writerId = createWriterIdentity();
+
+function defaultSharedSchoolRecord() {
+  return {
+    schemaVersion: SCHOOL_RECORD_VERSION,
+    enabled: Boolean(state?.settings?.schoolMode),
+    displayName: String(state?.settings?.schoolModeName || 'School mode').slice(0, 80),
+    revision: 0,
+    updatedAt: null
+  };
+}
+
+function validateSharedSchoolRecord(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The shared presentation record must be an object.');
+  const fields = ['schemaVersion', 'enabled', 'displayName', 'revision', 'updatedAt'];
+  if (Object.keys(value).length !== fields.length || fields.some((field) => !Object.hasOwn(value, field))) throw new Error('The shared presentation record has an unexpected shape.');
+  if (value.schemaVersion !== SCHOOL_RECORD_VERSION || typeof value.enabled !== 'boolean') throw new Error('The shared presentation record has an unsupported version or state.');
+  if (typeof value.displayName !== 'string' || !value.displayName.trim() || value.displayName.length > 80) throw new Error('The shared presentation name is invalid.');
+  if (!Number.isSafeInteger(value.revision) || value.revision < 0) throw new Error('The shared presentation revision is invalid.');
+  if (value.updatedAt !== null && (typeof value.updatedAt !== 'string' || Number.isNaN(Date.parse(value.updatedAt)))) throw new Error('The shared presentation update time is invalid.');
+  return PresentationContract.normalizeSchoolRecord({ schemaVersion: SCHOOL_RECORD_VERSION, enabled: value.enabled, displayName: value.displayName.trim(), revision: value.revision, updatedAt: value.updatedAt });
+}
+
+function readSharedSchoolRecord() {
+  let raw = null;
+  try { raw = localStorage.getItem(SCHOOL_RECORD_KEY); } catch {}
+  if (!raw) return defaultSharedSchoolRecord();
+  try { return validateSharedSchoolRecord(parseJsonStrict(raw, { maxDepth: 2, maxBytes: 4096 })); }
+  catch { return defaultSharedSchoolRecord(); }
+}
+
+function adoptSharedSchoolRecord(record, { announce = false } = {}) {
+  const validated = validateSharedSchoolRecord(record);
+  schoolRecord = validated;
+  state.settings.schoolMode = validated.enabled;
+  state.settings.schoolModeName = validated.displayName;
+  renderSettings();
+  applySettings();
+  if (announce) showNotification(`${validated.displayName} updated`, `Another tab applied shared presentation revision ${validated.revision}.`, 'info', false);
+}
+
+function writeSharedSchoolRecord({ enabled = schoolRecord.enabled, displayName = schoolRecord.displayName } = {}) {
+  const next = validateSharedSchoolRecord({
+    schemaVersion: SCHOOL_RECORD_VERSION,
+    enabled: Boolean(enabled),
+    displayName: String(displayName).trim().slice(0, 80) || 'School mode',
+    revision: schoolRecord.revision + 1,
+    updatedAt: new Date().toISOString()
+  });
+  localStorage.setItem(SCHOOL_RECORD_KEY, JSON.stringify(next));
+  schoolRecord = next;
+  state.settings.schoolMode = next.enabled;
+  state.settings.schoolModeName = next.displayName;
+  return next;
+}
+
 let initialStateValue = null;
 try { initialStateValue = localStorage.getItem(STATE_KEY); } catch {}
 let initialQuarantineNotice = null;
@@ -244,6 +359,11 @@ function quarantineInvalidStoredState(rawValue) {
 const initialEnvelope = quarantineInvalidStoredState(initialStateValue);
 let stateRevision = initialEnvelope.revision;
 let state = mergeState(defaultState(), initialEnvelope.state);
+let schoolRecord = readSharedSchoolRecord();
+state.settings.schoolMode = schoolRecord.enabled;
+state.settings.schoolModeName = schoolRecord.displayName;
+state.settings.narrator = PresentationContract.normalizeNarratorSettings(state.settings.narrator);
+state.settings.attention = PresentationContract.normalizeAttentionSettings(state.settings.attention);
 let reconciliationGeneration = 0;
 let persistQueue = Promise.resolve();
 const stateCoordinator = createStateCoordinator({
@@ -265,13 +385,29 @@ let activeRegexOwner = 'standalone';
 let conversionObjectUrl = null;
 let speechQueue = [];
 let speaking = false;
+let activeSpeechCategory = null;
+let activeSpeechItem = null;
+let lastNarrationAcceptedAt = null;
+const lastNarrationAcceptedAtByCategory = Object.create(null);
+let voiceEnumerationTimers = [];
 let heroStageIndex = 0;
 let heroTimer = null;
 let startedAt = Date.now();
 let lastChangedAt = Date.now();
 let scheduleTimer = null;
+let scheduledOverrides = {};
+let activeScheduleId = null;
+let nextScheduleRefreshAt = 0;
+let startupSurpriseShown = false;
+let momentumPromptVisible = false;
+let momentumPromptForChangeAt = 0;
+const scheduleSourceStates = new Map();
+const scheduleSessionTokens = new Map();
+const scheduleRefreshGenerations = new Map();
+const scheduleRefreshControllers = new Map();
 let vocabularyUiState = Object.keys(state.vocabulary.entries).length ? 'loaded' : 'empty';
 let lastRenderedSchoolMode = state.settings.schoolMode;
+let lastRenderedLanguageMode = null;
 const vocabularyTextState = new WeakMap();
 const vocabularyAttributeState = new WeakMap();
 const searchControllers = new Map();
@@ -300,6 +436,8 @@ function appendHistory(action, detail) {
   const entry = { id: crypto.randomUUID(), action, detail: String(detail).slice(0, 400), at: new Date().toISOString() };
   state.history = [entry, ...state.history].slice(0, MAX_HISTORY);
   lastChangedAt = Date.now();
+  momentumPromptVisible = false;
+  momentumPromptForChangeAt = 0;
 }
 
 function cloneStateSnapshot(value) {
@@ -324,6 +462,10 @@ function adoptStoredEnvelope(envelope, { announce = true } = {}) {
   reconciliationGeneration += 1;
   stateRevision = envelope.revision;
   state = validateBrowserState(envelope.state);
+  state.settings.schoolMode = schoolRecord.enabled;
+  state.settings.schoolModeName = schoolRecord.displayName;
+  state.settings.narrator = PresentationContract.normalizeNarratorSettings(state.settings.narrator);
+  state.settings.attention = PresentationContract.normalizeAttentionSettings(state.settings.attention);
   vocabularyUiState = Object.keys(state.vocabulary.entries).length ? 'loaded' : 'empty';
   reconcileEstimatorBaseline();
   renderAll();
@@ -365,13 +507,79 @@ function persist(action, detail, { record = true } = {}) {
   return persistQueue;
 }
 
-function friendlyCopy(serious, playfulEn, playfulYue) {
-  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
-  const en = state.settings.funnyEn <= 1 ? serious : state.settings.funnyEn >= 4 ? playfulEn : serious;
-  const yue = state.settings.funnyYue <= 1 ? serious : state.settings.funnyYue >= 4 ? playfulYue : serious;
-  if (mode === 'yue') return yue;
-  if (mode === 'both') return `${en} · ${yue}`;
-  return en;
+function effectiveLanguageMode() {
+  if (state.settings.schoolMode) return 'en';
+  return scheduledOverrides.language && scheduledOverrides.language !== 'unchanged' ? scheduledOverrides.language : state.settings.language;
+}
+
+function localizedText(value, mode = effectiveLanguageMode(), bilingualSeparator = ' · ') {
+  return LocalizationContract.resolveLocalizedText(String(value ?? ''), {
+    mode,
+    schoolActive: state.settings.schoolMode,
+    catalog: bundledLocaleCatalog,
+    bilingualSeparator
+  });
+}
+
+function localizedSearchText(value) {
+  const english = String(value ?? '');
+  return `${english} ${cantoneseText(english)}`;
+}
+
+function cantoneseText(value) {
+  return LocalizationContract.resolveLocalizedText(String(value ?? ''), {
+    mode: 'yue',
+    schoolActive: false,
+    catalog: bundledLocaleCatalog
+  });
+}
+
+function localizedPair(english, cantonese, bilingualSeparator = ' · ') {
+  const source = String(english ?? '');
+  if (effectiveLanguageMode() === 'en') return source;
+  const translated = String(cantonese ?? source);
+  return effectiveLanguageMode() === 'yue' ? translated : `${source}${bilingualSeparator}${translated}`;
+}
+
+function localizedDocumentationArticle(article) {
+  return LocalizationContract.localizedDocumentationArticle(article, {
+    mode: effectiveLanguageMode(),
+    schoolActive: state.settings.schoolMode
+  });
+}
+
+function localizedChangelogEntry(entry) {
+  if (!entry?.locales) return { title: entry?.title || 'Recorded changes', body: entry?.body || 'No release notes were provided.' };
+  const localized = LocalizationContract.localizedDocumentationArticle({
+    locales: {
+      en: { title: entry.locales.en.title, content: entry.locales.en.body },
+      yue: { title: entry.locales.yue.title, content: entry.locales.yue.body }
+    }
+  }, { mode: effectiveLanguageMode(), schoolActive: state.settings.schoolMode });
+  return { title: localized.title, body: localized.content };
+}
+
+function resolvePresentationMessage(messageId, facts) {
+  return PresentationContract.resolveMessage(messageId, {
+    language: effectiveLanguageMode(),
+    funnyEn: state.settings.funnyEn,
+    funnyYue: state.settings.funnyYue,
+    facts,
+    schoolActive: state.settings.schoolMode
+  });
+}
+
+function renderMessageParityPreview() {
+  const container = $('#message-parity-preview');
+  if (!container || state.settings.schoolMode) return;
+  container.replaceChildren();
+  for (const [messageId, facts] of Object.entries(MESSAGE_PREVIEW_FACTS)) {
+    const message = resolvePresentationMessage(messageId, facts);
+    const row = document.createElement('p');
+    row.dataset.messageCategory = message.category;
+    row.textContent = `${message.category}: ${message.text}`;
+    container.append(row);
+  }
 }
 
 function isSchoolSensitiveText(value) {
@@ -391,6 +599,7 @@ function showNotification(title, body, type = 'info', persistNotification = true
     const snackbar = document.createElement('article');
     snackbar.className = 'snackbar';
     snackbar.dataset.notificationId = item.id;
+    if (extra?.startupSurprise) snackbar.dataset.startupSurprise = 'true';
     const visual = extra?.image ? `<img src="${escapeHtml(extra.image)}" alt="${escapeHtml(extra.alt || '')}">` : '';
     snackbar.innerHTML = `${visual}<div><h4>${escapeHtml(title)}</h4><p>${escapeHtml(body)}</p></div><button class="icon-button" type="button" aria-label="Dismiss notification">×</button>`;
     snackbar.querySelector('button').addEventListener('click', () => snackbar.remove());
@@ -398,29 +607,80 @@ function showNotification(title, body, type = 'info', persistNotification = true
     if (type !== 'error' && type !== 'warning') setTimeout(() => snackbar.remove(), 6500);
   }
   renderNotifications();
-  narrate(`${title}. ${body}`, type);
+  narrate(extra?.narration || { en: `${title}. ${body}`, yue: `${cantoneseText(title)}. ${cantoneseText(body)}` }, type);
+}
+
+function queueNarrationTracks(tracks, category = 'info') {
+  if (!tracks.length || !('speechSynthesis' in window)) return;
+  const presentationCategory = { info: 'informational', success: 'success', progress: 'progress', warning: 'warning', error: 'error' }[category] || category;
+  const now = Date.now();
+  const admission = PresentationContract.evaluateNarrationAdmission({
+    category: presentationCategory,
+    now,
+    lastAcceptedAt: lastNarrationAcceptedAt,
+    lastAcceptedAtByCategory
+  });
+  if (!admission.allowed) return;
+  lastNarrationAcceptedAt = now;
+  lastNarrationAcceptedAtByCategory[presentationCategory] = now;
+  if (activeSpeechCategory === presentationCategory) {
+    speechSynthesis.cancel();
+    speaking = false;
+    activeSpeechCategory = null;
+    activeSpeechItem = null;
+  }
+  const normalized = PresentationContract.replaceQueuedNarration(speechQueue.map(({ category: queuedCategory, tracks: queuedTracks }) => ({ category: queuedCategory, tracks: queuedTracks })), { category: presentationCategory, tracks });
+  speechQueue = normalized.map((item) => ({ category: item.category, tracks: [...item.tracks], index: 0 }));
+  playSpeechQueue();
 }
 
 function narrate(text, category = 'info') {
   if (state.settings.attention.lowStim && category === 'info') return;
-  if (!state.settings.narrator.enabled || !('speechSynthesis' in window)) return;
-  const next = { text, category };
-  const existing = speechQueue.findIndex((item) => item.category === category);
-  if (existing >= 0) speechQueue.splice(existing, 1, next); else speechQueue.push(next);
-  playSpeechQueue();
+  if (PresentationContract.shouldYieldNarration(state.settings.narrator) || !('speechSynthesis' in window)) return;
+  const copy = typeof text === 'object' && text
+    ? { en: String(text.en || ''), yue: String(text.yue || localizedText(text.en || '', 'yue')) }
+    : { en: String(text), yue: localizedText(text, 'yue') };
+  const language = state.settings.schoolMode ? 'en' : state.settings.narrator.language;
+  const tracks = PresentationContract.buildNarrationTracks({ language, englishText: copy.en, cantoneseText: copy.yue || copy.en, schoolActive: state.settings.schoolMode });
+  queueNarrationTracks(tracks, category);
 }
 
 function playSpeechQueue() {
   if (speaking || !speechQueue.length || !('speechSynthesis' in window)) return;
-  speaking = true;
+  if (state.settings.narrator.assistiveTechnologyActive) {
+    speechQueue = [];
+    speechSynthesis.cancel();
+    return;
+  }
   const item = speechQueue.shift();
-  const utterance = new SpeechSynthesisUtterance(item.text);
+  activeSpeechItem = item;
+  const track = item.tracks[item.index];
+  if (!track) {
+    activeSpeechItem = null;
+    playSpeechQueue();
+    return;
+  }
+  speaking = true;
+  activeSpeechCategory = item.category;
+  const utterance = new SpeechSynthesisUtterance(track.text);
+  utterance.lang = track.language === 'yue' ? 'zh-HK' : 'en';
   utterance.rate = Number(state.settings.narrator.rate) || 1;
   utterance.pitch = Number(state.settings.narrator.pitch) || 1;
   const voices = speechSynthesis.getVoices();
-  const selected = voices.find((voice) => voice.voiceURI === state.settings.narrator.voiceEn);
+  const selectedIdentity = track.language === 'yue' ? state.settings.narrator.voiceURIYue : state.settings.narrator.voiceURIEn;
+  const selected = voices.find((voice) => voice.voiceURI === selectedIdentity);
+  const automatic = voices.find((voice) => track.language === 'yue' ? ['zh-hk', 'yue'].some((prefix) => voice.lang.toLowerCase().startsWith(prefix)) : voice.lang.toLowerCase().startsWith('en'));
   if (selected) utterance.voice = selected;
-  utterance.onend = utterance.onerror = () => { speaking = false; playSpeechQueue(); };
+  else if (automatic) utterance.voice = automatic;
+  utterance.onend = utterance.onerror = () => {
+    if (activeSpeechItem !== item) return;
+    speaking = false;
+    activeSpeechCategory = null;
+    item.index += 1;
+    if (item.index < item.tracks.length) speechQueue.unshift(item);
+    activeSpeechItem = null;
+    playSpeechQueue();
+  };
   speechSynthesis.speak(utterance);
 }
 
@@ -428,7 +688,9 @@ function isValidProvenance(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const fields = ['schemaVersion', 'name', 'version', 'updatedAt', 'commit', 'source', 'releaseCodeName', 'installer', 'socialPreview'];
   if (Object.keys(value).length !== fields.length || fields.some((field) => !Object.hasOwn(value, field))) return false;
-  if (value.schemaVersion !== 1 || value.name !== 'hair-growth-estimator' || value.source !== 'package.json plus Git commit provenance') return false;
+  const packageSource = value.source === 'package.json plus Git commit provenance';
+  const releaseSource = value.source === 'immutable terminal release transfer plus GitHub release readback';
+  if (value.schemaVersion !== 1 || value.name !== 'hair-growth-estimator' || (!packageSource && !releaseSource)) return false;
   if (typeof value.version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value.version)) return false;
   if (typeof value.updatedAt !== 'string' || Number.isNaN(Date.parse(value.updatedAt))) return false;
   if (typeof value.commit !== 'string' || !/^[a-f0-9]{40}$/.test(value.commit)) return false;
@@ -439,6 +701,8 @@ function isValidProvenance(value) {
   const preview = value.socialPreview;
   if (!preview || typeof preview !== 'object' || Array.isArray(preview) || Object.keys(preview).length !== 2 || !Object.hasOwn(preview, 'sha256') || !Object.hasOwn(preview, 'bytes')) return false;
   if (!/^[a-f0-9]{64}$/.test(preview.sha256) || !Number.isSafeInteger(preview.bytes) || preview.bytes < 1 || preview.bytes > 5 * 1024 * 1024) return false;
+  if (packageSource && value.installer !== null) return false;
+  if (releaseSource && (!isValidInstallerManifest(value.installer, value) || value.updatedAt !== value.installer.publication.publishedAt)) return false;
   return true;
 }
 
@@ -448,14 +712,13 @@ function isValidInstallerManifest(manifest, build) {
   if (Object.keys(manifest).length !== fields.length || fields.some((field) => !Object.hasOwn(manifest, field))) return false;
   if (manifest.schemaVersion !== 1 || manifest.owner !== 'Ding-Ding-Projects' || manifest.repository !== 'HairGrowthEstimator') return false;
   if (manifest.target !== build.commit || manifest.version !== build.version || manifest.platform !== 'windows-x64' || manifest.unsigned !== true) return false;
-  const escapedVersion = build.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (typeof manifest.tag !== 'string' || manifest.tag.length > 128 || !new RegExp(`^v?${escapedVersion}(?:[-.][0-9A-Za-z.-]+)?$`).test(manifest.tag)) return false;
+  if (typeof manifest.tag !== 'string' || manifest.tag.length > 128 || manifest.tag !== `v${build.version}`) return false;
   if (typeof manifest.filename !== 'string' || manifest.filename.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$/.test(manifest.filename) || !manifest.filename.includes(build.version)) return false;
   if (!Number.isSafeInteger(manifest.bytes) || manifest.bytes < 1 || manifest.bytes > 2 * 1024 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(manifest.sha256)) return false;
   const publication = manifest.publication;
   const publicationFields = ['state', 'draft', 'prerelease', 'publishedAt', 'releaseId', 'assetId', 'url'];
   if (!publication || typeof publication !== 'object' || Array.isArray(publication) || Object.keys(publication).length !== publicationFields.length || publicationFields.some((field) => !Object.hasOwn(publication, field))) return false;
-  if (publication.state !== 'published' || publication.draft !== false || typeof publication.prerelease !== 'boolean' || typeof publication.publishedAt !== 'string' || Number.isNaN(Date.parse(publication.publishedAt))) return false;
+  if (publication.state !== 'published' || publication.draft !== false || publication.prerelease !== false || typeof publication.publishedAt !== 'string' || Number.isNaN(Date.parse(publication.publishedAt)) || new Date(publication.publishedAt).toISOString() !== publication.publishedAt) return false;
   if (!Number.isSafeInteger(publication.releaseId) || publication.releaseId < 1 || !Number.isSafeInteger(publication.assetId) || publication.assetId < 1) return false;
   return publication.url === `https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/download/${manifest.tag}/${manifest.filename}`;
 }
@@ -468,7 +731,7 @@ function renderProvenance() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local timezone';
     const formatted = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' }).format(date);
     $('#running-updated-at').textContent = `${formatted} (${timezone})`;
-    $('#status-build-evidence').textContent = `Commit ${provenance.commit.slice(0, 12)}, composed from package version ${provenance.version}.`;
+    $('#status-build-evidence').textContent = `Commit ${provenance.commit.slice(0, 12)}, composed for version ${provenance.version}.`;
   } else {
     $('#running-updated-at').textContent = 'Unavailable, build provenance is missing or invalid';
     $('#status-build-evidence').textContent = 'Build provenance is missing or invalid. No version or timestamp claim is made.';
@@ -568,7 +831,7 @@ function applyPrivateVocabulary(text) {
   return mappings.reduce((result, [from, to]) => result.split(from).join(to), String(text));
 }
 
-function applyVocabularyToOwnedText(rootNode = document.body) {
+function applyLocaleToOwnedText(rootNode = document.body) {
   if (!rootNode) return;
   const excluded = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE', 'TEXTAREA']);
   const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
@@ -576,17 +839,17 @@ function applyVocabularyToOwnedText(rootNode = document.body) {
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
     const parent = node.parentElement;
-    if (!parent || excluded.has(parent.tagName) || parent.closest('[data-vocabulary-exempt]')) continue;
+    if (!parent || excluded.has(parent.tagName) || parent.closest('[data-localization-exempt], [data-vocabulary-exempt]')) continue;
     const prior = vocabularyTextState.get(node);
     const current = node.nodeValue || '';
     const original = prior && current === prior.applied ? prior.original : current;
-    const applied = applyPrivateVocabulary(original);
+    const applied = applyPrivateVocabulary(localizedText(original));
     vocabularyTextState.set(node, { original, applied });
     if (current !== applied) node.nodeValue = applied;
   }
   const attributes = ['aria-label', 'aria-description', 'aria-valuetext', 'aria-roledescription', 'title', 'placeholder', 'alt'];
   for (const element of rootNode.querySelectorAll('*')) {
-    if (element.closest('[data-vocabulary-exempt]')) continue;
+    if (element.closest('[data-localization-exempt], [data-vocabulary-exempt]')) continue;
     let states = vocabularyAttributeState.get(element);
     if (!states) { states = new Map(); vocabularyAttributeState.set(element, states); }
     for (const attribute of attributes) {
@@ -594,11 +857,15 @@ function applyVocabularyToOwnedText(rootNode = document.body) {
       const current = element.getAttribute(attribute) || '';
       const prior = states.get(attribute);
       const original = prior && current === prior.applied ? prior.original : current;
-      const applied = applyPrivateVocabulary(original);
+      const applied = applyPrivateVocabulary(localizedText(original));
       states.set(attribute, { original, applied });
       if (current !== applied) element.setAttribute(attribute, applied);
     }
   }
+}
+
+function applyVocabularyToOwnedText(rootNode = document.body) {
+  applyLocaleToOwnedText(rootNode);
 }
 
 let vocabularyPassScheduled = false;
@@ -616,7 +883,7 @@ function currentTabDefinition(id) { return TAB_DEFINITIONS.find((tab) => tab.id 
 function tabGroup(tab) { return state.tabs.groupOverrides[tab.id] || tab.group; }
 
 function localizedTabLabel(tab) {
-  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
+  const mode = effectiveLanguageMode();
   const translated = TRANSLATIONS[tab.label] || tab.label;
   if (mode === 'yue') return translated;
   if (mode === 'both') return `${tab.label} · ${translated}`;
@@ -642,7 +909,7 @@ async function renderTabs() {
   const ordered = state.tabs.order.map(currentTabDefinition).filter(Boolean);
   const visible = ordered.filter((tab) => !state.tabs.closed.includes(tab.id));
   const queryInput = $('#strip-search');
-  const filtered = await filterSearchItems(visible, (tab) => `${localizedTabLabel(tab)} ${tabGroup(tab)}`, queryInput);
+  const filtered = await filterSearchItems(visible, (tab) => `${localizedSearchText(tab.label)} ${localizedSearchText(tabGroup(tab))}`, queryInput);
   if (filtered === null) return;
   filtered.sort((a, b) => Number(!state.tabs.pinned.includes(a.id)) - Number(!state.tabs.pinned.includes(b.id)));
   filtered.forEach((tab) => {
@@ -658,7 +925,7 @@ async function renderTabs() {
     button.setAttribute('aria-controls', `panel-${tab.id}`);
     button.setAttribute('aria-selected', String(state.activeTab === tab.id));
     button.tabIndex = state.activeTab === tab.id ? 0 : -1;
-    button.innerHTML = `<span aria-hidden="true">${tab.icon}</span><span class="tab-label">${escapeHtml(applyPrivateVocabulary(localizedTabLabel(tab)))}</span><span class="tab-group-label sr-only">${escapeHtml(tabGroup(tab))}</span>`;
+    button.innerHTML = `<span aria-hidden="true">${tab.icon}</span><span class="tab-label">${escapeHtml(applyPrivateVocabulary(localizedTabLabel(tab)))}</span><span class="tab-group-label sr-only">${escapeHtml(localizedText(tabGroup(tab)))}</span>`;
     button.addEventListener('click', () => activateTab(tab.id));
     button.addEventListener('keydown', handleTabKeyboard);
     button.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', tab.id));
@@ -838,7 +1105,7 @@ async function renderHistory() {
   const from = $('#history-from')?.value ? new Date(`${$('#history-from').value}T00:00:00`).getTime() : -Infinity;
   const to = $('#history-to')?.value ? new Date(`${$('#history-to').value}T23:59:59`).getTime() : Infinity;
   const dateEntries = state.history.filter((entry) => { const at = new Date(entry.at).getTime(); return at >= from && at <= to && !isSchoolSensitiveText(`${entry.action} ${entry.detail}`); });
-  const entries = await filterSearchItems(dateEntries, (entry) => `${entry.action} ${entry.detail}`, $('#history-search'));
+  const entries = await filterSearchItems(dateEntries, (entry) => `${localizedSearchText(entry.action)} ${localizedSearchText(entry.detail)}`, $('#history-search'));
   if (entries === null) return;
   if (!entries.length) { renderEmptyCollection(container, 'No history entries match the active filters.'); return; }
   container.replaceChildren();
@@ -848,8 +1115,9 @@ async function renderHistory() {
     const icon = appendTextElement(article, 'span', '↶');
     icon.setAttribute('aria-hidden', 'true');
     const copy = document.createElement('div');
-    appendTextElement(copy, 'h4', entry.action);
-    appendTextElement(copy, 'p', `${entry.detail} · ${formatRelative(entry.at)}`);
+    appendTextElement(copy, 'h4', localizedText(entry.action));
+    const relative = formatRelative(entry.at);
+    appendTextElement(copy, 'p', localizedPair(`${entry.detail} · ${relative}`, `${cantoneseText(entry.detail)} · ${cantoneseText(relative)}`));
     article.append(copy);
     const button = appendTextElement(article, 'button', 'Copy', 'text-button');
     button.type = 'button';
@@ -864,7 +1132,7 @@ async function renderNotifications() {
   const container = $('#notification-list');
   if (!container) return;
   const visibleNotifications = state.notifications.filter((entry) => !isSchoolSensitiveText(`${entry.title} ${entry.body}`));
-  const entries = await filterSearchItems(visibleNotifications, (entry) => `${entry.title} ${entry.body} ${entry.type}`, $('#notification-search'));
+  const entries = await filterSearchItems(visibleNotifications, (entry) => `${localizedSearchText(entry.title)} ${localizedSearchText(entry.body)} ${localizedSearchText(entry.type)}`, $('#notification-search'));
   if (entries === null) return;
   if (!entries.length) { renderEmptyCollection(container, 'No notifications match this view.'); return; }
   container.replaceChildren();
@@ -874,11 +1142,12 @@ async function renderNotifications() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.dataset.selectNotification = entry.id;
-    checkbox.setAttribute('aria-label', `Select notification ${entry.title}`);
+    checkbox.setAttribute('aria-label', localizedPair(`Select notification ${entry.title}`, cantoneseText(`Select notification ${cantoneseText(entry.title)}`)));
     article.append(checkbox);
     const copy = document.createElement('div');
-    appendTextElement(copy, 'h4', entry.title);
-    appendTextElement(copy, 'p', `${entry.body} · ${formatRelative(entry.at)}`);
+    appendTextElement(copy, 'h4', localizedText(entry.title));
+    const relative = formatRelative(entry.at);
+    appendTextElement(copy, 'p', localizedPair(`${entry.body} · ${relative}`, `${cantoneseText(entry.body)} · ${cantoneseText(relative)}`));
     article.append(copy);
     const button = appendTextElement(article, 'button', 'Dismiss', 'text-button');
     button.type = 'button';
@@ -890,14 +1159,33 @@ async function renderNotifications() {
   scheduleVocabularyTextBoundary();
 }
 
+function browserTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+function scheduleSourceSummary(rule) {
+  if (rule.source.kind === 'local') return 'local browser rule';
+  const sourceState = scheduleSourceStates.get(rule.id);
+  if (!sourceState) return `${rule.source.kind} source awaiting refresh`;
+  return sourceState.message;
+}
+
 function renderSchedules() {
-  $('#schedule-timezone').textContent = `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'browser local timezone'}. Daylight-saving changes follow the browser clock.`;
+  $('#schedule-timezone').textContent = `Timezone: ${browserTimezone()}. Dates and times follow this browser timezone, including daylight-saving transitions.`;
+  const everyDay = $('#schedule-every-day').checked;
+  $('#schedule-weekdays').hidden = everyDay;
+  const sourceKind = $('#schedule-source').value;
+  $('#schedule-source-url').closest('label').hidden = sourceKind === 'local';
+  $('#schedule-entity-id').closest('label').hidden = sourceKind !== 'homeAssistant';
+  $('#schedule-session-token').closest('label').hidden = sourceKind !== 'homeAssistant';
+  $('#schedule-token-note').hidden = sourceKind !== 'homeAssistant';
   const container = $('#schedule-list');
   if (!state.schedules.length) { renderEmptyCollection(container, 'No scheduled setting rules.'); return; }
   container.replaceChildren();
   state.schedules.forEach((rule) => {
     const article = document.createElement('article');
     article.className = 'collection-item';
+    if (rule.id === activeScheduleId) article.dataset.activeSchedule = 'true';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = rule.enabled;
@@ -905,8 +1193,14 @@ function renderSchedules() {
     checkbox.setAttribute('aria-label', `Enable ${rule.label}`);
     article.append(checkbox);
     const copy = document.createElement('div');
-    appendTextElement(copy, 'h4', rule.label, '', true);
-    appendTextElement(copy, 'p', `${rule.start} to ${rule.end}, ${rule.theme}, days ${rule.days.join(', ')}`);
+    const activeSuffix = rule.id === activeScheduleId ? ' · active' : '';
+    appendTextElement(copy, 'h4', localizedPair(`${rule.label}${activeSuffix}`, `${rule.label}${rule.id === activeScheduleId ? ` · ${cantoneseText('active')}` : ''}`), '', true);
+    const dateRange = rule.startDate || rule.endDate ? `${rule.startDate || 'any date'} through ${rule.endDate || 'any date'}` : 'any date';
+    const dayRange = rule.everyDay ? 'every day' : `weekdays ${rule.days.join(', ')}`;
+    const sourceSummary = scheduleSourceSummary(rule);
+    const summary = `Priority ${rule.priority}. ${dateRange}, ${rule.start} to ${rule.end}, ${dayRange}. Source: ${sourceSummary}.`;
+    const cantoneseSeed = `Priority ${rule.priority}. ${cantoneseText(dateRange)}, ${rule.start} to ${rule.end}, ${cantoneseText(dayRange)}. Source: ${cantoneseText(sourceSummary)}.`;
+    appendTextElement(copy, 'p', localizedPair(summary, cantoneseText(cantoneseSeed)));
     article.append(copy);
     const remove = appendTextElement(article, 'button', 'Remove', 'text-button');
     remove.type = 'button';
@@ -914,31 +1208,123 @@ function renderSchedules() {
     article.append(remove);
     container.append(article);
   });
-  $$('[data-schedule-enabled]').forEach((input) => input.addEventListener('change', () => { const rule = state.schedules.find((item) => item.id === input.dataset.scheduleEnabled); if (rule) rule.enabled = input.checked; persist('Schedule changed', `${rule?.label || 'Rule'} ${input.checked ? 'enabled' : 'disabled'}.`); applySchedules(); }));
-  $$('[data-remove-schedule]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Remove scheduled rule', `The selected schedule rule will be removed from this browser.`, () => { state.schedules = state.schedules.filter((item) => item.id !== button.dataset.removeSchedule); persist('Schedule removed', 'A scheduled settings rule was removed.'); renderSchedules(); })));
+  $$('[data-schedule-enabled]').forEach((input) => input.addEventListener('change', () => {
+    const rule = state.schedules.find((item) => item.id === input.dataset.scheduleEnabled);
+    if (!rule) return;
+    rule.enabled = input.checked;
+    persist('Schedule changed', `${rule.label} ${input.checked ? 'enabled' : 'disabled'}.`);
+    applySchedules();
+    refreshExternalSchedules({ force: true });
+  }));
+  $$('[data-remove-schedule]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Remove scheduled rule', 'The selected schedule rule will be removed from this browser.', () => {
+    state.schedules = state.schedules.filter((item) => item.id !== button.dataset.removeSchedule);
+    scheduleSourceStates.delete(button.dataset.removeSchedule);
+    scheduleSessionTokens.delete(button.dataset.removeSchedule);
+    scheduleRefreshGenerations.delete(button.dataset.removeSchedule);
+    persist('Schedule removed', 'A scheduled settings rule was removed.');
+    applySchedules();
+    renderSchedules();
+  })));
   scheduleVocabularyTextBoundary();
 }
 
+function updateScheduledOverrides(now = new Date()) {
+  const sourceStates = Object.fromEntries([...scheduleSourceStates].map(([id, value]) => [id, {
+    active: value.active === true,
+    settings: value.settings
+  }]));
+  const evaluation = PresentationContract.evaluateScheduleRules(state.schedules, { now, timeZone: browserTimezone(), sourceStates });
+  const winner = evaluation.activeRule;
+  activeScheduleId = winner?.id || null;
+  scheduledOverrides = winner ? { ...evaluation.settings } : {};
+  if (state.settings.schoolMode) scheduledOverrides.language = 'en';
+  return winner;
+}
+
 function applySchedules() {
-  const now = new Date();
-  const day = now.getDay();
-  const minute = now.getHours() * 60 + now.getMinutes();
-  const matching = state.schedules.filter((rule) => {
-    if (!rule.enabled || !rule.days.includes(day)) return false;
-    const [startHour, startMinute] = rule.start.split(':').map(Number);
-    const [endHour, endMinute] = rule.end.split(':').map(Number);
-    const start = startHour * 60 + startMinute;
-    const end = endHour * 60 + endMinute;
-    return start === end ? true : start < end ? minute >= start && minute < end : minute >= start || minute < end;
+  const previous = JSON.stringify({ activeScheduleId, scheduledOverrides });
+  updateScheduledOverrides();
+  const current = JSON.stringify({ activeScheduleId, scheduledOverrides });
+  if (previous !== current) {
+    applySettings({ skipScheduleEvaluation: true });
+    renderSchedules();
+  }
+}
+
+function safeExternalScheduleUrl(value) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error('Enter a valid source URL.'); }
+  if (url.username || url.password || url.hash) throw new Error('Source URLs cannot contain credentials or fragments.');
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) throw new Error('Use HTTPS, or HTTP only on explicit loopback.');
+  return url;
+}
+
+async function readBoundedJsonResponse(response) {
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared > MAX_EXTERNAL_SCHEDULE_BYTES) throw new Error('The response exceeds the 16 KiB limit.');
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > MAX_EXTERNAL_SCHEDULE_BYTES) throw new Error('The response exceeds the 16 KiB limit.');
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  return parseJsonStrict(text, { maxDepth: 4, maxBytes: MAX_EXTERNAL_SCHEDULE_BYTES });
+}
+
+async function refreshExternalSchedule(rule) {
+  const generation = (scheduleRefreshGenerations.get(rule.id) || 0) + 1;
+  scheduleRefreshGenerations.set(rule.id, generation);
+  scheduleRefreshControllers.get(rule.id)?.abort();
+  const controller = new AbortController();
+  scheduleRefreshControllers.set(rule.id, controller);
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const sourceUrl = safeExternalScheduleUrl(rule.source.url);
+    const headers = { Accept: 'application/json' };
+    let requestUrl = sourceUrl;
+    if (rule.source.kind === 'homeAssistant') {
+      const sessionToken = scheduleSessionTokens.get(rule.id);
+      if (!sessionToken) throw new Error('This tab needs the session-only Home Assistant access token again.');
+      headers.Authorization = `Bearer ${sessionToken}`;
+      requestUrl = new URL(`/api/states/${encodeURIComponent(rule.source.entityId)}`, sourceUrl);
+    }
+    const response = await fetch(requestUrl, { method: 'GET', headers, redirect: 'error', credentials: 'omit', cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`The source returned HTTP ${response.status}.`);
+    const payload = await readBoundedJsonResponse(response);
+    let active;
+    let settings = null;
+    if (rule.source.kind === 'homeAssistant' && payload?.entity_id !== rule.source.entityId) throw new Error('The Home Assistant response did not match the requested boolean entity.');
+    const validated = PresentationContract.validateExternalSettingsResponse(payload, { kind: rule.source.kind });
+    active = validated.active;
+    settings = validated.settings;
+    if (scheduleRefreshGenerations.get(rule.id) !== generation) return;
+    scheduleSourceStates.set(rule.id, { active, settings, message: `${rule.source.kind} source ${active ? 'on' : 'off'} at ${new Date().toLocaleTimeString()}`, refreshedAt: Date.now() });
+  } catch (error) {
+    if (scheduleRefreshGenerations.get(rule.id) !== generation) return;
+    const message = error?.name === 'AbortError' ? 'source refresh timed out after 3 seconds' : String(error?.message || error);
+    const prior = scheduleSourceStates.get(rule.id);
+    scheduleSourceStates.set(rule.id, { active: prior?.active === true, settings: prior?.settings || null, message: `last valid state retained: ${message}`, refreshedAt: prior?.refreshedAt || 0 });
+  } finally {
+    clearTimeout(timeout);
+    if (scheduleRefreshControllers.get(rule.id) === controller) scheduleRefreshControllers.delete(rule.id);
+  }
+}
+
+async function refreshExternalSchedules({ force = false } = {}) {
+  if (!force && Date.now() < nextScheduleRefreshAt) return;
+  nextScheduleRefreshAt = Date.now() + SCHEDULE_REFRESH_MS;
+  const rules = state.schedules.filter((rule) => rule.enabled && rule.source.kind !== 'local');
+  await Promise.all(rules.map(refreshExternalSchedule));
+  applySchedules();
+  const statuses = rules.map((rule) => {
+    const summary = scheduleSourceSummary(rule);
+    return localizedPair(`${rule.label}: ${summary}`, `${rule.label}: ${cantoneseText(summary)}`);
   });
-  const winner = matching.at(-1);
-  if (winner) document.documentElement.dataset.theme = winner.theme;
-  else document.documentElement.dataset.theme = state.settings.theme;
+  $('#schedule-source-status').textContent = statuses.length ? statuses.join(' ') : 'No external scheduled sources are enabled.';
+  renderSchedules();
 }
 
 async function renderTickets() {
   const container = $('#ticket-list');
-  const entries = await filterSearchItems(state.tickets, (ticket) => `${ticket.number} ${ticket.category} ${ticket.description} ${ticket.status}`, $('#ticket-search'));
+  const entries = await filterSearchItems(state.tickets, (ticket) => `${ticket.number} ${localizedSearchText(ticket.category)} ${ticket.description} ${localizedSearchText(ticket.status)}`, $('#ticket-search'));
   if (entries === null) return;
   if (!entries.length) { renderEmptyCollection(container, 'No local tickets match this view.'); return; }
   container.replaceChildren();
@@ -950,8 +1336,8 @@ async function renderTickets() {
     checkbox.setAttribute('aria-label', `Select ticket ${ticket.number}`);
     article.append(checkbox);
     const copy = document.createElement('div');
-    appendTextElement(copy, 'h4', `${ticket.number} · ${ticket.category}`, '', true);
-    appendTextElement(copy, 'p', `${ticket.status} · ${ticket.description}`, '', true);
+    appendTextElement(copy, 'h4', localizedPair(`${ticket.number} · ${ticket.category}`, `${ticket.number} · ${cantoneseText(ticket.category)}`), '', true);
+    appendTextElement(copy, 'p', localizedPair(`${ticket.status} · ${ticket.description}`, `${cantoneseText(ticket.status)} · ${ticket.description}`), '', true);
     article.append(copy);
     const button = appendTextElement(article, 'button', 'Advance', 'text-button');
     button.type = 'button';
@@ -968,17 +1354,23 @@ async function renderChangelog() {
   if (!container) return;
   const from = $('#changelog-from')?.value ? new Date(`${$('#changelog-from').value}T00:00:00`).getTime() : -Infinity;
   const to = $('#changelog-to')?.value ? new Date(`${$('#changelog-to').value}T23:59:59`).getTime() : Infinity;
-  const dateEntries = bundledChangelog.filter((entry) => { const at = entry.date ? new Date(`${entry.date}T12:00:00`).getTime() : 0; return at >= from && at <= to && !isSchoolSensitiveText(`${entry.title} ${entry.body}`); });
-  const entries = await filterSearchItems(dateEntries, (entry) => `${entry.version} ${entry.title} ${entry.body} ${entry.commit}`, $('#changelog-search'));
+  const localizedEntries = bundledChangelog.map((entry) => ({ ...entry, presentation: localizedChangelogEntry(entry) }));
+  const dateEntries = localizedEntries.filter((entry) => { const at = entry.date ? new Date(`${entry.date}T12:00:00`).getTime() : 0; return at >= from && at <= to && !isSchoolSensitiveText(`${entry.presentation.title} ${entry.presentation.body}`); });
+  const entries = await filterSearchItems(dateEntries, (entry) => `${entry.version} ${entry.locales?.en?.title || entry.title} ${entry.locales?.en?.body || entry.body} ${entry.locales?.yue?.title || ''} ${entry.locales?.yue?.body || ''} ${entry.commit}`, $('#changelog-search'));
   if (entries === null) return;
-  container.innerHTML = entries.length ? entries.map((entry) => `<article class="surface-card"><p class="eyebrow">${escapeHtml(entry.version || 'Unreleased')} · ${escapeHtml(entry.date || 'Date unavailable')}</p><h3>${escapeHtml(entry.title || 'Recorded changes')}</h3><p>${escapeHtml(entry.body || 'No release notes were provided.')}</p>${entry.commit && /^[a-f0-9]{40}$/.test(entry.commit) ? `<a href="https://github.com/Ding-Ding-Projects/HairGrowthEstimator/commit/${entry.commit}">${entry.commit.slice(0, 12)}</a>` : '<span>Commit unavailable</span>'}</article>`).join('') : '<div class="empty-state">No changelog entries match the active filters.</div>';
+  container.innerHTML = entries.length ? entries.map((entry) => `<article class="surface-card"><p class="eyebrow">${escapeHtml(entry.version || localizedText('Unreleased'))} · ${escapeHtml(entry.date || localizedText('Date unavailable'))}</p><h3>${escapeHtml(entry.presentation.title)}</h3><p>${escapeHtml(entry.presentation.body)}</p>${entry.commit && /^[a-f0-9]{40}$/.test(entry.commit) ? `<a href="https://github.com/Ding-Ding-Projects/HairGrowthEstimator/commit/${entry.commit}">${entry.commit.slice(0, 12)}</a>` : `<span>${escapeHtml(localizedText('Commit unavailable'))}</span>`}</article>`).join('') : `<div class="empty-state">${escapeHtml(localizedText('No changelog entries match the active filters.'))}</div>`;
 }
 
-function markdownToHtml(markdown) {
+function markdownHeadingIds(markdown) {
+  return [...String(markdown || '').matchAll(/^(#{1,6})\s+(.+)$/gm)].map((match) => match[2].replace(/&[a-z0-9#]+;/gi, ' ').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'section');
+}
+
+function markdownToHtml(markdown, headingIds = []) {
   const escaped = escapeHtml(markdown).replace(/\r\n/g, '\n');
   const lines = escaped.split('\n');
   let inCode = false;
   let inList = false;
+  let headingIndex = 0;
   const output = [];
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
@@ -989,7 +1381,7 @@ function markdownToHtml(markdown) {
     }
     if (inCode) { output.push(`${line}\n`); continue; }
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) { if (inList) { output.push('</ul>'); inList = false; } const level = heading[1].length; const headingId = heading[2].replace(/&[a-z0-9#]+;/gi, ' ').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'section'; output.push(`<h${level} id="doc-heading-${headingId}" data-doc-heading="${headingId}">${inlineMarkdown(heading[2])}</h${level}>`); continue; }
+    if (heading) { if (inList) { output.push('</ul>'); inList = false; } const level = heading[1].length; const generatedId = heading[2].replace(/&[a-z0-9#]+;/gi, ' ').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'section'; const headingId = headingIds[headingIndex] || generatedId; headingIndex += 1; output.push(`<h${level} id="doc-heading-${headingId}" data-doc-heading="${headingId}">${inlineMarkdown(heading[2])}</h${level}>`); continue; }
     const bullet = line.match(/^[-*]\s+(.+)$/);
     if (bullet) { if (!inList) { output.push('<ul>'); inList = true; } output.push(`<li>${inlineMarkdown(bullet[1])}</li>`); continue; }
     if (inList) { output.push('</ul>'); inList = false; }
@@ -1041,21 +1433,22 @@ function navigateDocumentationLink(event, currentArticle) {
 
 async function renderDocs() {
   const list = $('#docs-list');
-  const visibleArticles = bundledDocs.filter((article) => !isSchoolSensitiveText(`${article.title} ${article.category} ${article.content}`));
-  const entries = await filterSearchItems(visibleArticles, (article) => `${article.title} ${article.category} ${article.content}`, $('#docs-search'));
+  const visibleArticles = bundledDocs.filter((article) => !isSchoolSensitiveText(`${article.locales?.en?.title || article.title} ${article.locales?.en?.content || article.content} ${article.locales?.yue?.title || ''} ${article.locales?.yue?.content || ''}`));
+  const entries = await filterSearchItems(visibleArticles, (article) => `${article.locales?.en?.title || article.title} ${article.category} ${article.locales?.en?.content || article.content} ${article.locales?.yue?.title || ''} ${article.locales?.yue?.content || ''}`, $('#docs-search'));
   if (entries === null) return;
   if (!entries.length) { list.setAttribute('aria-activedescendant', ''); renderEmptyCollection(list, 'No documentation articles match this search.'); return; }
   list.replaceChildren();
   entries.forEach((article, index) => {
+    const presentation = localizedDocumentationArticle(article);
     const option = document.createElement('div');
     option.id = `docs-option-${article.id.replace(/[^a-z0-9_-]/gi, '-')}`;
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String((currentDocumentationId || entries[0].id) === article.id));
     option.dataset.docId = article.id;
     option.tabIndex = index === 0 ? 0 : -1;
-    appendTextElement(option, 'strong', article.title);
+    appendTextElement(option, 'strong', presentation.title);
     option.append(document.createElement('br'));
-    appendTextElement(option, 'small', article.category);
+    appendTextElement(option, 'small', localizedText(article.category));
     option.addEventListener('click', () => openDoc(article.id, { focusArticle: true }));
     option.addEventListener('keydown', handleDocumentationOptionKeydown);
     list.append(option);
@@ -1081,6 +1474,7 @@ function handleDocumentationOptionKeydown(event) {
 function openDoc(id, { focusArticle = true, heading = '' } = {}) {
   const article = bundledDocs.find((item) => item.id === id);
   if (!article) return;
+  const presentation = localizedDocumentationArticle(article);
   currentDocumentationId = id;
   $$('[data-doc-id]').forEach((option) => {
     const active = option.dataset.docId === id;
@@ -1088,8 +1482,9 @@ function openDoc(id, { focusArticle = true, heading = '' } = {}) {
     option.tabIndex = active ? 0 : -1;
     if (active) $('#docs-list').setAttribute('aria-activedescendant', option.id);
   });
-  $('#docs-article').innerHTML = markdownToHtml(article.content);
-  $('#docs-article').setAttribute('aria-label', article.title);
+  $('#docs-article').innerHTML = markdownToHtml(presentation.content, markdownHeadingIds(article.locales.en.content));
+  $('#docs-article').setAttribute('aria-label', presentation.title);
+  $('#docs-article').setAttribute('data-localization-exempt', '');
   $('#docs-article').onclick = (event) => navigateDocumentationLink(event, article);
   if (focusArticle) $('#docs-article').focus?.();
   if (heading) requestAnimationFrame(() => $(`[data-doc-heading="${CSS.escape(heading)}"]`, $('#docs-article'))?.scrollIntoView({ block: 'start' }));
@@ -1101,10 +1496,11 @@ function renderAttentionBar() {
   document.body.classList.toggle('focus-mode', settings.focus);
   document.body.classList.toggle('low-stimulation', settings.lowStim);
   const bar = $('#attention-bar');
-  bar.hidden = !settings.time && !settings.one;
+  bar.hidden = !settings.time && !settings.one && !momentumPromptVisible;
   $('#session-elapsed').textContent = `Session ${Math.floor((Date.now() - startedAt) / 60000)} min`;
   $('#last-change').textContent = `Last change ${formatRelative(new Date(lastChangedAt).toISOString())}`;
   $('#next-action-display').textContent = settings.one && settings.nextAction ? `Next: ${settings.nextAction}` : '';
+  $('#momentum-snooze').hidden = !momentumPromptVisible;
 }
 
 function applyExplicitSettingNames() {
@@ -1121,7 +1517,7 @@ function applyExplicitSettingNames() {
 }
 
 function vocabularyStatusCopy() {
-  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
+  const mode = effectiveLanguageMode();
   const copy = VOCABULARY_STATUS_COPY[vocabularyUiState] || VOCABULARY_STATUS_COPY.empty;
   if (mode === 'yue') return copy.yue;
   if (mode === 'both') return `${copy.en} · ${copy.yue}`;
@@ -1129,7 +1525,7 @@ function vocabularyStatusCopy() {
 }
 
 function localizedVocabularyAction(action) {
-  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
+  const mode = effectiveLanguageMode();
   const copy = VOCABULARY_ACTION_COPY[action];
   if (mode === 'yue') return copy.yue;
   if (mode === 'both') return `${copy.en} · ${copy.yue}`;
@@ -1138,6 +1534,7 @@ function localizedVocabularyAction(action) {
 
 function renderSettings() {
   const s = state.settings;
+  const displayedSchoolName = s.schoolModeName === 'School mode' ? localizedText('School mode') : s.schoolModeName;
   $('#language-mode').value = s.language;
   $('#funny-en').value = s.funnyEn;
   $('#funny-yue').value = s.funnyYue;
@@ -1145,6 +1542,8 @@ function renderSettings() {
   $('output[for="funny-yue"]').value = s.funnyYue;
   $('#dialog-emoji').checked = s.dialogEmoji;
   $('#school-mode').checked = s.schoolMode;
+  $('#school-mode-name').value = displayedSchoolName;
+  $('#school-mode-status').textContent = `${displayedSchoolName} is ${s.schoolMode ? 'on' : 'off'}. Shared browser revision ${schoolRecord.revision}.`;
   $('#theme-select').value = s.theme;
   $('#density-select').value = s.density;
   $('#accent-color').value = /^#[a-f0-9]{6}$/i.test(s.accent) ? s.accent : '#a7f3d0';
@@ -1158,8 +1557,10 @@ function renderSettings() {
   $('#logo-background').value = s.logo.background;
   $('#display-name-input').value = s.displayName;
   $('#narrator-enabled').checked = s.narrator.enabled;
+  $('#narrator-language').value = s.narrator.language;
   $('#narrator-rate').value = s.narrator.rate;
   $('#narrator-pitch').value = s.narrator.pitch;
+  $('#assistive-tech-active').checked = s.narrator.assistiveTechnologyActive;
   $('#reduced-motion').checked = s.reducedMotion;
   $('#palette-size').value = s.paletteSize;
   $('#adhd-focus').checked = s.attention.focus;
@@ -1173,12 +1574,21 @@ function renderSettings() {
   const hasVocabularyCache = Object.keys(validatePersonalVocabularyCache(state.vocabulary).entries).length > 0;
   $('#replace-vocabulary').textContent = localizedVocabularyAction(hasVocabularyCache ? 'replace' : 'choose');
   $('#clear-vocabulary').disabled = !hasVocabularyCache;
-  $('#school-mode-label').textContent = s.schoolModeName;
+  $('#school-mode-label').textContent = displayedSchoolName;
+  renderMessageParityPreview();
   applyExplicitSettingNames();
   scheduleVocabularyTextBoundary();
 }
 
-function applySchoolModeVisibility() {
+function removeStartupSurprises() {
+  $$('[data-startup-surprise="true"]').forEach((item) => item.remove());
+}
+
+function applySchoolPresentation() {
+  const suppression = PresentationContract.getSchoolSuppression(schoolRecord);
+  document.documentElement.lang = effectiveLanguageMode() === 'yue' ? 'zh-HK' : 'en';
+  const scheduleLanguageLabel = $('#schedule-language')?.closest('label');
+  if (scheduleLanguageLabel) scheduleLanguageLabel.hidden = Boolean(suppression.suppressCantonese || suppression.suppressBilingual);
   const changed = lastRenderedSchoolMode !== state.settings.schoolMode;
   lastRenderedSchoolMode = state.settings.schoolMode;
   if (changed) {
@@ -1189,6 +1599,12 @@ function applySchoolModeVisibility() {
     filterSettings();
   }
   if (!state.settings.schoolMode) return;
+  removeStartupSurprises();
+  speechQueue = [];
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  speaking = false;
+  activeSpeechCategory = null;
+  activeSpeechItem = null;
   $$('.snackbar').filter((item) => isSchoolSensitiveText(item.textContent)).forEach((item) => item.remove());
   if ($('#command-palette').open) renderCommandPalette();
   if ($('#regex-dialog').open && SCHOOL_SENSITIVE_REGEX_OWNERS.has(activeRegexOwner)) $('#regex-dialog').close();
@@ -1197,16 +1613,25 @@ function applySchoolModeVisibility() {
   if ($('#lock-dialog').open && lockTarget?.closest?.('[data-school-sensitive], .school-hidden')) $('#lock-dialog').close();
 }
 
-function applySettings() {
+function applySettings({ skipScheduleEvaluation = false } = {}) {
   const s = state.settings;
-  document.documentElement.dataset.theme = s.theme;
-  document.documentElement.dataset.density = s.density;
-  document.documentElement.style.setProperty('--accent', s.rainbow ? 'hsl(0 85% 58%)' : s.accent);
+  if (!skipScheduleEvaluation) updateScheduledOverrides();
+  const languageMode = effectiveLanguageMode();
+  const languageChanged = lastRenderedLanguageMode !== null && lastRenderedLanguageMode !== languageMode;
+  lastRenderedLanguageMode = languageMode;
+  const scheduledTheme = scheduledOverrides.theme && scheduledOverrides.theme !== 'unchanged' ? scheduledOverrides.theme : s.theme;
+  const scheduledDensity = scheduledOverrides.density && scheduledOverrides.density !== 'unchanged' ? scheduledOverrides.density : s.density;
+  const scheduledAccent = scheduledOverrides.accent && scheduledOverrides.accent !== 'unchanged' ? scheduledOverrides.accent : s.accent;
+  const scheduledFontScale = Number.isFinite(scheduledOverrides.fontScale) ? scheduledOverrides.fontScale : s.fontScale;
+  const scheduledReducedMotion = scheduledOverrides.motion === 'reduced' ? true : scheduledOverrides.motion === 'full' ? false : s.reducedMotion;
+  document.documentElement.dataset.theme = scheduledTheme;
+  document.documentElement.dataset.density = scheduledDensity;
+  document.documentElement.style.setProperty('--accent', s.rainbow ? 'hsl(0 85% 58%)' : scheduledAccent);
   document.documentElement.style.setProperty('--font-family', s.fontFamily);
-  document.documentElement.style.setProperty('--font-scale', s.fontScale);
+  document.documentElement.style.setProperty('--font-scale', scheduledFontScale);
   const durations = { 1: '18s', 2: '12s', 3: '8s', 4: '5s', 5: '3s' };
   document.documentElement.style.setProperty('--rainbow-duration', durations[s.rainbowSpeed] || '8s');
-  document.documentElement.classList.toggle('reduced-motion', s.reducedMotion);
+  document.documentElement.classList.toggle('reduced-motion', scheduledReducedMotion);
   document.body.classList.toggle('school-mode', s.schoolMode);
   document.body.classList.toggle('rainbow-accent', s.rainbow);
   $$('.dialog-emoji').forEach((emoji) => { emoji.hidden = !s.dialogEmoji; });
@@ -1222,8 +1647,12 @@ function applySettings() {
   else $$('.rainbow-color').forEach((element) => element.classList.remove('rainbow-color'));
   renderTabs();
   renderAttentionBar();
-  applySchedules();
-  applySchoolModeVisibility();
+  applySchoolPresentation();
+  renderMessageParityPreview();
+  if (languageChanged) {
+    renderDocs();
+    renderChangelog();
+  }
   scheduleVocabularyTextBoundary();
 }
 
@@ -1830,7 +2259,11 @@ async function renderTotpEntries() {
       const current = await totpCode(entry.totpSecret, Date.now(), entry.algorithm, entry.digits, entry.period);
       const next = await totpCode(entry.totpSecret, Date.now() + entry.period * 1000, entry.algorithm, entry.digits, entry.period);
       const remaining = entry.period - Math.floor(Date.now() / 1000) % entry.period;
-      rows.push(`<article class="collection-item" data-element-id="totp:${entry.id}"><span aria-hidden="true">◴</span><div><h4 data-vocabulary-exempt>${escapeHtml(entry.label)}</h4><p><strong data-vocabulary-exempt aria-label="Current code ${current.split('').join(' ')}">${current.match(/.{1,3}/g).join(' ')}</strong> · ${remaining}s · next <span data-vocabulary-exempt>${next.match(/.{1,3}/g).join(' ')}</span></p></div><div><button class="text-button" type="button" data-copy-code="${current}">Copy</button><button class="danger-button" type="button" data-remove-totp="${entry.id}">Delete</button></div></article>`);
+      const spacedCurrent = current.split('').join(' ');
+      const groupedCurrent = current.match(/.{1,3}/g).join(' ');
+      const groupedNext = next.match(/.{1,3}/g).join(' ');
+      const countdown = localizedText(`${remaining}s · next ${groupedNext}`);
+      rows.push(`<article class="collection-item" data-element-id="totp:${entry.id}"><span aria-hidden="true">◴</span><div><h4 data-vocabulary-exempt>${escapeHtml(entry.label)}</h4><p><strong data-vocabulary-exempt aria-label="${escapeHtml(localizedText(`Current code ${spacedCurrent}`))}">${groupedCurrent}</strong> · <span data-vocabulary-exempt>${escapeHtml(countdown)}</span></p></div><div><button class="text-button" type="button" data-copy-code="${current}">Copy</button><button class="danger-button" type="button" data-remove-totp="${entry.id}">Delete</button></div></article>`);
     } catch { rows.push(`<article class="collection-item"><span>!</span><div><h4 data-vocabulary-exempt>${escapeHtml(entry.label)}</h4><p>Code generation failed in this browser.</p></div></article>`); }
   }
   container.innerHTML = rows.join('');
@@ -1844,7 +2277,12 @@ async function renderOllamaModels() {
   if (!container) return;
   const models = await filterSearchItems(state.ollama.models, (model) => `${model.name} ${model.size || ''}`, $('#ollama-search'));
   if (models === null) return;
-  container.innerHTML = models.length ? models.map((model) => `<article class="collection-item"><span aria-hidden="true">◫</span><div><h4 data-vocabulary-exempt>${escapeHtml(model.name)}</h4><p>${model.size ? `${Number(model.size / 1024 / 1024 / 1024).toFixed(2)} GiB` : 'Size unavailable'} · Hardware fit Unknown, browser evidence is incomplete</p></div><button class="text-button" type="button" disabled aria-label="Chat unavailable in this static website">Chat unavailable</button></article>`).join('') : '<div class="empty-state">No installed local models are available in this browser state.</div>';
+  container.innerHTML = models.length ? models.map((model) => {
+    const size = model.size ? `${Number(model.size / 1024 / 1024 / 1024).toFixed(2)} GiB` : 'Size unavailable';
+    const english = `${size} · Hardware fit Unknown, browser evidence is incomplete`;
+    const cantonese = cantoneseText(`${cantoneseText(size)} · Hardware fit Unknown, browser evidence is incomplete`);
+    return `<article class="collection-item"><span aria-hidden="true">◫</span><div><h4 data-vocabulary-exempt>${escapeHtml(model.name)}</h4><p>${escapeHtml(localizedPair(english, cantonese))}</p></div><button class="text-button" type="button" disabled aria-label="Chat unavailable in this static website">Chat unavailable</button></article>`;
+  }).join('') : '<div class="empty-state">No installed local models are available in this browser state.</div>';
 }
 
 async function connectOllama() {
@@ -2001,11 +2439,11 @@ function startHairAnimation() {
 }
 
 async function renderCommandPalette() {
-  const allowedCommands = FEATURE_COMMANDS.filter(([label, , target]) => !state.settings.schoolMode || (!isSchoolSensitiveText(label) && !['language-mode', 'vocabulary-file', 'vocabulary-status', 'replace-vocabulary', 'clear-vocabulary'].includes(target)));
-  const matchingCommands = await filterSearchItems(allowedCommands, ([label]) => label, $('#palette-search'));
+  const allowedCommands = FEATURE_COMMANDS.filter(([label, , target]) => !state.settings.schoolMode || (!isSchoolSensitiveText(label) && !SCHOOL_SENSITIVE_REGEX_OWNERS.has(target) && target !== 'vocabulary-status'));
+  const matchingCommands = await filterSearchItems(allowedCommands, ([label]) => localizedSearchText(label), $('#palette-search'));
   if (matchingCommands === null) return;
-  const rows = matchingCommands.map(([label, tab, target]) => ({ label, tab, target }));
-  $('#palette-results').innerHTML = rows.length ? rows.map((row, index) => `<button class="palette-row" type="button" role="option" data-command-index="${index}"><span><strong>${escapeHtml(row.label)}</strong><br><small>${escapeHtml(currentTabDefinition(row.tab)?.label || row.tab)}</small></span><span>Open</span></button>`).join('') : '<div class="empty-state">No command or setting matches this search.</div>';
+  const rows = matchingCommands.map(([label, tab, target]) => ({ label: localizedText(label), tab, target }));
+  $('#palette-results').innerHTML = rows.length ? rows.map((row, index) => `<button class="palette-row" type="button" role="option" data-command-index="${index}"><span><strong>${escapeHtml(row.label)}</strong><br><small>${escapeHtml(localizedTabLabel(currentTabDefinition(row.tab) || { label: row.tab }))}</small></span><span>${escapeHtml(localizedText('Open'))}</span></button>`).join('') : `<div class="empty-state">${escapeHtml(localizedText('No command or setting matches this search.'))}</div>`;
   $$('[data-command-index]').forEach((button) => button.addEventListener('click', () => {
     const row = rows[Number(button.dataset.commandIndex)];
     $('#command-palette').close();
@@ -2058,7 +2496,7 @@ function activateSettingsTab(id, focus = false) {
 
 async function renderOverflow() {
   const openTabs = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id));
-  const tabs = await filterSearchItems(openTabs, (tab) => `${tab.label} ${tabGroup(tab)}`, $('#overflow-search'));
+  const tabs = await filterSearchItems(openTabs, (tab) => `${localizedSearchText(tab.label)} ${localizedSearchText(tabGroup(tab))}`, $('#overflow-search'));
   if (tabs === null) return;
   $('#overflow-list').innerHTML = tabs.map((tab) => `<button type="button" class="palette-row" data-overflow-tab="${tab.id}"><span>${escapeHtml(localizedTabLabel(tab))}</span><small>${escapeHtml(tabGroup(tab))}</small></button>`).join('') || '<div class="empty-state">No tabs match this filter.</div>';
   $$('[data-overflow-tab]').forEach((button) => button.addEventListener('click', () => { $('#tab-overflow-dialog').close(); activateTab(button.dataset.overflowTab); }));
@@ -2073,7 +2511,7 @@ async function updateBulkTabPreview() {
   const inverse = $('input[name="bulk-mode"]:checked').value === 'not-contains';
   const includePinned = $('#bulk-include-pinned').checked;
   const candidates = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id) && (includePinned || !state.tabs.pinned.includes(tab.id)));
-  const matching = await filterSearchItems(candidates, (tab) => tab.label, 'bulk-tab-query');
+  const matching = await filterSearchItems(candidates, (tab) => localizedSearchText(tab.label), 'bulk-tab-query');
   if (matching === null) return;
   const matchingSet = new Set(matching);
   const targets = candidates.filter((tab) => inverse ? !matchingSet.has(tab) : matchingSet.has(tab));
@@ -2157,7 +2595,8 @@ function createSchoolDialog(mode) {
     dialog.className = 'lock-dialog';
     document.body.append(dialog);
   }
-  dialog.innerHTML = `<div class="dialog-header"><div><p class="eyebrow">Shared presentation mode</p><h2>${mode === 'create' ? 'Create an unlock PIN' : 'Enter the unlock PIN'}</h2></div><button class="icon-button" type="button" data-school-cancel aria-label="Cancel">×</button></div><p>This is a browser-local experience lock, not a security boundary. Clearing this site's storage resets it.</p><label>PIN<input id="school-pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="16"></label><div class="dialog-footer"><button class="text-button" type="button" data-school-cancel>Cancel</button><button class="filled-button" type="button" id="school-factor-submit">${mode === 'create' ? 'Turn on mode' : 'Turn off mode'}</button></div>`;
+  const modeName = escapeHtml(state.settings.schoolModeName);
+  dialog.innerHTML = `<div class="dialog-header"><div><p class="eyebrow">Shared presentation mode</p><h2>${mode === 'create' ? `Create an unlock PIN for ${modeName}` : `Enter the unlock PIN for ${modeName}`}</h2></div><button class="icon-button" type="button" data-school-cancel aria-label="Cancel">×</button></div><p>This is a browser-local experience lock, not a security boundary. Clearing this site's storage resets it.</p><label>PIN<input id="school-pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="16"></label><div class="dialog-footer"><button class="text-button" type="button" data-school-cancel>Cancel</button><button class="filled-button" type="button" id="school-factor-submit">${mode === 'create' ? `Turn on ${modeName}` : `Turn off ${modeName}`}</button></div>`;
   $$('[data-school-cancel]', dialog).forEach((button) => button.addEventListener('click', () => { $('#school-mode').checked = state.settings.schoolMode; dialog.close(); }));
   $('#school-factor-submit', dialog).addEventListener('click', async () => {
     const value = $('#school-pin-input', dialog).value;
@@ -2165,13 +2604,15 @@ function createSchoolDialog(mode) {
     if (mode === 'create') {
       const salt = crypto.randomUUID();
       state.schoolLock = { salt, hash: await hashSecret(value, salt) };
-      state.settings.schoolMode = true;
-      persist('School mode enabled', 'The shared browser presentation mode was enabled. Credential material was not recorded in history.');
+      try { writeSharedSchoolRecord({ enabled: true }); }
+      catch (error) { delete state.schoolLock; return showNotification('Mode not enabled', `The shared browser record could not be written: ${error.message}`, 'error'); }
+      persist(`${state.settings.schoolModeName} enabled`, 'The shared browser presentation was enabled. Credential material was not recorded in history.');
     } else {
       const valid = state.schoolLock && (await hashSecret(value, state.schoolLock.salt)) === state.schoolLock.hash;
       if (!valid) return showNotification('PIN did not match', 'The mode remains on. Clearing this site\'s storage resets it.', 'error');
-      state.settings.schoolMode = false;
-      persist('School mode disabled', 'The shared browser presentation mode was disabled.');
+      try { writeSharedSchoolRecord({ enabled: false }); }
+      catch (error) { return showNotification('Mode not disabled', `The shared browser record could not be written: ${error.message}`, 'error'); }
+      persist(`${state.settings.schoolModeName} disabled`, 'The shared browser presentation was disabled.');
     }
     dialog.close();
     renderSettings();
@@ -2185,19 +2626,41 @@ function populateVoices() {
   if (!('speechSynthesis' in window)) {
     $('#voice-en-status').textContent = 'Speech synthesis is unavailable in this browser.';
     $('#voice-yue-status').textContent = 'Speech synthesis is unavailable in this browser.';
-    return;
+    return 0;
   }
   const voices = speechSynthesis.getVoices();
   const populate = (select, languagePrefix, selected, status) => {
-    const relevant = voices.filter((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
-    select.innerHTML = `<option value="auto">Choose automatically</option>${relevant.map((voice) => `<option value="${escapeHtml(voice.voiceURI)}">${escapeHtml(voice.name)} · ${escapeHtml(voice.lang)}${voice.localService ? '' : ' · network-backed'}</option>`).join('')}`;
+    const prefixes = Array.isArray(languagePrefix) ? languagePrefix : [languagePrefix];
+    const relevant = voices.filter((voice) => prefixes.some((prefix) => voice.lang.toLowerCase().startsWith(prefix)));
+    select.replaceChildren();
+    const automatic = document.createElement('option');
+    automatic.value = 'auto';
+    automatic.textContent = 'Choose automatically';
+    select.append(automatic);
+    relevant.forEach((voice) => {
+      const option = document.createElement('option');
+      option.value = voice.voiceURI;
+      option.textContent = `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · network-backed'}`;
+      select.append(option);
+    });
     select.value = relevant.some((voice) => voice.voiceURI === selected) ? selected : 'auto';
     if (selected !== 'auto' && !relevant.some((voice) => voice.voiceURI === selected)) status.textContent = 'The selected voice is not installed on this computer. The choice is kept and automatic fallback is active.';
     else if (!relevant.length) status.textContent = 'No matching voice is installed on this computer.';
     else status.textContent = select.value === 'auto' ? `Choose automatically. ${relevant.length} matching voices are available.` : `Active voice: ${select.selectedOptions[0].textContent}.`;
   };
-  populate($('#voice-en'), 'en', state.settings.narrator.voiceEn, $('#voice-en-status'));
-  populate($('#voice-yue'), 'zh-hk', state.settings.narrator.voiceYue, $('#voice-yue-status'));
+  populate($('#voice-en'), 'en', state.settings.narrator.voiceURIEn, $('#voice-en-status'));
+  populate($('#voice-yue'), ['zh-hk', 'yue'], state.settings.narrator.voiceURIYue, $('#voice-yue-status'));
+  return voices.length;
+}
+
+function scheduleVoiceEnumeration() {
+  voiceEnumerationTimers.forEach(clearTimeout);
+  voiceEnumerationTimers = [];
+  const firstCount = populateVoices();
+  if (firstCount > 0) return;
+  $('#voice-en-status').textContent = 'Waiting for delayed browser voice enumeration.';
+  $('#voice-yue-status').textContent = 'Waiting for delayed browser voice enumeration.';
+  for (const delay of [250, 1000, 2500]) voiceEnumerationTimers.push(setTimeout(populateVoices, delay));
 }
 
 function addSchedule() {
@@ -2205,27 +2668,88 @@ function addSchedule() {
   const start = $('#schedule-start').value;
   const end = $('#schedule-end').value;
   const days = $$('input[name="schedule-day"]:checked').map((input) => Number(input.value));
-  if (!label || !start || !end || !days.length) return showNotification('Schedule incomplete', 'Enter a label, start time, end time, and at least one weekday.', 'error');
-  state.schedules.push({ id: crypto.randomUUID(), label: label.slice(0, 80), start, end, days, theme: $('#schedule-theme').value, enabled: true, createdAt: new Date().toISOString() });
-  persist('Schedule created', `Created scheduled settings rule ${label.slice(0, 80)}.`);
-  renderSchedules();
-  applySchedules();
+  const everyDay = $('#schedule-every-day').checked;
+  const sourceKind = $('#schedule-source').value;
+  const sourceUrl = $('#schedule-source-url').value.trim();
+  const entityId = $('#schedule-entity-id').value.trim();
+  const sessionToken = $('#schedule-session-token').value;
+  if (!label || !start || !end || (!everyDay && !days.length)) return showNotification('Schedule incomplete', 'Enter a label, valid times, and at least one weekday when every day is off.', 'error');
+  if (sourceKind === 'homeAssistant' && !sessionToken) return showNotification('Session token required', 'Enter the Home Assistant access token for this tab. It will not be stored.', 'error');
+  try {
+    const candidate = PresentationContract.validateScheduleRule({
+      id: crypto.randomUUID(),
+      label: label.slice(0, 80),
+      enabled: true,
+      priority: Number($('#schedule-priority').value),
+      startDate: $('#schedule-start-date').value,
+      endDate: $('#schedule-end-date').value,
+      start,
+      end,
+      everyDay,
+      days,
+      settings: {
+        language: $('#schedule-language').value,
+        theme: $('#schedule-theme').value,
+        density: $('#schedule-density').value,
+        accent: $('#schedule-accent').value,
+        fontScale: Number($('#schedule-font-scale').value),
+        motion: $('#schedule-motion').value
+      },
+      source: { kind: sourceKind, url: sourceKind === 'local' ? '' : sourceUrl, entityId: sourceKind === 'homeAssistant' ? entityId : '' },
+      createdAt: new Date().toISOString()
+    });
+    state.schedules.push(candidate);
+    if (sourceKind === 'homeAssistant') scheduleSessionTokens.set(candidate.id, sessionToken);
+    $('#schedule-session-token').value = '';
+    persist('Schedule created', `Created scheduled settings rule ${candidate.label}.`);
+    renderSchedules();
+    applySchedules();
+    refreshExternalSchedules({ force: true });
+  } catch (error) {
+    showNotification('Schedule not created', String(error?.message || error), 'error');
+  }
 }
 
 function maybeDimSumSurprise() {
   const firstVisit = !state.visited;
+  let lastSeenVersion = '';
+  try { lastSeenVersion = localStorage.getItem(LAST_SEEN_VERSION_KEY) || ''; } catch {}
+  const currentVersion = isValidProvenance(provenance) ? provenance.version : '';
+  const updatePath = Boolean(lastSeenVersion && currentVersion && lastSeenVersion !== currentVersion);
+  try { if (currentVersion) localStorage.setItem(LAST_SEEN_VERSION_KEY, currentVersion); } catch {}
   state.visited = true;
   persist(null, null, { record: false });
-  if (firstVisit || state.settings.schoolMode || Math.random() >= 0.1) return;
-  showNotification(`${DIM_SUM.nameEn} · ${DIM_SUM.nameYue}`, friendlyCopy('A dim-sum catalog surprise appeared.', 'A tiny steamer basket rolled into this visit.', '今次有個小小點心驚喜。'), 'info', true, { image: DIM_SUM.image, alt: `Warm tea-house photograph of ${DIM_SUM.nameEn}` });
+  const shouldShow = PresentationContract.shouldShowStartupSurprise({
+    draw: Math.random(),
+    firstRun: firstVisit,
+    errorPath: Boolean(initialQuarantineNotice),
+    updatePath,
+    midTask: state.activeTab !== 'home' || document.visibilityState === 'hidden',
+    schoolActive: state.settings.schoolMode,
+    alreadyShown: startupSurpriseShown,
+    quietMode: state.settings.attention.lowStim
+  });
+  if (!shouldShow) return;
+  startupSurpriseShown = true;
+  const mode = effectiveLanguageMode();
+  const en = state.settings.funnyEn <= 1 ? 'A public catalog surprise appeared.' : 'A tiny steamer basket rolled into this visit.';
+  const yue = state.settings.funnyYue <= 1 ? '今次顯示一個公開目錄驚喜。' : '今次有個小小蒸籠驚喜嚟探班。';
+  const body = mode === 'yue' ? yue : mode === 'both' ? `${en} · ${yue}` : en;
+  showNotification(`${DIM_SUM.nameEn} · ${DIM_SUM.nameYue}`, body, 'info', true, { image: DIM_SUM.image, alt: `Warm tea-house photograph of ${DIM_SUM.nameEn}`, startupSurprise: true, narration: { en, yue } });
 }
 
 function momentumCheck() {
   const settings = state.settings.attention;
-  if (!settings.momentum || settings.snoozedUntil > Date.now() || Date.now() - lastChangedAt < 40 * 60 * 1000) return;
-  showNotification('Nothing has changed here for 40 minutes', 'Resume the chosen next action or dismiss this prompt for one hour.', 'info');
-  settings.snoozedUntil = Date.now() + 3600000;
-  persist(null, null, { record: false });
+  if (!settings.momentum || settings.snoozedUntil > Date.now() || Date.now() - lastChangedAt < 40 * 60 * 1000) {
+    momentumPromptVisible = false;
+    renderAttentionBar();
+    return;
+  }
+  if (momentumPromptForChangeAt === lastChangedAt) return;
+  momentumPromptForChangeAt = lastChangedAt;
+  momentumPromptVisible = true;
+  showNotification('Nothing has changed here for 40 minutes', 'Resume the chosen next action, or choose Not now for one hour. No score or judgment is attached.', 'info');
+  renderAttentionBar();
 }
 
 function setupInputSearchState(input) {
@@ -2323,8 +2847,9 @@ function setupEvents() {
     const reconciled = reconcileEstimatorBaseline();
     persist('Estimate changed', 'Updated the retained manual fallback, growth rate, or target. The newest valid haircut remains active when present.');
     renderEstimator();
-    const baselineDetail = reconciled.source.kind === 'haircut' ? ' The newest valid haircut remains the active baseline.' : ' The manual fallback is now active.';
-    showNotification('Estimate updated', `${friendlyCopy('The browser-local projection was recalculated.', 'The projection got a fresh trim and recalculated itself.', '個估算啱啱梳好晒再計過。')}${baselineDetail}`, 'info');
+    const item = reconciled.source.kind === 'haircut' ? `browser projection using the newest valid haircut on ${reconciled.source.date}` : 'browser projection using the retained manual fallback';
+    const message = resolvePresentationMessage('informational.saved', { item });
+    showNotification('Estimate updated', message.text, 'info', true, { narration: Object.fromEntries(message.tracks.map((track) => [track.language, track.text])) });
   });
   $$('input[name="unit"]').forEach((radio) => radio.addEventListener('change', () => { state.estimator.unit = radio.value; persist('Measurement unit changed', `Changed browser-local display to ${radio.value}.`); renderEstimator(); renderHaircuts(); }));
   $('#haircut-form').addEventListener('submit', (event) => {
@@ -2349,11 +2874,23 @@ function setupEvents() {
     showNotification(editing ? 'Haircut updated' : 'Haircut recorded', `The active estimate now begins from the newest valid haircut on ${reconciled.source.date}.`, 'info');
   });
 
-  $('#language-mode').addEventListener('change', (event) => { if (state.settings.schoolMode) return; state.settings.language = event.target.value; persist('Language changed', `Changed website language mode to ${event.target.value}.`); applySettings(); });
-  $('#funny-en').addEventListener('input', (event) => { state.settings.funnyEn = Number(event.target.value); $('output[for="funny-en"]').value = event.target.value; persist('English funny level changed', `Set English funny level to ${event.target.value}.`); });
-  $('#funny-yue').addEventListener('input', (event) => { state.settings.funnyYue = Number(event.target.value); $('output[for="funny-yue"]').value = event.target.value; persist('Cantonese funny level changed', `Set Cantonese funny level to ${event.target.value}.`); });
+  $('#language-mode').addEventListener('change', (event) => { if (state.settings.schoolMode) return; state.settings.language = event.target.value; persist('Language changed', `Changed website language mode to ${event.target.value}.`); applySettings(); renderSettings(); });
+  $('#funny-en').addEventListener('input', (event) => { state.settings.funnyEn = Number(event.target.value); $('output[for="funny-en"]').value = event.target.value; persist('English funny level changed', `Set English funny level to ${event.target.value}.`); applySettings(); });
+  $('#funny-yue').addEventListener('input', (event) => { state.settings.funnyYue = Number(event.target.value); $('output[for="funny-yue"]').value = event.target.value; persist('Cantonese funny level changed', `Set Cantonese funny level to ${event.target.value}.`); applySettings(); });
   $('#dialog-emoji').addEventListener('change', (event) => { state.settings.dialogEmoji = event.target.checked; persist('Dialog emoji preference changed', `Dialog emoji are ${event.target.checked ? 'shown' : 'hidden'}.`); applySettings(); });
   $('#school-mode').addEventListener('change', (event) => createSchoolDialog(event.target.checked ? 'create' : 'unlock'));
+  $('#school-mode-name').addEventListener('change', (event) => {
+    try {
+      const next = writeSharedSchoolRecord({ displayName: event.target.value });
+      persist('Presentation mode name changed', `Changed the shared browser presentation name to ${next.displayName}.`);
+      renderSettings();
+      applySettings();
+    } catch (error) { showNotification('Name not changed', error.message, 'error'); renderSettings(); }
+  });
+  $('#reset-school-mode-name').addEventListener('click', () => {
+    try { writeSharedSchoolRecord({ displayName: 'School mode' }); persist('Presentation mode name reset', 'Restored the shipped presentation name.'); renderSettings(); applySettings(); }
+    catch (error) { showNotification('Name not reset', error.message, 'error'); }
+  });
   $('#theme-select').addEventListener('change', (event) => { state.settings.theme = event.target.value; persist('Theme changed', `Changed theme to ${event.target.value}.`); applySettings(); });
   $('#density-select').addEventListener('change', (event) => { state.settings.density = event.target.value; persist('Density changed', `Changed density to ${event.target.value}.`); applySettings(); });
   $('#accent-color').addEventListener('input', (event) => { state.settings.accent = event.target.value; state.settings.rainbow = false; persist('Accent changed', `Changed accent to ${event.target.value}.`); applySettings(); });
@@ -2369,21 +2906,25 @@ function setupEvents() {
   $('#logo-background').addEventListener('input', (event) => { state.settings.logo.background = event.target.value; persist('Logo background changed', `Changed logo background to ${event.target.value}.`); applySettings(); });
   $('#custom-logo').addEventListener('change', handleCustomLogo);
   $('#reset-logo').addEventListener('click', () => { state.settings.logo = defaultState().settings.logo; persist('Logo reset', 'The website logo returned to the shipped mark.'); renderSettings(); applySettings(); });
-  $('#narrator-enabled').addEventListener('change', (event) => { state.settings.narrator.enabled = event.target.checked; persist('Narrator changed', `Narrator ${event.target.checked ? 'enabled' : 'disabled'}.`); if (event.target.checked) narrate('Narrator enabled.'); });
-  $('#voice-en').addEventListener('change', (event) => { state.settings.narrator.voiceEn = event.target.value; persist('English narrator voice changed', 'The selected English voice identity changed.'); populateVoices(); });
-  $('#voice-yue').addEventListener('change', (event) => { state.settings.narrator.voiceYue = event.target.value; persist('Cantonese narrator voice changed', 'The selected Cantonese voice identity changed.'); populateVoices(); });
+  $('#narrator-enabled').addEventListener('change', (event) => { state.settings.narrator.enabled = event.target.checked; persist('Narrator changed', `Narrator ${event.target.checked ? 'enabled' : 'disabled'}.`); if (event.target.checked) narrate({ en: 'Narrator enabled.', yue: '旁述已開啟。' }); else { speechQueue = []; speaking = false; activeSpeechCategory = null; activeSpeechItem = null; globalThis.speechSynthesis?.cancel?.(); } });
+  $('#narrator-language').addEventListener('change', (event) => { if (state.settings.schoolMode) return; state.settings.narrator.language = event.target.value; persist('Narrator language changed', `Set narrated language to ${event.target.value}.`); });
+  $('#voice-en').addEventListener('change', (event) => { state.settings.narrator.voiceURIEn = event.target.value; persist('English narrator voice changed', 'The selected English voice identity changed.'); populateVoices(); });
+  $('#voice-yue').addEventListener('change', (event) => { state.settings.narrator.voiceURIYue = event.target.value; persist('Cantonese narrator voice changed', 'The selected Cantonese voice identity changed.'); populateVoices(); });
   $('#narrator-rate').addEventListener('input', (event) => { state.settings.narrator.rate = Number(event.target.value); persist('Narrator rate changed', `Set narrator rate to ${event.target.value}.`); });
   $('#narrator-pitch').addEventListener('input', (event) => { state.settings.narrator.pitch = Number(event.target.value); persist('Narrator pitch changed', `Set narrator pitch to ${event.target.value}.`); });
+  $('#assistive-tech-active').addEventListener('change', (event) => { state.settings.narrator.assistiveTechnologyActive = event.target.checked; if (event.target.checked) { speechQueue = []; speaking = false; activeSpeechCategory = null; activeSpeechItem = null; globalThis.speechSynthesis?.cancel?.(); } persist('Narrator yielding changed', `Assistive-technology yielding is ${event.target.checked ? 'active' : 'inactive'}.`); });
   $('#reduced-motion').addEventListener('change', (event) => { state.settings.reducedMotion = event.target.checked; persist('Reduced motion changed', `Reduced motion ${event.target.checked ? 'enabled' : 'disabled'}.`); applySettings(); startHairAnimation(); });
   $('#palette-size').addEventListener('change', (event) => { state.settings.paletteSize = event.target.value; persist('Command palette size changed', `Set command palette to ${event.target.value}.`); $('#command-palette').classList.toggle('full', event.target.value === 'full'); });
 
-  ['focus', 'lowStim', 'time', 'one', 'momentum'].forEach((key) => {
-    const id = { focus: 'adhd-focus', lowStim: 'adhd-low-stim', time: 'adhd-time', one: 'adhd-one', momentum: 'adhd-momentum' }[key];
+  Object.entries(ATTENTION_SETTING_IDS).forEach(([key, id]) => {
     $(`#${id}`).addEventListener('change', (event) => { state.settings.attention[key] = event.target.checked; persist('Attention mode changed', `${key} ${event.target.checked ? 'enabled' : 'disabled'}.`); applySettings(); });
   });
   $('#next-action').addEventListener('change', (event) => { state.settings.attention.nextAction = event.target.value.trim().slice(0, 160); persist('Next action changed', 'Updated the user-chosen next action.'); renderAttentionBar(); });
+  $('#momentum-snooze').addEventListener('click', () => { state.settings.attention.snoozedUntil = Date.now() + 3600000; momentumPromptVisible = false; persist('Momentum prompt postponed', 'Dismissed the factual inactivity prompt for one hour.'); renderAttentionBar(); });
 
   $('#add-schedule').addEventListener('click', addSchedule);
+  $('#schedule-every-day').addEventListener('change', renderSchedules);
+  $('#schedule-source').addEventListener('change', renderSchedules);
   $('#ollama-connect').addEventListener('click', connectOllama);
   $('#convert-button').addEventListener('click', convertFile);
   $('#cancel-convert').addEventListener('click', () => { state.conversion = null; $('#converter-progress').value = 0; $('#converter-preview').value = ''; $('#download-conversion').disabled = true; showNotification('Conversion cancelled', 'No output was downloaded and the source remained unchanged.', 'info'); });
@@ -2435,7 +2976,10 @@ function setupEvents() {
     persistQueue = persistQueue.then(async () => {
       if (clearGeneration !== reconciliationGeneration) return { ok: false, reason: 'superseded-before-clear' };
       const result = await stateCoordinator.commit({ baseRevision: stateRevision, state: snapshot });
-      if (result.ok) location.reload();
+      if (result.ok) {
+        try { localStorage.removeItem(SCHOOL_RECORD_KEY); scheduleSessionTokens.clear(); location.reload(); }
+        catch { showNotification('Shared presentation record not cleared', 'The main browser state was reset, but the shared presentation record could not be removed. Clear this site\'s storage through the browser to finish.', 'error', false); }
+      }
       else if (result.reason === 'stale-write' && result.current) {
         adoptStoredEnvelope(result.current, { announce: false });
         showNotification('Local data was not cleared', `Another tab already saved browser revision ${result.current.revision}. The clear request was refused.`, 'warning', false);
@@ -2455,7 +2999,10 @@ function setupEvents() {
   $$('[data-action="select-all-notifications"]').forEach((button) => button.addEventListener('click', () => $$('[data-select-notification]').forEach((input) => { input.checked = true; })));
   $$('[data-action="delete-notifications"]').forEach((button) => button.addEventListener('click', () => { const ids = $$('[data-select-notification]:checked').map((input) => input.dataset.selectNotification); if (!ids.length) return; requestDestructiveAction('Delete selected notifications', `${ids.length} browser-local notification records will be removed.`, () => { state.notifications = state.notifications.filter((record) => !ids.includes(record.id)); persist('Notifications deleted', `Deleted ${ids.length} notifications.`); renderNotifications(); }); }));
   $$('[data-action="export-history"]').forEach((button) => button.addEventListener('click', () => downloadText('redacted-history.json', `${JSON.stringify(deepRedact(state.history), null, 2)}\n`, 'application/json')));
-  $$('[data-action="export-changelog"]').forEach((button) => button.addEventListener('click', () => downloadText('changelog.md', bundledChangelog.map((entry) => `## ${entry.version} (${entry.date})\n\n${entry.title}\n\n${entry.body}\n\nCommit: ${entry.commit || 'Unavailable'}\n`).join('\n'), 'text/markdown')));
+  $$('[data-action="export-changelog"]').forEach((button) => button.addEventListener('click', () => downloadText('changelog.md', bundledChangelog.map((entry) => {
+    const presentation = localizedChangelogEntry(entry);
+    return `## ${entry.version} (${entry.date})\n\n${presentation.title}\n\n${presentation.body}\n\n${localizedText('Commit')}: ${entry.commit || localizedText('Unavailable')}\n`;
+  }).join('\n'), 'text/markdown')));
   $$('[data-copy-text]').forEach((button) => button.addEventListener('click', () => copyText(button.dataset.copyText)));
   $$('[data-action="toggle-animation"]').forEach((button) => button.addEventListener('click', () => { if (heroTimer) { clearInterval(heroTimer); heroTimer = null; button.textContent = '▶'; button.setAttribute('aria-label', 'Resume hair growth animation'); } else { startHairAnimation(); button.textContent = 'Ⅱ'; button.setAttribute('aria-label', 'Pause hair growth animation'); } }));
 }
@@ -2553,6 +3100,22 @@ function handleStateStorageEvent(event) {
   }
 }
 
+function handleSchoolStorageEvent(event) {
+  if (event.key !== SCHOOL_RECORD_KEY) return;
+  if (event.newValue === null) {
+    const reset = { ...defaultSharedSchoolRecord(), enabled: false, displayName: 'School mode' };
+    if (schoolRecord.enabled || schoolRecord.displayName !== reset.displayName) adoptSharedSchoolRecord(reset, { announce: true });
+    return;
+  }
+  try {
+    const incoming = validateSharedSchoolRecord(parseJsonStrict(event.newValue, { maxDepth: 2, maxBytes: 4096 }));
+    if (incoming.revision <= schoolRecord.revision) return;
+    adoptSharedSchoolRecord(incoming, { announce: true });
+  } catch {
+    showNotification('Shared presentation update ignored', 'Another tab supplied an invalid shared presentation record. This tab kept the last valid state.', 'error', false);
+  }
+}
+
 function initialize() {
   reconcileEstimatorBaseline();
   assignStableElementIds();
@@ -2564,17 +3127,20 @@ function initialize() {
   renderAll();
   applyExplicitSettingNames();
   filterSettings();
-  populateVoices();
+  scheduleVoiceEnumeration();
   renderStorageRevision();
   const vocabularyObserver = new MutationObserver(() => scheduleVocabularyTextBoundary());
   vocabularyObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-label', 'aria-description', 'aria-valuetext', 'aria-roledescription', 'title', 'placeholder', 'alt'] });
   scheduleVocabularyTextBoundary();
+  if (localeCatalogUnavailable) showNotification('Cantonese localization unavailable', 'The bundled Cantonese catalog was missing or invalid. English source wording remains active.', 'error', false);
   if (initialQuarantineNotice) showNotification('Saved browser state quarantined', 'Invalid saved browser state was quarantined locally before the first render. The website started from validated defaults.', 'warning', false);
   window.addEventListener('storage', handleStateStorageEvent);
-  if ('speechSynthesis' in window) speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
+  window.addEventListener('storage', handleSchoolStorageEvent);
+  if ('speechSynthesis' in window) speechSynthesis.addEventListener?.('voiceschanged', scheduleVoiceEnumeration);
   maybeDimSumSurprise();
-  scheduleTimer = setInterval(() => { applySchedules(); renderAttentionBar(); momentumCheck(); renderTotpEntries(); }, 1000);
-  window.addEventListener('beforeunload', () => { vocabularyObserver.disconnect(); regexWorkerClient?.cancelQueued(); clearInterval(scheduleTimer); if (heroTimer) clearInterval(heroTimer); window.removeEventListener('storage', handleStateStorageEvent); if ('speechSynthesis' in window) speechSynthesis.cancel(); });
+  refreshExternalSchedules({ force: true });
+  scheduleTimer = setInterval(() => { applySchedules(); refreshExternalSchedules(); renderAttentionBar(); momentumCheck(); renderTotpEntries(); }, 1000);
+  window.addEventListener('beforeunload', () => { vocabularyObserver.disconnect(); regexWorkerClient?.cancelQueued(); clearInterval(scheduleTimer); voiceEnumerationTimers.forEach(clearTimeout); scheduleRefreshControllers.forEach((controller) => controller.abort()); if (heroTimer) clearInterval(heroTimer); window.removeEventListener('storage', handleStateStorageEvent); window.removeEventListener('storage', handleSchoolStorageEvent); if ('speechSynthesis' in window) { speechSynthesis.removeEventListener?.('voiceschanged', scheduleVoiceEnumeration); speechSynthesis.cancel(); } });
 }
 
 initialize();

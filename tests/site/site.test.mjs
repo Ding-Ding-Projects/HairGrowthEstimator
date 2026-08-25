@@ -126,7 +126,7 @@ test('composition emits commit-bound provenance and local assets', async (contex
   assert.equal(rootPreview.readUInt32BE(20), 640);
 });
 
-test('installer manifest accepts only the complete immutable publication contract', async (context) => {
+test('installer publication can only arrive through the fixed terminal transfer', async (context) => {
   const directory = await mkdtemp(join(tmpdir(), 'hair-growth-installer-manifest-'));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const manifestPath = join(directory, 'installer.json');
@@ -158,27 +158,11 @@ test('installer manifest accepts only the complete immutable publication contrac
   await writeFile(manifestPath, JSON.stringify(manifest));
   assert.doesNotThrow(compose);
   const html = await readFile(join(output, 'index.html'), 'utf8');
-  assert.match(html, /"publication":\{"state":"published","draft":false/);
-  assert.match(html, /HairGrowthEstimator-1\.0\.0-Setup\.exe/);
-
-  const missingBytes = structuredClone(manifest);
-  delete missingBytes.bytes;
-  await writeFile(manifestPath, JSON.stringify(missingBytes));
-  assert.throws(compose, /manifest mismatch.*bytes/i);
-
-  await writeFile(manifestPath, JSON.stringify({ ...manifest, target: 'b'.repeat(40) }));
-  assert.throws(compose, /target must match the exact composed commit/i);
-
-  const mutableUrl = structuredClone(manifest);
-  mutableUrl.publication.url = 'https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/latest/download/HairGrowthEstimator-1.0.0-Setup.exe';
-  await writeFile(manifestPath, JSON.stringify(mutableUrl));
-  assert.throws(compose, /exact immutable GitHub release asset URL/i);
-
-  await writeFile(manifestPath, JSON.stringify({ ...manifest, extra: true }));
-  assert.throws(compose, /Unexpected: extra/i);
-
-  await writeFile(manifestPath, `${JSON.stringify(manifest)}${' '.repeat(64 * 1024)}`);
-  assert.throws(compose, /exceeds the 65536 byte limit/i);
+  assert.match(html, /"installer":null/);
+  assert.doesNotMatch(html, /HairGrowthEstimator-1\.0\.0-Setup\.exe/);
+  const composerSource = await readFile(join(root, 'scripts', 'compose-site.mjs'), 'utf8');
+  assert.match(composerSource, /join\(root, 'dist', 'terminal-transfer'\)/);
+  assert.doesNotMatch(composerSource, /process\.env\.INSTALLER_MANIFEST|release['"], ['"]installer-manifest\.json/);
 });
 
 test('strict composition consumes the canonical stages manifest and verifies every digest', async (context) => {

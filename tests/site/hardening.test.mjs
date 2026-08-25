@@ -24,7 +24,8 @@ async function loadBrowserContract(file, globalName) {
     setTimeout,
     structuredClone,
     TextDecoder,
-    TextEncoder
+    TextEncoder,
+    URL
   });
   vm.runInContext(source, context, { filename: file });
   assert.ok(context[globalName], `${file} must expose ${globalName}`);
@@ -41,7 +42,7 @@ function fullSafeState() {
       schoolModeName: 'School mode', theme: 'dark', density: 'comfortable', accent: '#a7f3d0',
       rainbow: false, rainbowSpeed: 3, fontFamily: 'system-ui', fontScale: 1, dock: 'left',
       displayName: 'Hair Growth Estimator', paletteSize: 'card', reducedMotion: false,
-      narrator: { enabled: false, voiceEn: 'auto', voiceYue: 'auto', rate: 1, pitch: 1 },
+      narrator: { schemaVersion: 1, enabled: false, language: 'en', voiceURIEn: 'auto', voiceURIYue: 'auto', rate: 1, pitch: 1, assistiveTechnologyActive: false, quietHours: false, reducedSound: false },
       logo: { preset: 'strand', customLogoData: '', fit: 'contain', background: '#101415' },
       attention: { focus: false, lowStim: false, time: false, one: false, momentum: false, nextAction: '', snoozedUntil: 0 }
     },
@@ -117,7 +118,7 @@ test('personal vocabulary consumer preserves the last valid cache and covers vis
   assert.match(template, /id="vocabulary-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(template, /id="display-name"[^>]*data-vocabulary-exempt/);
   assert.match(template, /id="school-mode-label"[^>]*data-vocabulary-exempt/);
-  assert.match(app, /function vocabularyStatusCopy\(\) \{[\s\S]{0,500}state\.settings\.schoolMode \? 'en' : state\.settings\.language/);
+  assert.match(app, /function vocabularyStatusCopy\(\) \{[\s\S]{0,200}const mode = effectiveLanguageMode\(\)/);
   assert.match(app, /replace-vocabulary'\)\.textContent/);
   assert.match(template, /data-school-sensitive data-setting-keywords="vocabulary/);
 });
@@ -161,6 +162,54 @@ test('full state and appearance schemas reject unknown keys, unsafe identifiers,
   assert.throws(() => validateAppearanceMap({ 'bad\"]': safeAppearance['id:display-name'] }), /target identifier/);
   assert.throws(() => validateAppearanceMap({ safe: { ...safeAppearance['id:display-name'], styles: { normal: { backgroundImage: 'url(https://example.invalid/x)' } } } }), /style property/);
   assert.throws(() => sanitizeImportedState({ ...safe, schoolLock: { salt: 'x', hash: 'y' } }), /verifier material/);
+});
+
+test('saved presentation state migrates the prior narrator and schedule shapes without losing visitor data', async () => {
+  const { validateStoredStateEnvelopeText } = await loadBrowserContract('security-contract.js', 'HairGrowthSecurityContract');
+  const legacy = fullSafeState();
+  legacy.visited = true;
+  legacy.settings.language = 'both';
+  legacy.settings.accent = '#123456';
+  legacy.settings.fontScale = 1.25;
+  legacy.settings.narrator = { enabled: true, voiceEn: 'voice:english', voiceYue: 'voice:cantonese', rate: 1.2, pitch: 0.9 };
+  legacy.schedules = [{
+    id: 'legacy-schedule',
+    label: 'Evening theme',
+    start: '18:00',
+    end: '23:00',
+    days: [1, 2, 3, 4, 5],
+    theme: 'light',
+    enabled: true,
+    createdAt: '2026-08-24T20:00:00.000Z'
+  }];
+  const serialized = JSON.stringify({
+    storageEnvelopeSchema: 1,
+    revision: 7,
+    writerId: 'writer-before-l06',
+    writtenAt: '2026-08-24T20:01:00.000Z',
+    state: legacy
+  });
+
+  const migrated = validateStoredStateEnvelopeText(serialized, fullSafeState());
+  assert.equal(migrated.revision, 7);
+  assert.equal(migrated.legacy, false);
+  assert.equal(migrated.state.visited, true);
+  assert.equal(migrated.state.settings.narrator.schemaVersion, 1);
+  assert.equal(migrated.state.settings.narrator.language, 'both');
+  assert.equal(migrated.state.settings.narrator.voiceURIEn, 'voice:english');
+  assert.equal(migrated.state.settings.narrator.voiceURIYue, 'voice:cantonese');
+  assert.equal(migrated.state.schedules[0].priority, 0);
+  assert.equal(migrated.state.schedules[0].startDate, '');
+  assert.equal(migrated.state.schedules[0].endDate, '');
+  assert.equal(migrated.state.schedules[0].everyDay, false);
+  assert.equal(migrated.state.schedules[0].settings.theme, 'light');
+  assert.equal(migrated.state.schedules[0].settings.accent, '#123456');
+  assert.equal(migrated.state.schedules[0].settings.fontScale, 1.25);
+  assert.equal(migrated.state.schedules[0].source.kind, 'local');
+
+  const malformed = structuredClone(legacy);
+  malformed.settings.narrator.extra = true;
+  assert.throws(() => validateStoredStateEnvelopeText(JSON.stringify(malformed), fullSafeState()), /narrator settings/);
 });
 
 test('positive export allowlist omits every verifier and private cache in every serializer input', async () => {
@@ -283,11 +332,17 @@ test('installer manifest and canonical hair images fail closed on incomplete or 
   ]);
   for (const token of ['validateInstallerManifest', 'schemaVersion', 'owner', 'repository', 'tag', 'target', 'version', 'platform', 'filename', 'bytes', 'sha256', 'unsigned', 'publication']) assert.match(composer, new RegExp(token));
   assert.match(composer, /MAX_INSTALLER_MANIFEST_BYTES\s*=\s*64\s*\*\s*1024/);
+  for (const token of ['validateTerminalTransfer', 'release-context.json', 'trusted-product-validation.json', 'terminal-transfer-receipt.json', 'installerSourceBinding', 'containerSourceBinding']) assert.match(composer, new RegExp(token));
+  assert.match(composer, /join\(root, 'dist', 'terminal-transfer'\)/);
+  assert.doesNotMatch(composer, /process\.env\.INSTALLER_MANIFEST|release['"], ['"]installer-manifest\.json/);
   assert.match(composer, /new TextDecoder\('utf-8', \{ fatal: true \}\)/);
   assert.match(composer, /MAX_HAIR_MANIFEST_BYTES\s*=\s*64\s*\*\s*1024/);
-  assert.match(app, /escapedVersion[\s\S]*new RegExp\(`\^v\?\$\{escapedVersion\}/);
+  assert.match(app, /manifest\.tag\s*!==\s*`v\$\{build\.version\}`/);
   assert.match(app, /manifest\.filename\.length\s*>\s*160/);
   assert.match(app, /typeof publication\.publishedAt\s*!==\s*'string'/);
+  assert.match(composer, /gh['"], \['api'/);
+  assert.match(composer, /\['release', 'download'/);
+  assert.match(composer, /GitHub Setup asset bytes do not match/);
   assert.match(composer, /Ding-Ding-Projects/);
   assert.match(composer, /HairGrowthEstimator/);
   assert.match(composer, /releases\/download/);

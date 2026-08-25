@@ -8,12 +8,12 @@ The website also requires a status surface with current release, latest verified
 
 ## Configuration
 
-Build composition must write a versioned provenance record with source commit, package version, build or release timestamp, and validation status. The front screen localizes the recorded timestamp for display while keeping the underlying instant stable.
+Build composition writes one of two explicit provenance sources. An absent terminal transfer produces tracked package version plus commit time and no installer. A complete terminal transfer produces the exact terminal release version plus canonical publication time only after all four local records, copied hashes, context identity, GitHub release metadata, and downloaded Setup bytes validate. The front screen localizes the recorded timestamp while keeping the underlying instant stable.
 
 ## Failure modes
 
 - Missing or invalid provenance displays an unavailable state.
-- A version mismatch between package metadata and provenance blocks a verified claim.
+- A mismatch among release manifest, context, receipt, exact commit, or external release readback blocks a verified claim. Static package metadata is not the release identity.
 - Status values not backed by a real source remain unverified.
 - Browser-local visitor settings do not alter artifact provenance.
 
@@ -23,7 +23,7 @@ Provenance may include public source commit, version, and release timing. It mus
 
 ## Verification
 
-The front-screen selectors, embedded JSON placeholder, semantic version, timestamp, commit validation, local-time formatting with seconds and timezone, installer-manifest validation, and status-panel rendering are present in source. `scripts/compose-site.mjs` derives and injects package, commit, timestamp, release-code-name, and optional installer evidence. Composition execution and valid release provenance are pending. Required evidence includes removal of the visible boundary, removal of each provenance field, red then green regression behavior, built-site interaction, capture, and public response inspection.
+The front-screen selectors, embedded JSON placeholder, semantic version, timestamp, commit and source validation, local-time formatting with seconds and timezone, installer validation, and status-panel rendering are present in source. `scripts/compose-site.mjs` now derives release-bound version and updated-at from the verified terminal installer instead of static package metadata. Its four focused terminal checks were deliberately red 4 of 4, then restored to 4 passed, 0 failed, and 0 skipped. Ordinary composition without the transfer also passed and kept `installer: null`. Real terminal-release composition, built-site interaction, capture, and public response inspection remain pending.
 
 ## Suggested articles
 

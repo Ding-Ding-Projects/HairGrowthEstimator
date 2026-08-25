@@ -31,8 +31,16 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 ## Visitor controls
 
-- [x] Implement three language modes and two independent playfulness controls.
-- [x] Implement persisted appearance, narration, scheduled settings, attention modes, and visitor-state export/import.
+- [x] Add and source-verify the frozen L06 presentation contract and its exact runtime caller boundaries. The main focused suite returned 5 of 5 after a deliberate 0-of-5 red state, and the pure-contract suite returned 12 of 12 after deliberate caller mutations. This source-only milestone does not complete the composed interaction and capture items below.
+- [x] Complete the hand-written source-localization inventory with 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries plus 50 Cantonese article mirrors. The five focused localization tests pass after exact catalog-entry deletion and article-locale omission regressions were observed red.
+- [ ] Exercise English, playful Hong Kong-style Cantonese, and compact bilingual presentation across every website-owned visible and accessible message in the composed website, then capture the three modes.
+- [ ] Exercise the source-present independent persisted English and Cantonese funny levels 1 through 5 across information, progress, success, warning, error, destructive, security, and accessibility messages, with exact factual-placeholder parity at every level.
+- [ ] Exercise the shared user-renamable School mode record across same-origin tabs, prove complete live suppression and restoration, and record the website's cross-product browser-storage limitation.
+- [ ] Exercise narrator opt-in, three narrated-language choices, stable installed voice identities, delayed enumeration, rate and pitch, serialized speech, explicit assistive-technology yielding, and every unavailable or partial state.
+- [ ] Exercise scheduled language and appearance rules across date, timezone, equal-time, cross-midnight, weekday, priority, base-restoration, API, and Home Assistant boundaries, including browser credential and CORS limitations.
+- [ ] Exercise the exact 10 percent public-catalog startup surprise across every eligibility and suppression condition, with no opt-out control and no duplicate draw in one launch.
+- [ ] Exercise all five independent default-off attention accommodations, their combinations, persistence, factual timing, School mode interaction, reduced motion, explicit next action, momentum snooze, keyboard use, and screen-reader states.
+- [ ] Complete persisted appearance and visitor-state export/import behavior through the composed website. Their existing source presence does not establish built interaction or capture evidence.
 - [x] Implement browser-style navigation, command search, contextual menus, local notifications, and history.
 - [x] Implement an advanced regular-expression workbench beside registered search surfaces.
 - [x] Implement browser-local demonstrations for locks, authentication codes, file conversion, and local Ollama mediation with explicit limitations.
@@ -52,6 +60,7 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 - [x] Keep the installer state disabled until an immutable release manifest exists.
 - [x] Add a 65,536-byte fatal-UTF-8 installer-manifest input boundary and repeat complete manifest validation in the runtime, with focused red-then-green source proof.
+- [x] Consume release identity only from the fixed four-file `dist/terminal-transfer` handoff, validate its exact copied-file receipt and nested source bindings, reread the published GitHub release and Setup asset, and derive release-bound front-screen provenance from the verified terminal installer. The four focused checks passed after a deliberate 0-of-4 red state.
 - [ ] Exercise a real immutable installer manifest through composition and the built download control.
 - [x] Document the `Classic Har Gow · 蝦餃` release code name and public catalog record.
 - [ ] Add release workflow wiring only after feature work is integrated.
@@ -64,6 +73,7 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 - [x] Add source-level structure, provenance, responsive, privacy, and local-asset checks.
 - [x] Add hand-written feature and regular-expression-builder inventories.
+- [x] Add an exact hand-written localization inventory with deliberate catalog-entry deletion and article-locale omission regressions.
 - [x] Demonstrate the two named deliberate source breaks for provenance and the current-strip builder registration.
 - [x] Add focused correctness tests and a deliberate red-then-green source-boundary regression for baseline, chronology, concurrent storage, and CSV or TSV behavior.
 - [ ] Complete deliberate red-then-green coverage for every required inventory boundary. The current evidence is partial.

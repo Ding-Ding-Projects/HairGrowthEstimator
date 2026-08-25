@@ -287,12 +287,17 @@
     assertString(value.displayName, 'Display name', 120, { minimum: 1 });
     if (!['card', 'full'].includes(value.paletteSize)) throw new Error('Command palette size is unsupported.');
     assertBoolean(value.reducedMotion, 'Reduced motion setting');
-    assertExactFields(value.narrator, ['enabled', 'voiceEn', 'voiceYue', 'rate', 'pitch'], 'narrator settings');
+    assertExactFields(value.narrator, ['schemaVersion', 'enabled', 'language', 'voiceURIEn', 'voiceURIYue', 'rate', 'pitch', 'assistiveTechnologyActive', 'quietHours', 'reducedSound'], 'narrator settings');
+    if (value.narrator.schemaVersion !== 1) throw new Error('Narrator settings version is unsupported.');
     assertBoolean(value.narrator.enabled, 'Narrator enabled setting');
-    assertString(value.narrator.voiceEn, 'English narrator voice identity', 512, { minimum: 1 });
-    assertString(value.narrator.voiceYue, 'Cantonese narrator voice identity', 512, { minimum: 1 });
+    if (!['en', 'yue', 'both'].includes(value.narrator.language)) throw new Error('Narrator language is unsupported.');
+    assertString(value.narrator.voiceURIEn, 'English narrator voice identity', 512, { minimum: 1 });
+    assertString(value.narrator.voiceURIYue, 'Cantonese narrator voice identity', 512, { minimum: 1 });
     assertNumber(value.narrator.rate, 'Narrator rate', 0.1, 10);
     assertNumber(value.narrator.pitch, 'Narrator pitch', 0, 2);
+    assertBoolean(value.narrator.assistiveTechnologyActive, 'Narrator assistive-technology state');
+    assertBoolean(value.narrator.quietHours, 'Narrator quiet-hours state');
+    assertBoolean(value.narrator.reducedSound, 'Narrator reduced-sound state');
     assertExactFields(value.logo, ['preset', 'customLogoData', 'fit', 'background'], 'logo settings');
     if (!['strand', 'ruler', 'monogram'].includes(value.logo.preset)) throw new Error('Logo preset is unsupported.');
     assertString(value.logo.customLogoData, 'Custom logo data', 1_500_000);
@@ -374,16 +379,53 @@
   }
 
   function validateSchedule(record, label) {
-    assertExactFields(record, ['id', 'label', 'start', 'end', 'days', 'theme', 'enabled', 'createdAt'], label);
+    assertExactFields(record, ['id', 'label', 'enabled', 'priority', 'startDate', 'endDate', 'start', 'end', 'everyDay', 'days', 'settings', 'source', 'createdAt'], label);
     assertIdentifier(record.id, `${label} identifier`);
     assertString(record.label, `${label} name`, 80, { minimum: 1 });
+    if (/[\u0000-\u001f\u007f]/.test(record.label)) throw new Error(`${label} name contains unsupported control characters.`);
+    assertBoolean(record.enabled, `${label} enabled state`);
+    assertNumber(record.priority, `${label} priority`, -1000, 1000, { integer: true });
+    assertString(record.startDate, `${label} start date`, 10, { pattern: /^(?:|\d{4}-\d{2}-\d{2})$/ });
+    assertString(record.endDate, `${label} end date`, 10, { pattern: /^(?:|\d{4}-\d{2}-\d{2})$/ });
+    for (const [name, dateText] of [['start', record.startDate], ['end', record.endDate]]) {
+      if (!dateText) continue;
+      const [year, month, day] = dateText.split('-').map(Number);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) throw new Error(`${label} ${name} date is not a real calendar date.`);
+    }
+    if (record.startDate && record.endDate && record.startDate > record.endDate) throw new Error(`${label} date range is reversed.`);
     assertString(record.start, `${label} start`, 5, { minimum: 5, pattern: /^\d{2}:\d{2}$/ });
     assertString(record.end, `${label} end`, 5, { minimum: 5, pattern: /^\d{2}:\d{2}$/ });
+    for (const [name, time] of [['start', record.start], ['end', record.end]]) {
+      const [hour, minute] = time.split(':').map(Number);
+      if (hour > 23 || minute > 59) throw new Error(`${label} ${name} time is invalid.`);
+    }
+    assertBoolean(record.everyDay, `${label} every-day state`);
     const days = validateArray(record.days, `${label} days`, 7, (day, dayLabel) => assertNumber(day, dayLabel, 0, 6, { integer: true }));
-    if (!days.length || new Set(days).size !== days.length) throw new Error(`${label} days must be unique and nonempty.`);
-    if (!['dark', 'light', 'contrast'].includes(record.theme)) throw new Error(`${label} theme is unsupported.`);
-    assertBoolean(record.enabled, `${label} enabled state`);
+    if (new Set(days).size !== days.length || (!record.everyDay && !days.length)) throw new Error(`${label} days must be unique and selected when every day is off.`);
+    assertExactFields(record.settings, ['language', 'theme', 'density', 'accent', 'fontScale', 'motion'], `${label} settings`);
+    if (!['unchanged', 'en', 'yue', 'both'].includes(record.settings.language)) throw new Error(`${label} language is unsupported.`);
+    if (!['unchanged', 'dark', 'light', 'contrast'].includes(record.settings.theme)) throw new Error(`${label} theme is unsupported.`);
+    if (!['unchanged', 'compact', 'comfortable', 'spacious'].includes(record.settings.density)) throw new Error(`${label} density is unsupported.`);
+    if (record.settings.accent !== 'unchanged' && !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(record.settings.accent)) throw new Error(`${label} accent is unsupported.`);
+    assertNumber(record.settings.fontScale, `${label} font scale`, 0.75, 2);
+    if (!['unchanged', 'full', 'reduced'].includes(record.settings.motion)) throw new Error(`${label} motion is unsupported.`);
+    assertExactFields(record.source, ['kind', 'url', 'entityId'], `${label} source`);
+    if (!['local', 'api', 'homeAssistant'].includes(record.source.kind)) throw new Error(`${label} source kind is unsupported.`);
+    assertString(record.source.url, `${label} source URL`, 512);
+    assertString(record.source.entityId, `${label} entity identifier`, 160);
+    if (record.source.kind === 'local' && (record.source.url || record.source.entityId)) throw new Error(`${label} local source cannot carry external fields.`);
+    if (record.source.kind !== 'local' && !record.source.url) throw new Error(`${label} external source URL is required.`);
+    if (record.source.kind !== 'local') {
+      let sourceUrl;
+      try { sourceUrl = new URL(record.source.url); } catch { throw new Error(`${label} source URL is invalid.`); }
+      const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(sourceUrl.hostname);
+      if (sourceUrl.username || sourceUrl.password || sourceUrl.hash || (sourceUrl.protocol !== 'https:' && !(sourceUrl.protocol === 'http:' && loopback))) throw new Error(`${label} source URL is unsafe.`);
+    }
+    if (record.source.kind === 'homeAssistant' && !/^(?:binary_sensor|input_boolean)\.[a-z0-9_]+$/.test(record.source.entityId)) throw new Error(`${label} Home Assistant entity is invalid.`);
+    if (record.source.kind === 'api' && record.source.entityId) throw new Error(`${label} API source cannot carry a Home Assistant entity.`);
     assertString(record.createdAt, `${label} creation time`, 32, { minimum: 20, pattern: ISO_PATTERN });
+    if (!Number.isFinite(Date.parse(record.createdAt))) throw new Error(`${label} creation time is not a real UTC timestamp.`);
     return cloneSafe(record);
   }
 
@@ -480,6 +522,63 @@
     assertString(value.type, 'Conversion media type', 120, { minimum: 1, pattern: /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i });
     assertString(value.sourceName, 'Conversion source name', 120, { minimum: 1 });
     return cloneSafe(value);
+  }
+
+  function hasExactOwnFields(value, fields) {
+    if (!isObject(value)) return false;
+    const keys = Object.keys(value);
+    return keys.length === fields.length && fields.every((field) => Object.hasOwn(value, field));
+  }
+
+  function migrateLegacyPresentationState(value) {
+    if (!isObject(value)) return value;
+    const candidate = cloneSafe(value);
+    const legacyNarratorFields = ['enabled', 'voiceEn', 'voiceYue', 'rate', 'pitch'];
+    if (isObject(candidate.settings) && hasExactOwnFields(candidate.settings.narrator, legacyNarratorFields)) {
+      const narrator = candidate.settings.narrator;
+      candidate.settings.narrator = {
+        schemaVersion: 1,
+        enabled: narrator.enabled,
+        language: candidate.settings.language,
+        voiceURIEn: narrator.voiceEn,
+        voiceURIYue: narrator.voiceYue,
+        rate: narrator.rate,
+        pitch: narrator.pitch,
+        assistiveTechnologyActive: false,
+        quietHours: false,
+        reducedSound: false
+      };
+    }
+    const legacyScheduleFields = ['id', 'label', 'start', 'end', 'days', 'theme', 'enabled', 'createdAt'];
+    if (Array.isArray(candidate.schedules) && isObject(candidate.settings)) {
+      candidate.schedules = candidate.schedules.map((record) => {
+        if (!hasExactOwnFields(record, legacyScheduleFields)) return record;
+        const everyDay = Array.isArray(record.days) && record.days.length === 7 && [0, 1, 2, 3, 4, 5, 6].every((day) => record.days.includes(day));
+        return {
+          id: record.id,
+          label: record.label,
+          enabled: record.enabled,
+          priority: 0,
+          startDate: '',
+          endDate: '',
+          start: record.start,
+          end: record.end,
+          everyDay,
+          days: cloneSafe(record.days),
+          settings: {
+            language: 'unchanged',
+            theme: record.theme,
+            density: 'unchanged',
+            accent: candidate.settings.accent,
+            fontScale: candidate.settings.fontScale,
+            motion: 'unchanged'
+          },
+          source: { kind: 'local', url: '', entityId: '' },
+          createdAt: record.createdAt
+        };
+      });
+    }
+    return candidate;
   }
 
   function validateBrowserState(value) {
@@ -606,9 +705,9 @@
       assertNumber(parsed.revision, 'Storage revision', 0, Number.MAX_SAFE_INTEGER, { integer: true });
       assertIdentifier(parsed.writerId, 'Storage writer identity');
       if (parsed.writtenAt !== null) assertString(parsed.writtenAt, 'Storage write time', 32, { minimum: 20, pattern: ISO_PATTERN });
-      return { storageEnvelopeSchema: 1, revision: parsed.revision, writerId: parsed.writerId, writtenAt: parsed.writtenAt, state: validateBrowserState(parsed.state), legacy: false };
+      return { storageEnvelopeSchema: 1, revision: parsed.revision, writerId: parsed.writerId, writtenAt: parsed.writtenAt, state: validateBrowserState(migrateLegacyPresentationState(parsed.state)), legacy: false };
     }
-    const state = validateBrowserState(parsed);
+    const state = validateBrowserState(migrateLegacyPresentationState(parsed));
     return { storageEnvelopeSchema: 1, revision: 0, writerId: 'legacy-unversioned-state', writtenAt: null, state, legacy: true };
   }
 

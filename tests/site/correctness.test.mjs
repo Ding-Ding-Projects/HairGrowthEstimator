@@ -88,7 +88,7 @@ function auditCorrectnessBoundaries({ app, template, contract, inventory }) {
   const required = [
     [template, '<script src="state-contract.js" defer></script>', 'state contract script'],
     [app, 'reconcileEstimatorBaseline()', 'baseline reconciliation'],
-    [app, "window.addEventListener('storage'", 'storage event reconciliation'],
+    [app, "window.addEventListener('storage', handleStateStorageEvent)", 'storage event reconciliation'],
     [app, 'validateDateNotFuture(', 'future date validation'],
     [app, "serializeDelimitedExport(record, format)", 'faithful delimited export'],
     [contract, 'createStateCoordinator', 'state transaction coordinator'],
@@ -242,7 +242,7 @@ test('correctness boundary regression turns red and restores green', async () =>
   assert.match(app, /function createWriterIdentity\(\) \{\s+const created = crypto\.randomUUID\(\);/);
   assert.doesNotMatch(app, /sessionStorage\.getItem\(WRITER_SESSION_KEY\)/);
   assert.doesNotMatch(app, /localStorage\.setItem\(STATE_KEY/);
-  const broken = { ...sources, app: app.replace("window.addEventListener('storage'", "window.addEventListener('storage-disabled'") };
+  const broken = { ...sources, app: app.replace("window.addEventListener('storage', handleStateStorageEvent)", "window.addEventListener('storage-disabled', handleStateStorageEvent)") };
   assert.throws(() => auditCorrectnessBoundaries(broken), /storage event reconciliation/);
   assert.doesNotThrow(() => auditCorrectnessBoundaries(sources));
 });

@@ -15,7 +15,10 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - Detailed categorized documentation and hand-written completeness inventories.
 - Deterministic generation of a genuine product-logo social preview.
 - Source-level verification with deliberate red-then-green negative regressions.
+- A frozen browser presentation contract for three language modes, eight factual message categories at five independent funny levels, shared School mode suppression, narrator admission and serialized tracks, bounded scheduled settings, the exact startup-surprise predicate, and five independent attention accommodations.
 - Documentation for the accepted website hardening contract, including strict local JSON validation, positive export allowlisting, internal documentation links, bounded installer manifests, byte-level PNG inspection, Worker-isolated regular expressions, Content Security Policy, and accessibility findings 18 through 24.
+- Focused website articles for three-mode language presentation, five-level factual-copy parity, shared and user-renamable School mode behavior, narrator voices and yielding, scheduled local and external settings, the exact 10 percent startup surprise, and five independent attention accommodations.
+- Versioned Cantonese source catalogs with 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries, plus 50 complete article mirrors and an explicit completeness inventory.
 
 ### Fixed
 
@@ -40,6 +43,11 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - Runtime provenance handling now revalidates the complete installer contract, including exact version-tag matching, a 160-character filename bound, publication field types, positive IDs, and the immutable asset URL.
 - Hair-reference manifest input now has a 65,536-byte limit and fatal UTF-8 decoding before JSON parsing.
 - Local Ollama configuration now accepts only `http://127.0.0.1:11434` or `http://localhost:11434`, persists the normalized origin, and uses the same boundary in runtime validation and Content Security Policy.
+- Language and attention source plus documentation now use the same precise schedule rules: browser-resolved IANA timezone input, inclusive dates, start-inclusive and end-exclusive time windows, equal-time all-day behavior, previous-start-date and weekday ownership after midnight, highest-priority selection, and later-list-position tie-breaking.
+- Narrator documentation now states that browsers cannot reliably detect an active screen reader, so the website must use explicit visitor-controlled yielding and must not claim automatic ducking.
+- Narrator admission now uses a 250 ms global debounce, fixed per-category cooldowns, and an urgent error path that is never delayed by those limits.
+- External schedule documentation now distinguishes session-only in-memory Home Assistant credentials from an operating-system vault and reports CORS or missing-mediator limitations without claiming that remote settings were applied.
+- Release-bound composition now accepts only the fixed four-file `dist/terminal-transfer` handoff, validates exact receipt hashes and nested source bindings, rereads the published GitHub release and Setup asset, and derives visible version and updated-at values from the verified terminal installer instead of requiring the tracked package version to impersonate a release version.
 
 ### Security and privacy
 
@@ -49,8 +57,11 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - The composer is the only source consumer configured for canonical hair-reference images from the root asset authority. The source images are not present in this checkout, and no duplicate authority was added.
 - Private visitor settings remain in local browser storage and can be cleared by the visitor.
 - Same-origin coordination stays local to the browser profile. It does not synchronize data to another device, service, or network provider.
+- External schedule sources accept HTTPS or exact loopback HTTP, reject embedded credentials, fragments, and redirects, limit responses to 16 KiB with fatal UTF-8 and bounded JSON parsing, time out after 3 seconds, and keep Home Assistant credentials only in tab memory. Browser CORS and the static Content Security Policy still determine whether a real request can proceed.
+- Saved narrator and theme-only schedule records from the preceding website version now migrate through exact legacy shapes before strict current-schema validation, retaining unrelated visitor state while malformed legacy records still fail closed.
 - Normalized CSV and TSV exports preserve the already redacted record and repeat the omission statement on every row.
-- The strict security contract and active browser consumers now implement duplicate-key-aware JSON parsing, bounded personal-vocabulary validation, complete browser-state and appearance validation, sanitized import construction, bounded stored-envelope parsing, and a positive export allowlist. The complete focused hardening suite reports 11 passed, 0 failed, and 0 skipped after restoration. Its latest six-boundary adversarial fixture reported 5 passed and 6 failed before restoration. Separate personal-vocabulary size-order, status-and-action, owned-copy exemption, and external-scanner fixtures each reported one failure before restoration and one pass afterward. These focused results are partial negative-regression evidence, not complete inventory proof.
+- The strict security contract and active browser consumers now implement duplicate-key-aware JSON parsing, bounded personal-vocabulary validation, complete browser-state and appearance validation, sanitized import construction, bounded stored-envelope parsing, and a positive export allowlist. The complete focused hardening suite reports 12 passed, 0 failed, and 0 skipped after restoration. Its latest six-boundary adversarial fixture reported 5 passed and 6 failed before restoration. Separate personal-vocabulary size-order, status-and-action, owned-copy exemption, and external-scanner fixtures each reported one failure before restoration and one pass afterward. These focused results are partial negative-regression evidence, not complete inventory proof.
+- The final complete website source suite reports 55 passed, 0 failed, and 0 skipped with the current private vocabulary validated through an external value-free path.
 
 ### Known evidence gaps
 
@@ -60,3 +71,4 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - The final three-check repair subset was red 3 of 3 when its exact article-focus, bounded manifest-reader, and runtime installer-validation boundaries were removed, then passed 3 with 0 failed and 0 skipped after restoration. The full focused hardening suite and integrated service-counterpart audit now pass, but complete negative-regression coverage for every inventory, localization, interaction, and capture boundary remains pending. The counterpart audit deliberately breaks only the server health-route boundary, while the other accepted fixtures cover only their named source boundaries.
 - Website source parity is implemented through the shared calculator and deterministic vectors. Desktop and core consumption, integrated cross-surface proof, and built-artifact interaction remain pending for the adjustable 1.0 cm per month default and both calculations that use the canonical 30.436875-day month.
 - The final README capture update remains pending and is not part of this documentation-only lane.
+- L06 source integration is present. The main focused source-boundary test reports 5 passed after its deliberate 0-of-5 red state. The final pure-contract test reports 12 passed, 0 failed, 0 skipped, and exit code 0. The localization suite reports 5 passed after exact catalog-entry deletion and article-locale omission checks turned red. The terminal-transfer provenance suite reports 4 passed after its deliberate 0-of-4 red state. Composed language, School mode, narrator, schedule, surprise, attention, and real terminal-release interactions plus their capture evidence remain pending.
