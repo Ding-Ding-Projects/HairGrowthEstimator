@@ -65,7 +65,12 @@ class LocalHistory {
     return operation;
   }
 
+  async flush() {
+    await this.queue;
+  }
+
   async list(limit = 200) {
+    await this.flush();
     await this.ensure();
     const count = Math.max(1, Math.min(1000, Number(limit) || 200));
     const output = await this.git(['log', `-${count}`, '--date=iso-strict', '--format=%H%x1f%aI%x1f%s']);
@@ -78,6 +83,7 @@ class LocalHistory {
 
   async read(commit) {
     if (!/^[0-9a-f]{40}$/.test(String(commit || ''))) throw new TypeError('History commit is invalid.');
+    await this.flush();
     await this.ensure();
     const json = await this.git(['show', `${commit}:snapshot.json`]);
     return JSON.parse(json);

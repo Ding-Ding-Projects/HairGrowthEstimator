@@ -7,9 +7,9 @@ const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { atomicWriteFile, atomicWriteJson } = require('./core/atomic');
-const { buildSshArguments } = require('./core/ssh');
+const { buildSshArguments, resolveServiceBaseUrl } = require('./core/ssh');
 const { validateProvenance } = require('./core/provenance');
-const { createDefaultState, validateState } = require('./core/state');
+const { StateStore, drainStateAndHistory } = require('./core/state-store');
 const { LocalVault } = require('./core/vault');
 const { LocalHistory } = require('./core/history');
 
@@ -25,8 +25,11 @@ let sshProcess = null;
 let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
 let localVault = null;
 let localHistory = null;
+let stateStore = null;
 let lastSchoolRecord = '';
 let schoolPoll = null;
+let shutdownStarted = false;
+let shutdownReady = false;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -94,24 +97,15 @@ function redactedHistoryState(state) {
 }
 
 async function readState() {
-  try {
-    const parsed = JSON.parse(await fs.readFile(userDataPath('hair-growth.json'), 'utf8'));
-    return validateState(parsed, todayIso());
-  } catch (error) {
-    if (error.code === 'ENOENT' || error.name === 'SyntaxError' || error instanceof TypeError || error instanceof RangeError) {
-      return createDefaultState(todayIso());
-    }
-    throw error;
-  }
+  return stateStore.read();
 }
 
 async function writeState(input, event = 'Application state updated') {
-  const state = validateState(input, todayIso());
-  await atomicWriteJson(userDataPath('hair-growth.json'), state, { maxBytes: 1024 * 1024 });
-  localHistory.record(event, redactedHistoryState(state)).catch((error) => {
-    mainWindow?.webContents.send('history:error', { message: error.message });
-  });
-  return state;
+  const result = await stateStore.write(input, event);
+  if (result.history.status === 'degraded' || result.history.status === 'unavailable') {
+    mainWindow?.webContents.send('history:error', { message: result.history.message });
+  }
+  return result.state;
 }
 
 async function readProvenance() {
@@ -129,13 +123,6 @@ async function readProvenance() {
     }
   } catch {}
   return { ...validateProvenance(raw, app.getVersion()), release };
-}
-
-function validatedServerUrl(raw) {
-  const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol)) throw new TypeError('Only HTTP or HTTPS server URLs are supported.');
-  if (url.username || url.password) throw new TypeError('Credentials must not be embedded in the server URL.');
-  return url;
 }
 
 async function boundedFetch(url, options = {}) {
@@ -171,7 +158,7 @@ async function boundedFetch(url, options = {}) {
 }
 
 async function apiRequest(request) {
-  const base = validatedServerUrl(request.serverUrl);
+  const base = resolveServiceBaseUrl(request.sync, sshState);
   const endpoint = String(request.endpoint || '');
   if (!/^\/(?:health|version|api\/profiles\/[a-zA-Z0-9_-]{1,64}(?:\/haircuts(?:\/[a-zA-Z0-9-]{8,64})?)?)$/.test(endpoint)) {
     throw new TypeError('Service endpoint is not allowlisted.');
@@ -226,7 +213,11 @@ async function startSshTunnel(config) {
     const timer = setTimeout(() => {
       if (sshProcess !== child || settled) return;
       settled = true;
-      const state = sendSshState({ status: 'connected', message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.` });
+      const state = sendSshState({
+        status: 'connected',
+        localForwardPort: Number(config.localForwardPort),
+        message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.`
+      });
       resolve(state);
     }, 1200);
     child.stderr.on('data', (chunk) => { errorText = `${errorText}${chunk.toString('utf8')}`.slice(-2000); });
@@ -476,6 +467,12 @@ function registerIpc() {
 app.whenReady().then(async () => {
   localVault = new LocalVault({ filePath: userDataPath('credentials.bin'), safeStorage });
   localHistory = new LocalHistory(userDataPath('history'));
+  stateStore = new StateStore({
+    filePath: userDataPath('hair-growth.json'),
+    history: localHistory,
+    today: todayIso,
+    redact: redactedHistoryState
+  });
   registerUpdaterEvents();
   registerIpc();
   createWindow();
@@ -483,9 +480,23 @@ app.whenReady().then(async () => {
   schoolPoll = setInterval(() => { pollSchoolRecord().catch(() => {}); }, 1500);
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   if (schoolPoll) clearInterval(schoolPoll);
-  if (sshProcess) sshProcess.kill('SIGTERM');
+  schoolPoll = null;
+  if (shutdownReady) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  Promise.resolve()
+    .then(() => drainStateAndHistory(stateStore, localHistory))
+    .then(() => stopSshTunnel())
+    .catch((error) => {
+      mainWindow?.webContents.send('shutdown:error', { message: error?.message || String(error) });
+    })
+    .finally(() => {
+      shutdownReady = true;
+      app.quit();
+    });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

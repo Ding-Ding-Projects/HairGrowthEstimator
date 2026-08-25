@@ -164,7 +164,7 @@ function validateProfile(input) {
     name: name.trim(),
     baselineLengthCm: readMeasurement(source, { canonicalKey: 'baselineLengthCm', displayKey: 'baselineLength', min: 0, max: 300 }),
     baselineDate: validateIsoDate(source.baselineDate, 'baselineDate'),
-    growthRateCmPerMonth: readMeasurement(source, { canonicalKey: 'growthRateCmPerMonth', displayKey: 'growthRatePerMonth', min: 0, max: 10 }),
+    growthRateCmPerMonth: readMeasurement(source, { canonicalKey: 'growthRateCmPerMonth', displayKey: 'growthRatePerMonth', min: 0.05, max: 5 }),
     targetLengthCm: readMeasurement(source, { canonicalKey: 'targetLengthCm', displayKey: 'targetLength', min: 0, max: 300 }),
     displayUnit
   };
@@ -183,12 +183,18 @@ function validateHaircut(input, options = {}) {
   if (typeof id !== 'string' || !/^[a-zA-Z0-9-]{8,64}$/.test(id)) {
     throw httpError(400, 'Haircut id must use 8 to 64 letters, numbers, or hyphens.', 'invalid_haircut_id');
   }
+  const date = validateIsoDate(input.date, 'date');
+  const preCutLengthCm = readMeasurement(input, { canonicalKey: 'preCutLengthCm', displayKey: 'preCutLength', min: 0, max: 300 });
+  const postCutLengthCm = readMeasurement(input, { canonicalKey: 'postCutLengthCm', displayKey: 'postCutLength', min: 0, max: 300 });
+  if (postCutLengthCm > preCutLengthCm) {
+    throw httpError(400, 'postCutLengthCm must not exceed pre-cut length.', 'invalid_haircut_lengths');
+  }
   const timestamp = new Date().toISOString();
   return {
     id,
-    date: validateIsoDate(input.date, 'date'),
-    preCutLengthCm: readMeasurement(input, { canonicalKey: 'preCutLengthCm', displayKey: 'preCutLength', min: 0, max: 300, required: false }),
-    postCutLengthCm: readMeasurement(input, { canonicalKey: 'postCutLengthCm', displayKey: 'postCutLength', min: 0, max: 300 }),
+    date,
+    preCutLengthCm,
+    postCutLengthCm,
     note: note.trim(),
     createdAt: options.createdAt || timestamp,
     updatedAt: timestamp

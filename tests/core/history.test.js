@@ -31,3 +31,29 @@ test('unchanged local history state does not create a fake revision', async (t) 
   assert.equal(unchanged.recorded, false);
   assert.equal(unchanged.reason, 'unchanged');
 });
+
+test('history flush waits for the complete queued record operation', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hair-growth-history-'));
+  t.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const history = new LocalHistory(directory);
+  const originalEnsure = history.ensure.bind(history);
+  let releaseEnsure;
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const blocked = new Promise((resolve) => { releaseEnsure = resolve; });
+  history.ensure = async () => {
+    markStarted();
+    await blocked;
+    return originalEnsure();
+  };
+
+  const record = history.record('Queued profile change', { profile: { baselineLengthCm: 3 } });
+  await started;
+  let flushed = false;
+  const flush = history.flush().then(() => { flushed = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(flushed, false);
+  releaseEnsure();
+  await Promise.all([record, flush]);
+  assert.equal(flushed, true);
+});

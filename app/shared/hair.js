@@ -145,6 +145,61 @@
     };
   }
 
+  function manualBaselineFromProfile(profile) {
+    const valid = validateProfile(profile);
+    return {
+      baselineDate: valid.baselineDate,
+      baselineLengthCm: valid.baselineLengthCm
+    };
+  }
+
+  function normalizeManualBaseline(input, fallbackProfile) {
+    const fallback = manualBaselineFromProfile(fallbackProfile);
+    if (input === undefined || input === null) return fallback;
+    if (typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Manual baseline must be an object.');
+    return {
+      baselineDate: formatIsoDate(parseIsoDate(input.baselineDate, 'Manual baseline date')),
+      baselineLengthCm: round(boundedNumber(input.baselineLengthCm, 0, MAX_LENGTH_CM, 'Manual baseline length'))
+    };
+  }
+
+  function sortHaircutsNewest(haircuts) {
+    if (!Array.isArray(haircuts)) throw new TypeError('Haircuts must be an array.');
+    return haircuts
+      .map(normalizeHaircut)
+      .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
+  }
+
+  function reconcileBaseline(profile, haircuts, manualBaseline) {
+    const validProfile = validateProfile(profile);
+    const retainedManual = normalizeManualBaseline(manualBaseline, validProfile);
+    const [newest] = sortHaircutsNewest(haircuts);
+    return {
+      ...validProfile,
+      baselineDate: newest?.date || retainedManual.baselineDate,
+      baselineLengthCm: newest?.postCutLengthCm ?? retainedManual.baselineLengthCm
+    };
+  }
+
+  function preparePulledSnapshot(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Pulled snapshot must be an object.');
+    if (!Array.isArray(input.haircuts)) throw new TypeError('Pulled haircuts must be an array.');
+    if (input.haircuts.length > 5000) throw new RangeError('Pulled snapshot exceeds 5000 haircuts.');
+    const validProfile = validateProfile(input.profile);
+    const haircuts = input.haircuts.map((haircut) => {
+      if (typeof haircut?.id !== 'string' || !/^[a-zA-Z0-9-]{8,64}$/.test(haircut.id)) {
+        throw new TypeError('Pulled haircut ID is invalid.');
+      }
+      return normalizeHaircut(haircut);
+    }).sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
+    const manualBaseline = manualBaselineFromProfile(validProfile);
+    return {
+      profile: reconcileBaseline(validProfile, haircuts, manualBaseline),
+      haircuts,
+      manualBaseline
+    };
+  }
+
   function haircutToCsv(haircuts) {
     const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = [['id', 'date', 'preCutLengthCm', 'postCutLengthCm', 'note']];
@@ -197,6 +252,11 @@
     futureProjections,
     stageForLength,
     normalizeHaircut,
+    manualBaselineFromProfile,
+    normalizeManualBaseline,
+    sortHaircutsNewest,
+    reconcileBaseline,
+    preparePulledSnapshot,
     planHaircutSync,
     haircutToCsv,
     haircutToMarkdown,

@@ -12,7 +12,9 @@ const {
   MAX_BODY_BYTES,
   createHairGrowthService,
   loadConfig,
-  timingSafeApiKeyEqual
+  timingSafeApiKeyEqual,
+  validateHaircut,
+  validateProfile
 } = require('../../server/service');
 
 const API_KEY = 'focused-test-key-0123456789abcdef';
@@ -26,6 +28,34 @@ async function readResponse(response) {
     body: text ? JSON.parse(text) : null
   };
 }
+
+test('service profile growth-rate validation matches the desktop 0.05 through 5 cm range', () => {
+  const source = {
+    baselineLengthCm: 1,
+    baselineDate: '2026-08-01',
+    growthRateCmPerMonth: 1,
+    targetLengthCm: 20,
+    displayUnit: 'cm'
+  };
+  assert.equal(validateProfile({ ...source, growthRateCmPerMonth: 0.05 }).growthRateCmPerMonth, 0.05);
+  assert.equal(validateProfile({ ...source, growthRateCmPerMonth: 5 }).growthRateCmPerMonth, 5);
+  assert.throws(() => validateProfile({ ...source, growthRateCmPerMonth: 0.0499 }), /between 0.05 and 5/);
+  assert.throws(() => validateProfile({ ...source, growthRateCmPerMonth: 5.0001 }), /between 0.05 and 5/);
+});
+
+test('service haircut validation requires both lengths and forbids apparent growth during a cut', () => {
+  const source = {
+    id: 'cut-00000001',
+    date: '2026-08-20',
+    preCutLengthCm: 10,
+    postCutLengthCm: 4,
+    note: ''
+  };
+  assert.equal(validateHaircut(source).preCutLengthCm, 10);
+  const { preCutLengthCm: _omitted, ...withoutPreCutLength } = source;
+  assert.throws(() => validateHaircut(withoutPreCutLength), /preCutLengthCm is required/);
+  assert.throws(() => validateHaircut({ ...source, postCutLengthCm: 10.0001 }), /must not exceed pre-cut length/);
+});
 
 test('hair growth HTTP service contract', async (t) => {
   const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'hair-growth-service-'));
@@ -245,7 +275,7 @@ test('hair growth HTTP service contract', async (t) => {
 
     const outOfRange = await request('/api/profiles/primary/haircuts', {
       method: 'POST',
-      body: { date: '2026-08-22', postCutLengthCm: 300.0001, note: '' }
+      body: { date: '2026-08-22', preCutLengthCm: 300, postCutLengthCm: 300.0001, note: '' }
     });
     assert.equal(outOfRange.status, 400);
     assert.equal(outOfRange.body.code, 'invalid_measurement');

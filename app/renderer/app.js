@@ -21,6 +21,8 @@
   let growthAnimation = null;
   let confirmAction = null;
   let saveTimer = null;
+  let saveQueue = Promise.resolve();
+  let stateMutationSequence = 0;
   let narratorQueue = [];
   let narratorSpeaking = false;
   let sessionOpenedAt = Date.now();
@@ -56,12 +58,17 @@
     {
       id: 'haircuts',
       title: 'Haircut resets and history',
-      body: `<h3>Haircut resets and history</h3><p>A haircut stores its date, estimated pre-cut length, measured post-cut length, and optional note. Saving it resets the growth baseline to the post-cut length on that date. Editing preserves the record identity. Deletion uses a two-key and full-slider confirmation.</p><h4>Export</h4><p>JSON retains the complete structured record. CSV and Markdown preserve the visible haircut fields. Stored credentials and private vocabulary are never included.</p><h4>Suggested articles</h4><p>Hair growth estimation, Local version history, Private synchronization.</p>`
+      body: `<h3>Haircut resets and history</h3><p>A haircut requires its date, estimated pre-cut length, measured post-cut length, and an optional note. Post-cut length cannot exceed pre-cut length. After every create, edit, delete, or service pull, the chronologically newest haircut becomes the active baseline. If no haircut remains, the last manually entered baseline returns instead of being lost.</p><p>Editing preserves the record identity. Deletion uses a two-key and full-slider confirmation.</p><h4>Export</h4><p>JSON retains the active profile, retained manual fallback, and complete haircut records. CSV and Markdown preserve the visible haircut fields. Stored credentials and private vocabulary are never included.</p><h4>Suggested articles</h4><p>Hair growth estimation, Local version history, Private synchronization.</p>`
     },
     {
       id: 'sync',
       title: 'Private synchronization',
-      body: `<h3>Private synchronization</h3><p>Local mode requires no service. Direct private-LAN mode contacts only the URL you enter and stores an API key through operating-system protection. SSH mode invokes <code>ssh.exe</code> directly without a shell, enables BatchMode, requires an existing trusted host key, uses the persistent user known_hosts file, disables host-key updates, and tears down the child process when stopped or when the application exits.</p><h4>Security boundary</h4><p>The service refuses every non-loopback bind without a strong API key. It validates CORS origins, request sizes, timeouts, dates, lengths, counts, and methods. It never logs request bodies or secrets.</p><h4>Deterministic container build</h4><p>The Dockerfile pins the exact multi-platform Node base-image digest. Its build context is the bounded <code>server/</code> directory, with the root <code>Dockerfile</code> selected explicitly. Release builds target <code>linux/amd64</code>, pass the release version, commit SHA, and commit timestamp as <code>BUILD_VERSION</code>, <code>BUILD_REVISION</code>, and <code>SOURCE_DATE_EPOCH</code>, and export <code>hair-growth-api-1.0.0-linux-amd64.oci.tar</code> as an OCI archive. Registry publication is a separate optional action; local hosting never requires it.</p><h4>Suggested articles</h4><p>Haircut resets, Privacy and local credentials, Status and recovery.</p>`
+      body: `<h3>Private synchronization</h3><p>Local mode requires no service. Direct private-LAN mode contacts only the validated HTTP or HTTPS URL you enter and stores an API key through operating-system protection. SSH mode invokes <code>ssh.exe</code> directly without a shell, enables BatchMode, requires an existing trusted host key, uses the persistent user known_hosts file, disables host-key updates, and tears down the child process when stopped or when the application exits.</p><p>While SSH mode is selected, service traffic ignores the direct URL and uses only the validated loopback forward that matches the currently connected tunnel. A disconnected tunnel or changed local port is refused.</p><h4>Pull validation</h4><p>A downloaded profile and every downloaded haircut are validated together before any live state changes. An invalid growth rate, missing pre-cut length, post-cut length above pre-cut length, invalid identifier, or oversized record set leaves the existing local state unchanged.</p><h4>Security boundary</h4><p>The service accepts monthly growth rates from 0.05 through 5 cm, requires both haircut lengths, and refuses apparent growth during a cut. It refuses every non-loopback bind without a strong API key. It validates CORS origins, request sizes, timeouts, dates, lengths, counts, and methods. It never logs request bodies or secrets.</p><h4>Deterministic container build</h4><p>The Dockerfile pins the exact multi-platform Node base-image digest. Its build context is the bounded <code>server/</code> directory, with the root <code>Dockerfile</code> selected explicitly. Release builds target <code>linux/amd64</code>, pass the release version, commit SHA, and commit timestamp as <code>BUILD_VERSION</code>, <code>BUILD_REVISION</code>, and <code>SOURCE_DATE_EPOCH</code>, and export <code>hair-growth-api-1.0.0-linux-amd64.oci.tar</code> as an OCI archive. Registry publication is a separate optional action; local hosting never requires it.</p><h4>Suggested articles</h4><p>Haircut resets, Local persistence and version history, Privacy and local credentials.</p>`
+    },
+    {
+      id: 'persistence',
+      title: 'Local persistence and version history',
+      body: `<h3>Local persistence and version history</h3><p>Main-process saves run through one serialized queue. Each accepted write must carry the current authoritative revision; a stale candidate is refused rather than overwriting newer data. The primary state file is written atomically before a redacted local-history revision is attempted.</p><p>If local Git history cannot record a revision, the primary save remains valid and the application reports the history degradation. Orderly shutdown waits for both the state queue and history queue before closing, then stops any active SSH tunnel.</p><h4>Recovery boundary</h4><p>History snapshots omit SSH key paths, custom logo bytes, private vocabulary content, and credentials. Restoring revisions remains a separate user action; shutdown draining does not rewrite or prune history.</p><h4>Suggested articles</h4><p>Haircut resets and history, Private synchronization, Privacy and local credentials.</p>`
     },
     {
       id: 'privacy',
@@ -85,7 +92,7 @@
       version: '1.0.0',
       date: '2026-08-24',
       commit: 'pending-release-commit',
-      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
+      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
     }
   ];
 
@@ -143,17 +150,36 @@
     notify(context, message, 'error');
   }
 
+  function queueStateWrite(event) {
+    const mutationAtRequest = stateMutationSequence;
+    const candidate = copy(state);
+    const operation = saveQueue.then(async () => {
+      candidate.revision = state.revision;
+      const saved = await bridge.state.write(candidate, event);
+      if (stateMutationSequence === mutationAtRequest) {
+        state = saved;
+      } else {
+        state.revision = saved.revision;
+        state.updatedAt = saved.updatedAt;
+      }
+      return state;
+    });
+    saveQueue = operation.catch(() => {});
+    return operation;
+  }
+
   function scheduleSave(event = 'Settings changed') {
+    stateMutationSequence += 1;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      try { state = await bridge.state.write(state, event); } catch (error) { handleError(error, 'Local save failed'); }
+      try { await queueStateWrite(event); } catch (error) { handleError(error, 'Local save failed'); }
     }, 180);
   }
 
   async function saveNow(event) {
+    stateMutationSequence += 1;
     clearTimeout(saveTimer);
-    state = await bridge.state.write(state, event);
-    return state;
+    return queueStateWrite(event);
   }
 
   function applyTranslations() {
@@ -405,7 +431,8 @@
   function requestDeleteHaircuts(ids) {
     if (!ids.length) return notify('Nothing selected', 'Select at least one haircut first.', 'warning');
     openSuperConfirm(`Delete ${ids.length} haircut record${ids.length === 1 ? '' : 's'}`, `This permanently removes ${ids.length} selected local record${ids.length === 1 ? '' : 's'} from the active journal. A redacted version remains in local append-only history.`, async () => {
-      state.haircuts = state.haircuts.filter((item) => !ids.includes(item.id));
+      state.haircuts = Hair.sortHaircutsNewest(state.haircuts.filter((item) => !ids.includes(item.id)));
+      state.profile = Hair.reconcileBaseline(state.profile, state.haircuts, state.manualBaseline);
       await saveNow(`Deleted ${ids.length} haircut record${ids.length === 1 ? '' : 's'}`);
       renderHaircuts(); renderDashboard();
       notify('Haircuts deleted', `${ids.length} record${ids.length === 1 ? '' : 's'} removed.`, 'success');
@@ -770,7 +797,17 @@
 
   async function serviceRequest(endpoint, method = 'GET', body) {
     syncFromForm();
-    return bridge.server.request({ serverUrl: state.settings.sync.serverUrl, endpoint, method, body, timeoutMs: state.settings.sync.timeoutMs });
+    return bridge.server.request({
+      sync: {
+        mode: state.settings.sync.mode,
+        serverUrl: state.settings.sync.serverUrl,
+        ssh: { localForwardPort: state.settings.sync.ssh.localForwardPort }
+      },
+      endpoint,
+      method,
+      body,
+      timeoutMs: state.settings.sync.timeoutMs
+    });
   }
 
   async function checkOllama() {
@@ -821,13 +858,13 @@
     $('#quick-haircut').addEventListener('click', () => { switchTab('haircuts'); clearHaircutForm(); $('#haircut-date').focus(); });
     $('#growth-scrubber').addEventListener('input', () => updateVisual(Number($('#growth-scrubber').value)));
     $('#play-growth').addEventListener('click', () => { if (growthAnimation) { clearInterval(growthAnimation); growthAnimation = null; $('#play-growth').textContent = 'Play growth'; return; } let value = 0; $('#play-growth').textContent = 'Pause'; growthAnimation = setInterval(() => { value = value >= 30 ? 0 : value + .3; $('#growth-scrubber').value = value; updateVisual(value); }, state.settings.reducedMotion ? 1200 : 650); });
-    $('#profile-form').addEventListener('submit', async (event) => { event.preventDefault(); try { const unit = $('#display-unit').value; state.profile = Hair.validateProfile({ baselineDate: $('#baseline-date').value, baselineLengthCm: Hair.toCm($('#baseline-length').value, unit), growthRateCmPerMonth: Hair.toCm($('#growth-rate').value, unit), targetLengthCm: Hair.toCm($('#target-length').value, unit), displayUnit: unit }); await saveNow('Hair growth baseline changed'); renderDashboard(); notify(text('saved'), 'The growth baseline and target estimate were updated.', 'success'); } catch (error) { handleError(error, 'Profile is invalid'); } });
+    $('#profile-form').addEventListener('submit', async (event) => { event.preventDefault(); try { const unit = $('#display-unit').value; const requestedProfile = Hair.validateProfile({ baselineDate: $('#baseline-date').value, baselineLengthCm: Hair.toCm($('#baseline-length').value, unit), growthRateCmPerMonth: Hair.toCm($('#growth-rate').value, unit), targetLengthCm: Hair.toCm($('#target-length').value, unit), displayUnit: unit }); state.manualBaseline = Hair.manualBaselineFromProfile(requestedProfile); state.profile = Hair.reconcileBaseline(requestedProfile, state.haircuts, state.manualBaseline); await saveNow('Hair growth baseline changed'); renderDashboard(); notify(text('saved'), 'The manual fallback, growth rate, and target estimate were updated. The newest haircut remains the active baseline while one exists.', 'success'); } catch (error) { handleError(error, 'Profile is invalid'); } });
     $('#display-unit').addEventListener('change', () => { const old = state.profile.displayUnit; const next = $('#display-unit').value; ['baseline-length', 'growth-rate', 'target-length'].forEach((id) => { const input = $(`#${id}`); input.value = Hair.fromCm(Hair.toCm(input.value, old), next); }); state.profile.displayUnit = next; renderDashboard(); scheduleSave('Measurement unit changed'); });
     $('#reset-profile').addEventListener('click', fillProfileForm);
-    $('#haircut-form').addEventListener('submit', async (event) => { event.preventDefault(); try { const id = $('#haircut-id').value; const haircut = Hair.normalizeHaircut({ id: id || undefined, date: $('#haircut-date').value, preCutLengthCm: Hair.toCm($('#haircut-pre').value, state.profile.displayUnit), postCutLengthCm: Hair.toCm($('#haircut-post').value, state.profile.displayUnit), note: $('#haircut-note').value }); const existing = state.haircuts.findIndex((item) => item.id === haircut.id); if (existing >= 0) state.haircuts[existing] = haircut; else state.haircuts.push(haircut); state.haircuts.sort((a, b) => b.date.localeCompare(a.date)); state.profile.baselineDate = haircut.date; state.profile.baselineLengthCm = haircut.postCutLengthCm; await saveNow(existing >= 0 ? `Updated haircut ${haircut.date}` : `Recorded haircut ${haircut.date}`); clearHaircutForm(); renderHaircuts(); renderDashboard(); notify('Haircut saved', text('haircutSaved'), 'success'); } catch (error) { handleError(error, 'Haircut is invalid'); } });
+    $('#haircut-form').addEventListener('submit', async (event) => { event.preventDefault(); try { const id = $('#haircut-id').value; const haircut = Hair.normalizeHaircut({ id: id || undefined, date: $('#haircut-date').value, preCutLengthCm: Hair.toCm($('#haircut-pre').value, state.profile.displayUnit), postCutLengthCm: Hair.toCm($('#haircut-post').value, state.profile.displayUnit), note: $('#haircut-note').value }); const existing = state.haircuts.findIndex((item) => item.id === haircut.id); const nextHaircuts = existing >= 0 ? state.haircuts.map((item, index) => index === existing ? haircut : item) : [...state.haircuts, haircut]; state.haircuts = Hair.sortHaircutsNewest(nextHaircuts); state.profile = Hair.reconcileBaseline(state.profile, state.haircuts, state.manualBaseline); await saveNow(existing >= 0 ? `Updated haircut ${haircut.date}` : `Recorded haircut ${haircut.date}`); clearHaircutForm(); renderHaircuts(); renderDashboard(); notify('Haircut saved', text('haircutSaved'), 'success'); } catch (error) { handleError(error, 'Haircut is invalid'); } });
     $('#cancel-haircut-edit').addEventListener('click', clearHaircutForm); $('#haircut-search').addEventListener('input', renderHaircuts);
     $('#select-all-haircuts').addEventListener('click', () => $$('.haircut-select').forEach((input) => { input.checked = true; })); $('#delete-selected-haircuts').addEventListener('click', () => requestDeleteHaircuts(selectedHaircutIds()));
-    $$('[data-export]').forEach((button) => button.addEventListener('click', async () => { const format = button.dataset.export; try { const data = format === 'json' ? `${JSON.stringify({ schemaVersion: 1, unit: 'cm', profile: state.profile, haircuts: state.haircuts, omitted: ['credentials', 'personal vocabulary', 'custom logo source'] }, null, 2)}\n` : format === 'csv' ? Hair.haircutToCsv(state.haircuts) : Hair.haircutToMarkdown(state.haircuts); await bridge.files.export({ suggestedName: `haircuts.${format === 'markdown' ? 'md' : format}`, content: data }); notify('Export ready', `${format.toUpperCase()} export completed. Credentials and personal vocabulary were omitted.`, 'success'); } catch (error) { handleError(error, 'Export failed'); } }));
+    $$('[data-export]').forEach((button) => button.addEventListener('click', async () => { const format = button.dataset.export; try { const data = format === 'json' ? `${JSON.stringify({ schemaVersion: 2, unit: 'cm', profile: state.profile, manualBaseline: state.manualBaseline, haircuts: state.haircuts, omitted: ['credentials', 'personal vocabulary', 'custom logo source'] }, null, 2)}\n` : format === 'csv' ? Hair.haircutToCsv(state.haircuts) : Hair.haircutToMarkdown(state.haircuts); await bridge.files.export({ suggestedName: `haircuts.${format === 'markdown' ? 'md' : format}`, content: data }); notify('Export ready', `${format.toUpperCase()} export completed. Credentials and personal vocabulary were omitted.`, 'success'); } catch (error) { handleError(error, 'Export failed'); } }));
     $('#run-regex').addEventListener('click', runRegexWorkbench); $('#export-regex').addEventListener('click', () => bridge.files.export({ suggestedName: 'regex-snippet.json', content: `${JSON.stringify({ engine: 'ECMAScript RegExp', pattern: $('#regex-pattern').value, flags: $('#regex-flags').value, replacement: $('#regex-replacement').value, sample: $('#regex-sample').value }, null, 2)}\n` }).catch((error) => handleError(error, 'Regex export failed')));
     $('#choose-converter-source').addEventListener('click', async () => { try { converterSource = await bridge.files.chooseConverterSource(); if (converterSource.canceled) { converterSource = null; return; } $('#converter-source-state').textContent = `${converterSource.name} · ${converterSource.bytes} bytes`; $('#run-conversion').disabled = false; } catch (error) { handleError(error, 'Source selection failed'); } });
     $('#run-conversion').addEventListener('click', async () => { try { const result = await bridge.files.convert({ handle: converterSource.handle, adapter: selectedConverter }); if (!result.canceled) notify('Conversion completed', `${result.name}, ${result.bytes} bytes, passed post-write validation.`, 'success'); } catch (error) { handleError(error, 'Conversion failed'); } });
@@ -835,9 +872,10 @@
     $('#auth-form').addEventListener('submit', async (event) => { event.preventDefault(); try { await bridge.authenticator.add({ issuer: $('#auth-issuer').value, account: $('#auth-account').value, secret: $('#auth-secret').value, algorithm: $('#auth-algorithm').value, digits: Number($('#auth-digits').value), period: 30 }); event.currentTarget.reset(); await renderAuthenticators(); notify('Authenticator entry added', 'Pairing data was stored through operating-system protection.', 'success'); } catch (error) { handleError(error, 'Authenticator entry is invalid'); } });
     $('#server-test').addEventListener('click', async () => { try { const key = $('#server-api-key').value; if (key) { await bridge.secrets.setApiKey(key); $('#server-api-key').value = ''; } const result = await serviceRequest('/health'); $('#server-state').textContent = `Healthy ${result.version || ''}`; $('#server-state').className = 'state-chip success'; notify('Service connected', 'The configured hair length service answered its health endpoint.', 'success'); } catch (error) { $('#server-state').textContent = 'Connection failed'; $('#server-state').className = 'state-chip error'; handleError(error, 'Service connection failed'); } });
     $('#server-push').addEventListener('click', async () => { try { const id = $('#server-profile-id').value; await serviceRequest(`/api/profiles/${id}`, 'PUT', { profile: state.profile }); const remote = await serviceRequest(`/api/profiles/${id}`); for (const operation of Hair.planHaircutSync(state.haircuts, remote.haircuts || [])) { const endpoint = operation.method === 'PUT' ? `/api/profiles/${id}/haircuts/${operation.haircut.id}` : `/api/profiles/${id}/haircuts`; await serviceRequest(endpoint, operation.method, operation.haircut); } syncFromForm(); await saveNow('Service connection settings changed'); notify('Service sync sent', 'Local profile and haircut records were sent to the configured service.', 'success'); } catch (error) { handleError(error, 'Service sync failed'); } });
-    $('#server-pull').addEventListener('click', async () => { try { const result = await serviceRequest(`/api/profiles/${$('#server-profile-id').value}`); if (!result) throw new Error('No profile exists under that ID.'); state.profile = result.profile; state.haircuts = result.haircuts || []; await saveNow('Fetched profile from service'); renderDashboard(); renderHaircuts(); notify('Service data fetched', 'The local profile now matches the configured service record.', 'success'); } catch (error) { handleError(error, 'Service fetch failed'); } });
+    $('#server-pull').addEventListener('click', async () => { try { const result = await serviceRequest(`/api/profiles/${$('#server-profile-id').value}`); if (!result) throw new Error('No profile exists under that ID.'); const candidate = Hair.preparePulledSnapshot(result); state = { ...state, ...candidate }; await saveNow('Fetched profile from service'); renderDashboard(); renderHaircuts(); notify('Service data fetched', 'The validated local profile now matches the configured service record.', 'success'); } catch (error) { handleError(error, 'Service fetch failed'); } });
     $('#choose-ssh-key').addEventListener('click', async () => { const file = await bridge.files.chooseKey(); if (file) $('#ssh-key-file').value = file; }); $('#ssh-start').addEventListener('click', async () => { try { syncFromForm(); const result = await bridge.ssh.start(state.settings.sync.ssh); $('#ssh-state').textContent = result.status; scheduleSave('SSH connection settings changed'); } catch (error) { handleError(error, 'SSH tunnel failed'); } }); $('#ssh-stop').addEventListener('click', () => bridge.ssh.stop().catch((error) => handleError(error, 'SSH tunnel stop failed')));
     bridge.ssh.onState((value) => { $('#ssh-state').textContent = value.status; $('#ssh-state').className = `state-chip ${value.status === 'connected' ? 'success' : value.status === 'error' ? 'error' : ''}`; });
+    bridge.history.onError((value) => notify('Local history degraded', `${value.message} The primary state save remains valid.`, 'warning', false));
     $('#ollama-check').addEventListener('click', checkOllama); $('#ollama-refresh').addEventListener('click', () => refreshOllama().catch((error) => handleError(error, 'Model refresh failed'))); $('#ollama-chat-model').addEventListener('change', () => { $('#ollama-chat').disabled = !$('#ollama-chat-model').value; }); $('#ollama-chat').addEventListener('click', async () => { try { const result = await bridge.ollama.request({ endpoint: '/api/chat', method: 'POST', body: { model: $('#ollama-chat-model').value, stream: false, messages: [{ role: 'user', content: $('#ollama-prompt').value }], options: { temperature: 0.7 } }, timeoutMs: 120000 }); $('#ollama-response').textContent = result.message?.content || 'No response content.'; } catch (error) { handleError(error, 'Local chat failed'); } });
     $('#settings-search').addEventListener('input', () => $$('.settings-card').forEach((card) => card.classList.toggle('filtered-out', !matchesSearch($('#settings-search'), `${card.textContent} ${card.dataset.settingsKeywords}`))));
     $('#setting-language').addEventListener('change', () => { state.settings.language = $('#setting-language').value; applySettings(); scheduleSave('Language mode changed'); }); $('#funny-en').addEventListener('input', () => { state.settings.funnyEnglish = Number($('#funny-en').value); $('#funny-en-value').value = state.settings.funnyEnglish; scheduleSave('English funny level changed'); }); $('#funny-yue').addEventListener('input', () => { state.settings.funnyCantonese = Number($('#funny-yue').value); $('#funny-yue-value').value = state.settings.funnyCantonese; scheduleSave('Cantonese funny level changed'); }); $('#setting-emoji').addEventListener('change', () => { state.settings.showDialogEmoji = $('#setting-emoji').checked; scheduleSave('Dialog emoji setting changed'); });

@@ -38,6 +38,9 @@ test('target date and projections remain bounded', () => {
   assert.equal(projections.length, 13);
   assert.ok(projections.every((item, index) => !index || item.lengthCm >= projections[index - 1].lengthCm));
   assert.throws(() => Hair.validateProfile({ ...profile, growthRateCmPerMonth: 5.01 }), /between/);
+  assert.throws(() => Hair.validateProfile({ ...profile, growthRateCmPerMonth: 0.049 }), /between/);
+  assert.equal(Hair.validateProfile({ ...profile, growthRateCmPerMonth: 0.05 }).growthRateCmPerMonth, 0.05);
+  assert.equal(Hair.validateProfile({ ...profile, growthRateCmPerMonth: 5 }).growthRateCmPerMonth, 5);
 });
 
 test('haircut records preserve before and after lengths and refuse growth during a cut', () => {
@@ -82,4 +85,59 @@ test('server sync creates missing haircuts and updates matching records', () => 
     ['PUT', 'cut-existing'],
     ['POST', 'cut-new-one']
   ]);
+});
+
+test('newest haircut reconciliation is pure and retains the manual fallback', () => {
+  const manualBaseline = { baselineDate: '2026-01-01', baselineLengthCm: 1.5 };
+  const haircuts = [
+    { id: 'cut-older-one', date: '2026-04-10', preCutLengthCm: 6, postCutLengthCm: 2, note: 'Older' },
+    { id: 'cut-newer-one', date: '2026-07-20', preCutLengthCm: 7, postCutLengthCm: 0.8, note: 'Newer' }
+  ];
+  const originalProfile = structuredClone(profile);
+  const originalHaircuts = structuredClone(haircuts);
+
+  const newest = Hair.reconcileBaseline(profile, haircuts, manualBaseline);
+  assert.equal(newest.baselineDate, '2026-07-20');
+  assert.equal(newest.baselineLengthCm, 0.8);
+  assert.deepEqual(profile, originalProfile);
+  assert.deepEqual(haircuts, originalHaircuts);
+
+  const afterNewestDelete = Hair.reconcileBaseline(newest, [haircuts[0]], manualBaseline);
+  assert.equal(afterNewestDelete.baselineDate, '2026-04-10');
+  assert.equal(afterNewestDelete.baselineLengthCm, 2);
+
+  const afterAllDelete = Hair.reconcileBaseline(afterNewestDelete, [], manualBaseline);
+  assert.equal(afterAllDelete.baselineDate, manualBaseline.baselineDate);
+  assert.equal(afterAllDelete.baselineLengthCm, manualBaseline.baselineLengthCm);
+});
+
+test('pulled snapshots validate completely before returning a reconciled candidate', () => {
+  const current = {
+    profile: structuredClone(profile),
+    haircuts: [{ id: 'cut-current-one', date: '2026-02-10', preCutLengthCm: 3, postCutLengthCm: 1, note: 'Current' }],
+    manualBaseline: { baselineDate: '2026-01-01', baselineLengthCm: 1 }
+  };
+  const before = structuredClone(current);
+
+  assert.throws(() => Hair.preparePulledSnapshot({
+    profile: { ...profile, growthRateCmPerMonth: 5.01 },
+    haircuts: []
+  }), /between/);
+  assert.throws(() => Hair.preparePulledSnapshot({
+    profile,
+    haircuts: [{ id: 'cut-invalid-one', date: '2026-06-01', postCutLengthCm: 2, note: '' }]
+  }), /finite number/);
+  assert.deepEqual(current, before);
+
+  const candidate = Hair.preparePulledSnapshot({
+    profile: { ...profile, baselineDate: '2026-03-01', baselineLengthCm: 2 },
+    haircuts: [
+      { id: 'cut-pulled-old', date: '2026-05-01', preCutLengthCm: 5, postCutLengthCm: 2, note: '' },
+      { id: 'cut-pulled-new', date: '2026-08-01', preCutLengthCm: 6, postCutLengthCm: 1, note: '' }
+    ]
+  });
+  assert.equal(candidate.profile.baselineDate, '2026-08-01');
+  assert.equal(candidate.profile.baselineLengthCm, 1);
+  assert.deepEqual(candidate.manualBaseline, { baselineDate: '2026-03-01', baselineLengthCm: 2 });
+  assert.deepEqual(candidate.haircuts.map((item) => item.id), ['cut-pulled-new', 'cut-pulled-old']);
 });

@@ -9,7 +9,7 @@ const TAB_DOCKS = new Set(['left', 'right', 'top', 'bottom']);
 function createDefaultState(todayIso) {
   const today = HairMath.formatIsoDate(HairMath.parseIsoDate(todayIso, 'Today'));
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     revision: 0,
     profile: {
       baselineLengthCm: 1.2,
@@ -17,6 +17,10 @@ function createDefaultState(todayIso) {
       growthRateCmPerMonth: 1,
       targetLengthCm: 12,
       displayUnit: 'cm'
+    },
+    manualBaseline: {
+      baselineLengthCm: 1.2,
+      baselineDate: today
     },
     haircuts: [],
     settings: {
@@ -109,11 +113,14 @@ function validateState(input, todayIso) {
   const sync = settings.sync && typeof settings.sync === 'object' ? settings.sync : {};
   const ssh = sync.ssh && typeof sync.ssh === 'object' ? sync.ssh : {};
   const logo = settings.logo && typeof settings.logo === 'object' ? settings.logo : {};
-  const haircuts = boundedArray(input.haircuts, 5000).map(HairMath.normalizeHaircut).sort((a, b) => b.date.localeCompare(a.date));
+  const validatedProfile = HairMath.validateProfile(input.profile);
+  const manualBaseline = HairMath.normalizeManualBaseline(input.manualBaseline, validatedProfile);
+  const haircuts = HairMath.sortHaircutsNewest(boundedArray(input.haircuts, 5000));
   const safe = {
     ...defaults,
-    revision: Number.isInteger(input.revision) && input.revision >= 0 ? input.revision + 1 : 1,
-    profile: HairMath.validateProfile(input.profile),
+    revision: Number.isSafeInteger(input.revision) && input.revision >= 0 ? input.revision : 0,
+    profile: HairMath.reconcileBaseline(validatedProfile, haircuts, manualBaseline),
+    manualBaseline,
     haircuts,
     settings: {
       ...defaults.settings,
@@ -199,7 +206,9 @@ function validateState(input, todayIso) {
     supportTickets: boundedArray(input.supportTickets, 500),
     converterHistory: boundedArray(input.converterHistory, 500),
     vocabulary: { loaded: Boolean(input.vocabulary?.loaded), cacheVersion: Number(input.vocabulary?.cacheVersion) || null },
-    updatedAt: new Date().toISOString()
+    updatedAt: typeof input.updatedAt === 'string' && !Number.isNaN(Date.parse(input.updatedAt))
+      ? new Date(input.updatedAt).toISOString()
+      : defaults.updatedAt
   };
   if (!safe.tabs.order.length) safe.tabs.order = [...defaults.tabs.order];
   return safe;

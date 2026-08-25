@@ -8,6 +8,32 @@ function boundedPort(value, label) {
   return parsed;
 }
 
+function validatedServiceUrl(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new TypeError('Enter a valid HTTP or HTTPS server URL.');
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) throw new TypeError('Only HTTP or HTTPS server URLs are supported.');
+  if (url.username || url.password) throw new TypeError('Credentials must not be embedded in the server URL.');
+  return url;
+}
+
+function resolveServiceBaseUrl(syncSettings, tunnelState) {
+  if (!syncSettings || typeof syncSettings !== 'object') throw new TypeError('Sync settings are required.');
+  if (!['local', 'server', 'ssh'].includes(syncSettings.mode)) throw new TypeError('Sync mode must be local, server, or ssh.');
+  if (syncSettings.mode !== 'ssh') return validatedServiceUrl(syncSettings.serverUrl);
+
+  const localForwardPort = boundedPort(syncSettings.ssh?.localForwardPort, 'Local forwarded port');
+  if (tunnelState?.status !== 'connected') throw new Error('A connected SSH tunnel is required before contacting the service.');
+  const connectedPort = boundedPort(tunnelState.localForwardPort, 'Connected local forwarded port');
+  if (connectedPort !== localForwardPort) {
+    throw new Error('The configured local forwarded port does not match the connected SSH tunnel.');
+  }
+  return new URL(`http://127.0.0.1:${localForwardPort}/`);
+}
+
 function buildSshArguments(config, homePath) {
   if (!config || typeof config !== 'object') throw new TypeError('SSH configuration is required.');
   const host = String(config.host || '').trim();
@@ -45,4 +71,4 @@ function buildSshArguments(config, homePath) {
   return args;
 }
 
-module.exports = { boundedPort, buildSshArguments };
+module.exports = { boundedPort, buildSshArguments, resolveServiceBaseUrl, validatedServiceUrl };

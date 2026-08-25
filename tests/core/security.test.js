@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { buildSshArguments } = require('../../app/core/ssh');
+const { buildSshArguments, resolveServiceBaseUrl } = require('../../app/core/ssh');
 const { hashSecret, verifySecret, factorOrder } = require('../../app/core/credentials');
 const { encodeBase32, hotp } = require('../../app/core/totp');
 const { createDefaultState, validateState } = require('../../app/core/state');
@@ -58,4 +58,25 @@ test('key paths resolve through the persistent user SSH directory', () => {
   const option = args.find((value) => value.startsWith('UserKnownHostsFile='));
   assert.equal(option.slice('UserKnownHostsFile='.length), path.resolve('C:\\Users\\owner', '.ssh', 'known_hosts'));
   assert.throws(() => buildSshArguments({ host: '192.168.50.10', port: 2222, username: 'docker', remoteApiPort: 4782, localForwardPort: 14782, keyFile: 'relative-key.pem' }, 'C:\\Users\\owner'), /must be absolute/);
+});
+
+test('SSH service requests use only the validated connected local forward', () => {
+  const sync = {
+    mode: 'ssh',
+    serverUrl: 'https://unrelated.example.test:9443/base/',
+    ssh: { localForwardPort: 14782 }
+  };
+  assert.equal(resolveServiceBaseUrl(sync, { status: 'connected', localForwardPort: 14782 }).href, 'http://127.0.0.1:14782/');
+  assert.throws(() => resolveServiceBaseUrl(sync, { status: 'connected', localForwardPort: 14783 }), /does not match/);
+  assert.throws(() => resolveServiceBaseUrl(sync, { status: 'disconnected' }), /connected SSH tunnel/);
+  assert.throws(() => resolveServiceBaseUrl({ ...sync, ssh: { localForwardPort: 70000 } }, { status: 'connected' }), /between 1 and 65535/);
+});
+
+test('direct service requests preserve the validated configured server URL', () => {
+  const direct = resolveServiceBaseUrl({ mode: 'server', serverUrl: 'https://hair.example.test:9443/base/' }, { status: 'disconnected' });
+  assert.equal(direct.href, 'https://hair.example.test:9443/base/');
+  assert.equal(resolveServiceBaseUrl({ mode: 'local', serverUrl: 'http://127.0.0.1:4782/' }, { status: 'disconnected' }).href, 'http://127.0.0.1:4782/');
+  assert.throws(() => resolveServiceBaseUrl({ mode: 'server', serverUrl: 'file:///tmp/hair.json' }, { status: 'disconnected' }), /HTTP or HTTPS/);
+  assert.throws(() => resolveServiceBaseUrl({ mode: 'server', serverUrl: 'https://owner:secret@hair.example.test/' }, { status: 'disconnected' }), /Credentials/);
+  assert.throws(() => resolveServiceBaseUrl({ mode: 'automatic', serverUrl: 'https://hair.example.test/' }, { status: 'connected' }), /local, server, or ssh/);
 });
