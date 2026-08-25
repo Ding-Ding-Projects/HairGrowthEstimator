@@ -6,7 +6,7 @@ A public HTTPS website cannot safely assume direct access to a visitor's local O
 
 ## Configuration
 
-The mediator identifies its version, allowed website origin, local runtime status, supported operations, and payload limits. It accepts only documented local Ollama HTTP API operations and registered harness profiles. Model catalog state records completeness, pages, timestamp, source identity, and staleness.
+The current browser probe accepts only `http://127.0.0.1:11434` or `http://localhost:11434`, with no credentials, extra path, query, or fragment. It stores `url.origin`, while the saved-state validator permits only those same origins with an optional root slash. The template Content Security Policy uses the same two `connect-src` entries. A future mediator must identify its version, allowed website origin, local runtime status, supported operations, and payload limits. It accepts only documented local Ollama HTTP API operations and registered harness profiles. Model catalog state records completeness, pages, timestamp, source identity, and staleness.
 
 ## Failure modes
 
@@ -21,7 +21,7 @@ Prompts, responses, attachments, local model state, and private paths remain on 
 
 ## Verification
 
-Source inspection confirmed that the browser accepts only `127.0.0.1`, `localhost`, or `[::1]` HTTP or HTTPS URLs without embedded credentials, calls only `/api/tags`, applies a 5-second timeout, rejects a malformed or larger-than-1-MiB JSON result, and caps the stored list at 2,000 tags. There is no installed mediator, exhaustive catalog, hardware evidence, pull queue, chat, or harness. Origin enforcement, mediator binding, broader route allowlist, catalog completeness, secret redaction, harness rollback, and end-to-end local evidence are pending.
+Source inspection confirmed that the browser accepts only the exact HTTP origins `http://127.0.0.1:11434` and `http://localhost:11434`, stores the normalized origin, calls only `/api/tags`, applies a 5-second timeout, rejects a malformed or larger-than-1-MiB JSON result, and caps the stored list at 2,000 tags. `validateOllama` and the static Content Security Policy carry the same origin boundary. The restored focused hardening test covers this source alignment. There is no installed mediator, exhaustive catalog, hardware evidence, pull queue, chat, or harness. Mediator binding, broader route allowlisting inside a future mediator, catalog completeness, secret redaction, harness rollback, and end-to-end local evidence remain pending.
 
 ## Suggested articles
 

@@ -4,7 +4,7 @@
 
 The template declares a command palette at `#command-palette`, an index field at `#palette-search`, a result list at `#palette-results`, and card or full-window size choices at `#palette-size`. `Ctrl+Shift+F` and the front-screen command button must open the same palette.
 
-The complete palette indexes every destination, article, command, setting, appearance control, and relevant list action. A setting result renders the real live control. Activating a destination selects the owning tab and group, reveals the exact element, scrolls it into view, focuses it, and briefly highlights it.
+The complete palette indexes every destination, article, command, setting, appearance control, and relevant list action. The current personal-vocabulary entries include separate upload, replace, clear, and `vocabulary-status` destinations, all of which are removed from results while School mode is active. A setting result renders the real live control. Activating a destination selects the owning tab and group, reveals the exact element, scrolls it into view, focuses it, and briefly highlights it.
 
 ## Configuration
 
@@ -23,7 +23,7 @@ The palette does not index lock credentials, authenticator secrets, personal-voc
 
 ## Verification
 
-Source inspection confirmed `Ctrl+Shift+F`, the front-screen button, a fixed command list, plain and regex search, card or full-window persistence, destination navigation, tool-subtab routing, scroll, focus, and temporary highlight. The current fixed list is not a complete index, result rows are label-and-open buttons rather than live rich settings controls, and locked-target navigation still requires direct proof. Complete indexing, rich controls, localization, focused accessibility tests, and built-artifact evidence are pending.
+Source inspection confirmed `Ctrl+Shift+F`, the front-screen button, a fixed command list, plain and regex search, card or full-window persistence, destination navigation, tool-subtab routing, scroll, focus, temporary highlight, and the four School-sensitive personal-vocabulary destinations. A focused source fixture for the personal-vocabulary palette and status anchors was red 1, then passed 1 after restoration. The current fixed list is not a complete index, result rows are label-and-open buttons rather than live rich settings controls, and locked-target navigation still requires direct proof. Complete indexing, rich controls, complete localization, focused accessibility behavior, and built-artifact evidence are pending.
 
 ## Suggested articles
 

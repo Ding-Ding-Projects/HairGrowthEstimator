@@ -6,11 +6,64 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { deflateSync } from 'node:zlib';
 import { auditSiteSources, auditSiteTree } from './site-guard.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
 const stageLengths = [0.3, 1.5, 3, 5, 9, 14, 20, 28];
+
+const pngCrcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    table[index] = value >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(buffer) {
+  let value = 0xffffffff;
+  for (const byte of buffer) value = pngCrcTable[(value ^ byte) & 255] ^ (value >>> 8);
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type, 'ascii');
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(pngCrc32(Buffer.concat([typeBytes, data])));
+  return Buffer.concat([length, typeBytes, data, checksum]);
+}
+
+function fixturePng(width, height, seed) {
+  const channels = 4;
+  const raw = Buffer.alloc((width * channels + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (width * channels + 1);
+    raw[row] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const pixel = row + 1 + x * channels;
+      raw[pixel] = (x + seed * 17) & 255;
+      raw[pixel + 1] = (y + seed * 29) & 255;
+      raw[pixel + 2] = (x + y + seed * 43) & 255;
+      raw[pixel + 3] = 255;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw, { level: 1 })),
+    pngChunk('IEND', Buffer.alloc(0))
+  ]);
+}
 
 async function publicTextFiles(directory) {
   const files = [];
@@ -73,6 +126,61 @@ test('composition emits commit-bound provenance and local assets', async (contex
   assert.equal(rootPreview.readUInt32BE(20), 640);
 });
 
+test('installer manifest accepts only the complete immutable publication contract', async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'hair-growth-installer-manifest-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const manifestPath = join(directory, 'installer.json');
+  const output = join(directory, 'output');
+  const commit = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const manifest = {
+    schemaVersion: 1,
+    owner: 'Ding-Ding-Projects',
+    repository: 'HairGrowthEstimator',
+    tag: 'v1.0.0-build.1',
+    target: commit,
+    version: '1.0.0',
+    platform: 'windows-x64',
+    filename: 'HairGrowthEstimator-1.0.0-Setup.exe',
+    bytes: 123456,
+    sha256: 'a'.repeat(64),
+    unsigned: true,
+    publication: {
+      state: 'published',
+      draft: false,
+      prerelease: false,
+      publishedAt: '2026-08-25T12:00:00.000Z',
+      releaseId: 101,
+      assetId: 202,
+      url: 'https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/download/v1.0.0-build.1/HairGrowthEstimator-1.0.0-Setup.exe'
+    }
+  };
+  const compose = () => execFileSync(process.execPath, [join(root, 'scripts', 'compose-site.mjs')], { cwd: root, env: { ...process.env, SITE_OUTPUT_DIR: output, INSTALLER_MANIFEST: manifestPath }, stdio: 'pipe' });
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  assert.doesNotThrow(compose);
+  const html = await readFile(join(output, 'index.html'), 'utf8');
+  assert.match(html, /"publication":\{"state":"published","draft":false/);
+  assert.match(html, /HairGrowthEstimator-1\.0\.0-Setup\.exe/);
+
+  const missingBytes = structuredClone(manifest);
+  delete missingBytes.bytes;
+  await writeFile(manifestPath, JSON.stringify(missingBytes));
+  assert.throws(compose, /manifest mismatch.*bytes/i);
+
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, target: 'b'.repeat(40) }));
+  assert.throws(compose, /target must match the exact composed commit/i);
+
+  const mutableUrl = structuredClone(manifest);
+  mutableUrl.publication.url = 'https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/latest/download/HairGrowthEstimator-1.0.0-Setup.exe';
+  await writeFile(manifestPath, JSON.stringify(mutableUrl));
+  assert.throws(compose, /exact immutable GitHub release asset URL/i);
+
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, extra: true }));
+  assert.throws(compose, /Unexpected: extra/i);
+
+  await writeFile(manifestPath, `${JSON.stringify(manifest)}${' '.repeat(64 * 1024)}`);
+  assert.throws(compose, /exceeds the 65536 byte limit/i);
+});
+
 test('strict composition consumes the canonical stages manifest and verifies every digest', async (context) => {
   const fixture = await mkdtemp(join(tmpdir(), 'hair-growth-site-strict-'));
   context.after(() => rm(fixture, { recursive: true, force: true }));
@@ -84,7 +192,7 @@ test('strict composition consumes the canonical stages manifest and verifies eve
   const fixtureBytes = [];
   for (const [index, length] of stageLengths.entries()) {
     const file = `stage-${String(index + 1).padStart(2, '0')}.png`;
-    const bytes = Buffer.alloc(2048 + index, index + 1);
+    const bytes = fixturePng(1254, 1254, index + 1);
     fixtureBytes.push(bytes);
     await writeFile(join(assetDirectory, file), bytes);
     records.push({ length, file, sha256: createHash('sha256').update(bytes).digest('hex') });
@@ -102,7 +210,38 @@ test('strict composition consumes the canonical stages manifest and verifies eve
   assert.deepEqual(stages.map((entry) => entry.cm), stageLengths);
   assert.deepEqual(stages.map((entry) => entry.inches), stageLengths.map((length) => Number((length / 2.54).toFixed(4))));
 
-  await writeFile(join(assetDirectory, records[0].file), Buffer.alloc(2048, 99));
+  const writeManifest = async (nextRecords = records) => writeFile(join(assetDirectory, 'stages.json'), JSON.stringify({ schemaVersion: 1, unit: 'cm', stages: nextRecords }));
+  const firstPath = join(assetDirectory, records[0].file);
+  const originalFirst = fixtureBytes[0];
+
+  const arbitrary = Buffer.alloc(2048, 7);
+  await writeFile(firstPath, arbitrary);
+  await writeManifest([{ ...records[0], sha256: createHash('sha256').update(arbitrary).digest('hex') }, ...records.slice(1)]);
+  assert.throws(compose, /invalid PNG signature/);
+  await writeFile(firstPath, originalFirst);
+  await writeManifest();
+
+  const wrongSize = fixturePng(1253, 1254, 31);
+  await writeFile(firstPath, wrongSize);
+  await writeManifest([{ ...records[0], sha256: createHash('sha256').update(wrongSize).digest('hex') }, ...records.slice(1)]);
+  assert.throws(compose, /exactly 1254 by 1254/);
+  await writeFile(firstPath, originalFirst);
+  await writeManifest();
+
+  await writeManifest(records.map((record, index) => index === 1 ? { ...record, length: records[0].length } : record));
+  assert.throws(compose, /duplicate stage/i);
+  await writeManifest(records.map((record, index) => index === 1 ? { ...record, sha256: records[0].sha256 } : record));
+  assert.throws(compose, /duplicate SHA-256/i);
+  await writeManifest(records.map((record, index) => index === 1 ? { ...record, file: records[0].file } : record));
+  assert.throws(compose, /duplicate file/i);
+  await writeManifest();
+
+  await writeFile(join(assetDirectory, 'unexpected.png'), originalFirst);
+  assert.throws(compose, /Unexpected hair asset|manifest mismatch/i);
+  await rm(join(assetDirectory, 'unexpected.png'));
+  assert.doesNotThrow(compose);
+
+  await writeFile(join(assetDirectory, records[0].file), fixturePng(1254, 1254, 99));
   assert.throws(compose, /does not match its manifest SHA-256 digest/);
   await writeFile(join(assetDirectory, records[0].file), fixtureBytes[0]);
   assert.doesNotThrow(compose);
@@ -160,10 +299,18 @@ test('public source contains no em dash and no analytics or CDN runtime', async 
 test('private vocabulary scan uses only an external optional source', async (context) => {
   const sourcePath = process.env.PRIVATE_VOCABULARY_SOURCE;
   if (!sourcePath) return context.skip('PRIVATE_VOCABULARY_SOURCE is not available, public checkout remains buildable.');
-  const dictionary = JSON.parse(await readFile(sourcePath, 'utf8'));
-  const mappingTerms = Object.values(dictionary.mappings || {});
-  const catalogTerms = Array.isArray(dictionary.terms) ? dictionary.terms.flatMap((term) => [term?.alias, term?.plural]) : [];
-  const terms = [...mappingTerms, ...catalogTerms].filter((value) => typeof value === 'string' && value.length > 2 && value !== 'Slop Machine');
+  const bytes = await readFile(sourcePath);
+  const dictionary = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  assert.deepEqual(Object.keys(dictionary).sort(), ['entries', 'schemaVersion']);
+  assert.equal(dictionary.schemaVersion, 1);
+  assert.ok(dictionary.entries && typeof dictionary.entries === 'object' && !Array.isArray(dictionary.entries));
+  const expectedCount = Number(process.env.PRIVATE_VOCABULARY_EXPECTED_COUNT);
+  assert.ok(Number.isSafeInteger(expectedCount) && expectedCount > 0, 'A nonzero external expected entry count is required.');
+  const entries = Object.entries(dictionary.entries);
+  assert.equal(entries.length, expectedCount, 'The external personal-vocabulary entry count is stale.');
+  for (const [, replacement] of entries) assert.ok(typeof replacement === 'string' && replacement.length > 0, 'Every external entry must provide one nonempty private replacement.');
+  const terms = entries.map(([, replacement]) => replacement).filter((value) => value !== 'Slop Machine');
+  assert.ok(terms.length > 0, 'The external private replacement scan must not be empty.');
   const publicPaths = (await Promise.all(['site', 'docs', 'scripts', 'tests/site'].map((path) => publicTextFiles(join(root, path))))).flat();
   publicPaths.push(...['README.md', 'ROADMAP.md', 'HANDOFF.md', 'CHANGELOG.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md', 'LICENSE'].map((path) => join(root, path)));
   for (const path of publicPaths) {

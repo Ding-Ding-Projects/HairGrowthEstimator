@@ -31,7 +31,7 @@ Loopback is the safe default. Responses disable caching and MIME sniffing. CORS 
 
 ## Verification
 
-Source inspection confirmed the routes, bounds, headers, authentication boundary, and default loopback bind. Process launch, request matrix, restart persistence, malformed database recovery, and container health evidence remain pending.
+Source inspection confirmed the routes, bounds, headers, authentication boundary, and default loopback bind. The accepted hardening suite adds a source-level counterpart audit tying the website container command to the server `/health` and profile-route boundaries, the `hair-growth-api` Compose service, and the container entry point. Its deliberate break changes the server health route and is pending until the suite and all integrated source owners are inspected together. This source audit is not runtime service evidence. Process launch, request matrix, restart persistence, malformed database recovery, and container health evidence remain pending.
 
 ## Suggested articles
 

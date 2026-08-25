@@ -21,7 +21,7 @@ The container runs without root privileges and without Linux capabilities. API k
 
 ## Verification
 
-Source inspection confirmed the least-privilege Compose settings. Image build, loopback and private-LAN reachability, persistent restart, read-only operation, health checking, digest pinning, and deployed service behavior remain pending.
+Source inspection confirmed the least-privilege Compose settings. The accepted hardening suite adds a source-level counterpart audit tying the documented `docker compose up --build -d` command to the `hair-growth-api` Compose service, server health and profile routes, and `CMD ["node", "server/index.js"]`. The planned deliberate break changes only the server health-route counterpart. This does not resolve the container bind defect and is not image or runtime evidence. Image build, loopback and private-LAN reachability, persistent restart, read-only operation, health checking, digest pinning, and deployed service behavior remain pending.
 
 ## Suggested articles
 

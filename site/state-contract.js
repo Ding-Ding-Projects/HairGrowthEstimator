@@ -230,10 +230,11 @@
     });
   }
 
-  function createStateCoordinator({ storage, stateKey, lockName, writerId, navigatorLocks, indexedDB, now = () => new Date().toISOString() }) {
+  function createStateCoordinator({ storage, stateKey, lockName, writerId, navigatorLocks, indexedDB, validateEnvelope = null, now = () => new Date().toISOString() }) {
     if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function') throw new Error('A browser storage adapter is required.');
     function read(fallbackState) {
-      return decodeStateEnvelope(storage.getItem(stateKey), fallbackState);
+      const rawValue = storage.getItem(stateKey);
+      return typeof validateEnvelope === 'function' ? validateEnvelope(rawValue, fallbackState) : decodeStateEnvelope(rawValue, fallbackState);
     }
     async function commit({ baseRevision, state }) {
       try {

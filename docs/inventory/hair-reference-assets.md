@@ -6,7 +6,9 @@ The product uses eight generated photographs of the same adult male subject as a
 
 ## Canonical source
 
-The root `assets/hair-growth/stages.json` file is the only stage-to-file mapping authority. Its schema version 1 records centimetres as `length`, the source `file`, and the expected `sha256`. The referenced files live beside it under `assets/hair-growth/`. A separate image-generation audit manifest may record dimensions and generation metadata, but it does not replace the stage mapping. `scripts/compose-site.mjs` is the only current website consumer: it validates the exact stage set, rejects unsafe manifest paths, checks that each file is 1 KiB through 12 MiB, verifies every source SHA-256 digest, copies the canonical directory to output `assets/hair-growth/`, and injects records into `#bundled-hair-assets`. Image decoding, dimension verification, media-signature verification, consistent-subject review, and post-copy byte-identity proof remain pending until integration.
+The root `assets/hair-growth/stages.json` file is the only stage-to-file mapping authority. Its schema version 1 records centimetres as `length`, the source `file`, and the expected `sha256`. The referenced files live beside it under `assets/hair-growth/`. A separate image-generation audit manifest may record dimensions and generation metadata, but it does not replace the stage mapping. `scripts/compose-site.mjs` is the only current website consumer. Before JSON parsing, it limits the manifest to `MAX_HAIR_MANIFEST_BYTES`, which is 65,536 bytes, and decodes it with a fatal UTF-8 `TextDecoder`. It then validates the exact stage set, rejects unsafe manifest paths, checks that each file is 1 KiB through 12 MiB, verifies every source SHA-256 digest, copies the canonical directory to output `assets/hair-growth/`, and injects records into `#bundled-hair-assets`.
+
+The `inspectPng` boundary performs byte-level validation before a file can enter the composed output. It verifies the PNG signature, ordered and unique header, chunk lengths and CRC-32 values, required image-data and ending chunks, exact 1254 by 1254 dimensions, non-interlaced 8-bit grayscale, RGB, grayscale-alpha, or RGBA layout, bounded decompression to the exact scanline length, row-filter bounds, and complete termination. The composer also rejects duplicate stage lengths, filenames, and SHA-256 values and rejects any unexpected file or directory under the canonical source root. Real source-file inspection, consistent-subject review, and post-copy byte-identity proof remain pending because the root asset directory is absent in this checkout.
 
 | Stable stage ID | Approximate length | Exact inch conversion | Display value | Canonical file | Decode proof | Website use | Desktop use |
 | --- | ---: | ---: | ---: | --- | --- | --- | --- |
@@ -32,6 +34,7 @@ Stage metadata belongs only in the root manifest, with one record per row above.
 - A missing stage leaves an explicit inventory gap and must not be replaced by the nearest filename silently.
 - Duplicate files in another source directory are drift and block release verification.
 - A file that does not decode, has unexpected dimensions, or lacks a digest remains unavailable.
+- A digest match is not enough when the bytes fail PNG signature, structure, dimension, pixel-count, or termination checks.
 - A stage label that uses a rounded inch value as the canonical input can select the wrong boundary.
 
 ## Security and privacy
@@ -40,7 +43,7 @@ The photographs are product assets and must not contain user measurements, perso
 
 ## Verification
 
-Source inspection confirmed the composer-owned stage and path validation described above. Pending verification must record the exact manifest-owned filename, media type, dimensions, SHA-256 digest, decoder result, adult-subject consistency review, alt text, root manifest record, injected `#bundled-hair-assets` record, website package reference, desktop package reference, and byte-identity proof for each row. Interaction and capture evidence remain pending.
+Source inspection confirmed the composer-owned `MAX_HAIR_MANIFEST_BYTES` limit, fatal UTF-8 decoding, stage, path, size, unique-stage, unique-file, unique-digest, exact-directory, PNG signature, structure, CRC, 1254 by 1254 dimension, bounded decompression, scanline, termination, digest, and inch-conversion validation described above. The focused hardening test covers the bounded manifest source boundary. No row has source-asset proof because `assets/hair-growth/` is absent in this checkout. Pending verification must record the exact manifest-owned filename, media type, dimensions, bounded decoded pixel count, SHA-256 digest, structural inspection and decoder results, adult-subject consistency review, alt text, root manifest record, injected `#bundled-hair-assets` record, website package reference, desktop package reference, and byte-identity proof for each row. Interaction and capture evidence remain pending.
 
 ## Suggested articles
 

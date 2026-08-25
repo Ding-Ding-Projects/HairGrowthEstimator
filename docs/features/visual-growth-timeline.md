@@ -23,7 +23,9 @@ The exact conversion is `inches = centimetres / 2.54`. The stage mapping and dis
 | 7 | 20 cm | 1000/127 in | 7.87 in |
 | 8 | 28 cm | 1400/127 in | 11.02 in |
 
-The root `assets/hair-growth/stages.json` file is the single mapping authority for approximate centimetres, filenames, and SHA-256 digests. Its referenced files remain under the same root directory. Website composition verifies and copies those stage-owned files into its output `assets/hair-growth/` directory and injects their records into `#bundled-hair-assets`. The composer derives factual English alt text from each exact stage length. Desktop packaging may likewise copy the source only as generated build output with byte-identity verification. Documentation, renderer code, and release packaging must not maintain a second stage-to-file mapping or a second set of source photographs.
+The root `assets/hair-growth/stages.json` file is the single mapping authority for approximate centimetres, filenames, and SHA-256 digests. Its referenced files remain under the same root directory. Before parsing the mapping, the composer rejects a manifest larger than `MAX_HAIR_MANIFEST_BYTES`, or 65,536 bytes, and rejects invalid UTF-8 through fatal decoding. Website composition then verifies and copies the stage-owned files into its output `assets/hair-growth/` directory and injects their records into `#bundled-hair-assets`. The composer derives factual English alt text from each exact stage length. Desktop packaging may likewise copy the source only as generated build output with byte-identity verification. Documentation, renderer code, and release packaging must not maintain a second stage-to-file mapping or a second set of source photographs.
+
+`inspectPng` is the media-validation boundary. Before a manifest entry is accepted, the composer inspects the actual bytes rather than trusting the `.png` extension. It validates the PNG signature, ordered and unique header, chunk lengths and CRC-32 values, required image-data and ending chunks, exact 1254 by 1254 dimensions, non-interlaced 8-bit grayscale, RGB, grayscale-alpha, or RGBA layout, bounded decompression to the exact expected scanline length, valid row filters, and no bytes after the ending chunk before digest verification and copying.
 
 ## Failure modes
 
@@ -32,6 +34,8 @@ The root `assets/hair-growth/stages.json` file is the single mapping authority f
 - A value between stages must identify whether it uses nearest-stage selection or visual interpolation. It must not imply that an interpolated picture is a measurement.
 - Reduced-motion settings must stop non-essential animation.
 - Image decode failure must retain the numeric estimate.
+- A file that matches a manifest digest but is not a structurally valid bounded PNG must remain unavailable.
+- A file with zero, excessive, truncated, or inconsistent declared dimensions must remain unavailable.
 
 ## Security and privacy
 
@@ -39,7 +43,7 @@ Reference images must not require runtime tracking or third-party requests. User
 
 ## Verification
 
-The website runtime reads only the composed `#bundled-hair-assets` array and falls back to a numeric text state when that array is empty. The composer validates the exact eight centimetre stages, safe relative manifest paths, duplicate stage rejection, per-file source presence, a 1 KiB through 12 MiB file-size range, and injects exact inch values before copying the canonical directory. Source assets, file decoding, digest validation, composition execution, and built-artifact evidence are pending. Required evidence includes all eight decodable canonical files, one-to-one manifest records, consistent adult subject and lighting, accessible alt text, numeric labels in both units, reduced-motion behavior, missing-file fallback, byte-identity proof for composed copies, and built-artifact captures. The asset inventory is recorded in [Hair reference asset authority](../inventory/hair-reference-assets.md).
+The website runtime reads only the composed `#bundled-hair-assets` array and falls back to a numeric text state when that array is empty. The inspected composer applies `MAX_HAIR_MANIFEST_BYTES` and fatal UTF-8 decoding before it validates the exact eight centimetre stages and canonical order, safe manifest basenames, unique stages, filenames, and SHA-256 values, per-file source presence, a 1 KiB through 12 MiB file-size range, byte-level PNG structure through `inspectPng`, manifest SHA-256 digests, an exact source-directory file set, and exact inch values before copying the canonical directory. The eight root source assets are not present in this checkout, so composition execution against the real manifest, real decoder results, post-copy identity, and built-artifact evidence remain pending. Required evidence includes all eight decodable canonical files, one-to-one manifest records, consistent adult subject and lighting, accessible alt text, numeric labels in both units, reduced-motion behavior, missing-file fallback, byte-identity proof for composed copies, and built-artifact captures. The asset inventory is recorded in [Hair reference asset authority](../inventory/hair-reference-assets.md).
 
 ## Suggested articles
 

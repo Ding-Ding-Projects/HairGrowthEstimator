@@ -3,6 +3,7 @@
 const STATE_KEY = 'hairGrowthEstimator.websiteState.v1';
 const STATE_LOCK_NAME = 'hairGrowthEstimator.websiteState.transaction.v1';
 const WRITER_SESSION_KEY = 'hairGrowthEstimator.websiteState.writer.v1';
+const STATE_QUARANTINE_KEY = 'hairGrowthEstimator.websiteState.quarantine.v1';
 const PRIVATE_KEYS = new Set(['totpSecret', 'lockHash', 'pinHash', 'passwordHash', 'vocabularyMappings', 'customLogoData']);
 const INCHES_PER_CM = 1 / 2.54;
 const CM_PER_INCH = 2.54;
@@ -10,8 +11,14 @@ const MAX_HISTORY = 500;
 const MAX_NOTIFICATIONS = 200;
 const MAX_FILE_BYTES = 1024 * 1024;
 const StateContract = globalThis.HairGrowthStateContract;
+const SecurityContract = globalThis.HairGrowthSecurityContract;
+const RegexClientContract = globalThis.HairGrowthRegexClient;
 if (!StateContract) throw new Error('The browser state contract did not load.');
+if (!SecurityContract) throw new Error('The browser security contract did not load.');
+if (!RegexClientContract) throw new Error('The disposable regex client did not load.');
 const { createStateCoordinator, decodeStateEnvelope, reconcileBaseline, serializeDelimitedExport, todayDateString, validateDateNotFuture } = StateContract;
+const { MAX_VOCABULARY_BYTES, buildRedactedExportState, parseJsonStrict, sanitizeImportedState, validateAppearanceMap, validateBrowserState, validatePersonalVocabularyCache, validatePersonalVocabularyText, validateStoredStateEnvelopeText } = SecurityContract;
+const { createRegexWorkerClient } = RegexClientContract;
 const DIM_SUM = Object.freeze({
   nameEn: 'Classic Har Gow',
   nameYue: '蝦餃',
@@ -51,6 +58,9 @@ const FEATURE_COMMANDS = Object.freeze([
   ['Change theme', 'settings', 'theme-select'],
   ['Customize the logo', 'settings', 'custom-logo'],
   ['Upload local personal-vocabulary JSON', 'settings', 'vocabulary-file'],
+  ['Review local personal-vocabulary status', 'settings', 'vocabulary-status'],
+  ['Replace local personal-vocabulary JSON', 'settings', 'replace-vocabulary'],
+  ['Clear local personal-vocabulary cache', 'settings', 'clear-vocabulary'],
   ['Configure scheduled settings', 'settings', 'schedule-label'],
   ['Configure attention modes', 'settings', 'adhd-focus'],
   ['Open Support Tickets', 'settings', 'support']
@@ -69,6 +79,66 @@ const TRANSLATIONS = Object.freeze({
   'Changelog': '更新紀錄',
   'Settings': '設定'
 });
+
+const VOCABULARY_STATUS_COPY = Object.freeze({
+  empty: { en: 'No local cache is active.', yue: '未有本機詞彙快取，原裝字句照常返工。' },
+  loading: { en: 'Validating the selected local file.', yue: '正在驗證本機檔案，逐個欄位驗明正身。' },
+  loaded: { en: 'A validated local cache is active. Source details and mappings are not exposed.', yue: '已啟用通過驗證的本機快取，來源資料同對照內容唔會顯示。' },
+  replaced: { en: 'The validated local cache was replaced. Source details and mappings are not exposed.', yue: '已更換通過驗證的本機快取，來源資料同對照內容繼續收好。' },
+  'invalid-preserved': { en: 'The selected file was rejected. The last valid local cache remains active.', yue: '所選檔案唔合格，上次有效的本機快取繼續當值。' },
+  invalid: { en: 'The selected file was rejected. Original wording remains active.', yue: '所選檔案唔合格，畫面繼續用原裝字句。' },
+  cleared: { en: 'The local cache was cleared. Original wording is active.', yue: '本機快取已清除，原裝字句重新上場。' }
+});
+
+const VOCABULARY_ACTION_COPY = Object.freeze({
+  choose: { en: 'Choose local file', yue: '選擇本機檔案' },
+  replace: { en: 'Replace local file', yue: '更換本機檔案' }
+});
+
+const SETTING_CONTROL_NAMES = Object.freeze({
+  'settings-search': 'Search settings',
+  'language-mode': 'Language mode',
+  'funny-en': 'English funny level',
+  'funny-yue': 'Cantonese funny level',
+  'dialog-emoji': 'Show emojis in dialogs and message boxes',
+  'school-mode': 'Presentation mode',
+  'theme-select': 'Theme',
+  'density-select': 'Density',
+  'accent-color': 'Accent color',
+  'accent-rainbow': 'Use animated rainbow accent',
+  'rainbow-speed': 'Rainbow speed',
+  'font-family': 'Interface font family',
+  'font-scale': 'Interface font size scale',
+  'dock-select': 'Tab-strip docking',
+  'logo-preset': 'Logo preset',
+  'custom-logo': 'Custom logo image',
+  'logo-fit': 'Custom logo fit',
+  'logo-background': 'Custom logo background color',
+  'reset-logo': 'Reset logo',
+  'display-name-input': 'Display name',
+  'reset-display-name': 'Reset display name',
+  'narrator-enabled': 'Narrator enabled',
+  'voice-en': 'English narrator voice',
+  'voice-yue': 'Cantonese narrator voice',
+  'narrator-rate': 'Narrator rate',
+  'narrator-pitch': 'Narrator pitch',
+  'reduced-motion': 'Reduced motion',
+  'vocabulary-file': 'Choose local personal vocabulary JSON',
+  'replace-vocabulary': 'Choose or replace local personal vocabulary JSON',
+  'clear-vocabulary': 'Clear local personal vocabulary cache',
+  'schedule-label': 'Scheduled rule label',
+  'schedule-start': 'Scheduled rule start time',
+  'schedule-end': 'Scheduled rule end time',
+  'schedule-theme': 'Scheduled rule theme',
+  'add-schedule': 'Add scheduled rule',
+  'adhd-focus': 'Focus mode',
+  'adhd-low-stim': 'Low stimulation mode',
+  'adhd-time': 'Time awareness mode',
+  'adhd-one': 'One thing at a time mode',
+  'next-action': 'Next action',
+  'adhd-momentum': 'Momentum mode'
+});
+const SCHOOL_SENSITIVE_REGEX_OWNERS = new Set(['language-mode', 'funny-en', 'funny-yue', 'voice-yue', 'vocabulary-file', 'replace-vocabulary', 'clear-vocabulary']);
 
 const defaultState = () => ({
   schemaVersion: 1,
@@ -122,7 +192,7 @@ const defaultState = () => ({
   totpEntries: [],
   appearance: {},
   regexOwners: {},
-  vocabulary: { loaded: false, vocabularyMappings: {} },
+  vocabulary: { schemaVersion: 1, entries: {} },
   ollama: { url: 'http://127.0.0.1:11434', models: [], checkedAt: null },
   conversion: null
 });
@@ -142,32 +212,8 @@ const bundledChangelog = readJsonScript('bundled-changelog', []);
 const bundledHairAssets = readJsonScript('bundled-hair-assets', []);
 
 function mergeState(base, saved) {
-  if (!saved || saved.schemaVersion !== 1) return base;
-  const savedEstimator = saved.estimator && typeof saved.estimator === 'object' ? saved.estimator : {};
-  return {
-    ...base,
-    ...saved,
-    settings: {
-      ...base.settings,
-      ...saved.settings,
-      narrator: { ...base.settings.narrator, ...saved.settings?.narrator },
-      logo: { ...base.settings.logo, ...saved.settings?.logo },
-      attention: { ...base.settings.attention, ...saved.settings?.attention }
-    },
-    estimator: {
-      ...base.estimator,
-      ...savedEstimator,
-      manualBaselineDate: savedEstimator.manualBaselineDate || savedEstimator.baselineDate || base.estimator.manualBaselineDate,
-      manualBaselineLengthCm: Number.isFinite(Number(savedEstimator.manualBaselineLengthCm))
-        ? Number(savedEstimator.manualBaselineLengthCm)
-        : Number.isFinite(Number(savedEstimator.baselineLengthCm))
-          ? Number(savedEstimator.baselineLengthCm)
-          : base.estimator.manualBaselineLengthCm
-    },
-    tabs: { ...base.tabs, ...saved.tabs, groups: { ...base.tabs.groups, ...saved.tabs?.groups }, groupOverrides: { ...base.tabs.groupOverrides, ...saved.tabs?.groupOverrides } },
-    vocabulary: { ...base.vocabulary, ...saved.vocabulary },
-    ollama: { ...base.ollama, ...saved.ollama }
-  };
+  if (!saved) return validateBrowserState(base);
+  return validateBrowserState(saved);
 }
 
 function createWriterIdentity() {
@@ -181,7 +227,21 @@ function createWriterIdentity() {
 const writerId = createWriterIdentity();
 let initialStateValue = null;
 try { initialStateValue = localStorage.getItem(STATE_KEY); } catch {}
-const initialEnvelope = decodeStateEnvelope(initialStateValue, defaultState());
+let initialQuarantineNotice = null;
+function quarantineInvalidStoredState(rawValue) {
+  try {
+    return validateStoredStateEnvelopeText(rawValue, defaultState());
+  } catch (error) {
+    initialQuarantineNotice = String(error?.message || error).slice(0, 500);
+    try {
+      const quarantine = { schemaVersion: 1, quarantinedAt: new Date().toISOString(), reason: initialQuarantineNotice, rawState: String(rawValue || '').slice(0, 4 * 1024 * 1024) };
+      localStorage.setItem(STATE_QUARANTINE_KEY, JSON.stringify(quarantine));
+      localStorage.removeItem(STATE_KEY);
+    } catch {}
+    return validateStoredStateEnvelopeText(null, defaultState());
+  }
+}
+const initialEnvelope = quarantineInvalidStoredState(initialStateValue);
 let stateRevision = initialEnvelope.revision;
 let state = mergeState(defaultState(), initialEnvelope.state);
 let reconciliationGeneration = 0;
@@ -192,7 +252,8 @@ const stateCoordinator = createStateCoordinator({
   lockName: STATE_LOCK_NAME,
   writerId,
   navigatorLocks: navigator.locks,
-  indexedDB: globalThis.indexedDB || null
+  indexedDB: globalThis.indexedDB || null,
+  validateEnvelope: (rawValue, fallbackState) => validateStoredStateEnvelopeText(rawValue, fallbackState)
 });
 
 let contextTarget = null;
@@ -209,6 +270,17 @@ let heroTimer = null;
 let startedAt = Date.now();
 let lastChangedAt = Date.now();
 let scheduleTimer = null;
+let vocabularyUiState = Object.keys(state.vocabulary.entries).length ? 'loaded' : 'empty';
+let lastRenderedSchoolMode = state.settings.schoolMode;
+const vocabularyTextState = new WeakMap();
+const vocabularyAttributeState = new WeakMap();
+const searchControllers = new Map();
+const searchGenerations = new Map();
+let contextMenuOpener = null;
+let regexWorkerClient = null;
+try {
+  regexWorkerClient = createRegexWorkerClient({ WorkerCtor: globalThis.Worker, workerUrl: 'regex-worker.js', timeoutMs: 150, maxConcurrent: 2, maxQueue: 16 });
+} catch {}
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -251,7 +323,8 @@ function renderStorageRevision() {
 function adoptStoredEnvelope(envelope, { announce = true } = {}) {
   reconciliationGeneration += 1;
   stateRevision = envelope.revision;
-  state = mergeState(defaultState(), envelope.state);
+  state = validateBrowserState(envelope.state);
+  vocabularyUiState = Object.keys(state.vocabulary.entries).length ? 'loaded' : 'empty';
   reconcileEstimatorBaseline();
   renderAll();
   renderStorageRevision();
@@ -260,7 +333,12 @@ function adoptStoredEnvelope(envelope, { announce = true } = {}) {
 
 function persist(action, detail, { record = true } = {}) {
   if (record && action) appendHistory(action, detail);
-  const snapshot = cloneStateSnapshot(state);
+  let snapshot;
+  try { snapshot = validateBrowserState(cloneStateSnapshot(state)); }
+  catch (error) {
+    showNotification('Change not saved', `The browser state did not pass complete validation: ${error.message}`, 'error', false);
+    return Promise.resolve({ ok: false, reason: 'state-validation-failed', message: error.message });
+  }
   const generation = reconciliationGeneration;
   const run = async () => {
     if (generation !== reconciliationGeneration) {
@@ -294,6 +372,12 @@ function friendlyCopy(serious, playfulEn, playfulYue) {
   if (mode === 'yue') return yue;
   if (mode === 'both') return `${en} · ${yue}`;
   return en;
+}
+
+function isSchoolSensitiveText(value) {
+  if (!state.settings.schoolMode) return false;
+  const text = String(value || '').toLocaleLowerCase();
+  return ['cantonese', 'bilingual', 'funny level', 'funny-level', 'personal vocabulary', 'personal-vocabulary', 'dim sum', 'dim-sum', 'har gow', '蝦餃'].some((term) => text.includes(term));
 }
 
 function showNotification(title, body, type = 'info', persistNotification = true, extra = null) {
@@ -341,11 +425,39 @@ function playSpeechQueue() {
 }
 
 function isValidProvenance(value) {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fields = ['schemaVersion', 'name', 'version', 'updatedAt', 'commit', 'source', 'releaseCodeName', 'installer', 'socialPreview'];
+  if (Object.keys(value).length !== fields.length || fields.some((field) => !Object.hasOwn(value, field))) return false;
+  if (value.schemaVersion !== 1 || value.name !== 'hair-growth-estimator' || value.source !== 'package.json plus Git commit provenance') return false;
   if (typeof value.version !== 'string' || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value.version)) return false;
   if (typeof value.updatedAt !== 'string' || Number.isNaN(Date.parse(value.updatedAt))) return false;
   if (typeof value.commit !== 'string' || !/^[a-f0-9]{40}$/.test(value.commit)) return false;
+  const codeName = value.releaseCodeName;
+  const codeNameFields = ['en', 'zhHant', 'catalogId', 'catalogCommit', 'publicAsset'];
+  if (!codeName || typeof codeName !== 'object' || Array.isArray(codeName) || Object.keys(codeName).length !== codeNameFields.length || codeNameFields.some((field) => !Object.hasOwn(codeName, field))) return false;
+  if (codeName.en !== 'Classic Har Gow' || codeName.zhHant !== '蝦餃' || codeName.catalogId !== 'hk-dish-0001' || codeName.catalogCommit !== '736e8c1d9e40e1d146f3c3b11bb329b97c4ef515' || codeName.publicAsset !== 'https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png') return false;
+  const preview = value.socialPreview;
+  if (!preview || typeof preview !== 'object' || Array.isArray(preview) || Object.keys(preview).length !== 2 || !Object.hasOwn(preview, 'sha256') || !Object.hasOwn(preview, 'bytes')) return false;
+  if (!/^[a-f0-9]{64}$/.test(preview.sha256) || !Number.isSafeInteger(preview.bytes) || preview.bytes < 1 || preview.bytes > 5 * 1024 * 1024) return false;
   return true;
+}
+
+function isValidInstallerManifest(manifest, build) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return false;
+  const fields = ['schemaVersion', 'owner', 'repository', 'tag', 'target', 'version', 'platform', 'filename', 'bytes', 'sha256', 'unsigned', 'publication'];
+  if (Object.keys(manifest).length !== fields.length || fields.some((field) => !Object.hasOwn(manifest, field))) return false;
+  if (manifest.schemaVersion !== 1 || manifest.owner !== 'Ding-Ding-Projects' || manifest.repository !== 'HairGrowthEstimator') return false;
+  if (manifest.target !== build.commit || manifest.version !== build.version || manifest.platform !== 'windows-x64' || manifest.unsigned !== true) return false;
+  const escapedVersion = build.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (typeof manifest.tag !== 'string' || manifest.tag.length > 128 || !new RegExp(`^v?${escapedVersion}(?:[-.][0-9A-Za-z.-]+)?$`).test(manifest.tag)) return false;
+  if (typeof manifest.filename !== 'string' || manifest.filename.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$/.test(manifest.filename) || !manifest.filename.includes(build.version)) return false;
+  if (!Number.isSafeInteger(manifest.bytes) || manifest.bytes < 1 || manifest.bytes > 2 * 1024 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(manifest.sha256)) return false;
+  const publication = manifest.publication;
+  const publicationFields = ['state', 'draft', 'prerelease', 'publishedAt', 'releaseId', 'assetId', 'url'];
+  if (!publication || typeof publication !== 'object' || Array.isArray(publication) || Object.keys(publication).length !== publicationFields.length || publicationFields.some((field) => !Object.hasOwn(publication, field))) return false;
+  if (publication.state !== 'published' || publication.draft !== false || typeof publication.prerelease !== 'boolean' || typeof publication.publishedAt !== 'string' || Number.isNaN(Date.parse(publication.publishedAt))) return false;
+  if (!Number.isSafeInteger(publication.releaseId) || publication.releaseId < 1 || !Number.isSafeInteger(publication.assetId) || publication.assetId < 1) return false;
+  return publication.url === `https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/download/${manifest.tag}/${manifest.filename}`;
 }
 
 function renderProvenance() {
@@ -363,14 +475,21 @@ function renderProvenance() {
   }
   $('#provenance-json').textContent = JSON.stringify(valid ? provenance : { status: 'unavailable' }, null, 2);
   const manifest = provenance?.installer;
-  const validInstaller = valid && manifest && typeof manifest.url === 'string' && /^https:\/\//.test(manifest.url) && /^[a-f0-9]{64}$/.test(manifest.sha256 || '');
+  const validInstaller = valid && isValidInstallerManifest(manifest, provenance);
   if (validInstaller) {
     $('#download-version').textContent = `Version ${provenance.version}`;
-    $('#download-detail').textContent = `Unsigned Windows installer. SHA-256 ${manifest.sha256}`;
+    $('#download-detail').textContent = `Unsigned Windows installer, ${manifest.bytes.toLocaleString()} bytes. SHA-256 ${manifest.sha256}`;
     $('#download-button').disabled = false;
     $('#download-button').textContent = 'Download installer';
-    $('#download-button').dataset.url = manifest.url;
-    $('#download-disabled-reason').textContent = 'The immutable HTTPS asset and SHA-256 digest are embedded in this artifact provenance.';
+    $('#download-button').dataset.url = manifest.publication.url;
+    $('#download-disabled-reason').textContent = 'The versioned publication record, exact immutable release asset, byte count, and SHA-256 digest are embedded in this artifact provenance.';
+  } else {
+    $('#download-version').textContent = 'No verified installer manifest';
+    $('#download-detail').textContent = 'The download stays disabled until a complete versioned publication manifest matches this exact website artifact.';
+    $('#download-button').disabled = true;
+    $('#download-button').textContent = 'Installer pending verification';
+    delete $('#download-button').dataset.url;
+    $('#download-disabled-reason').textContent = 'No verified immutable release asset is bound to this website artifact.';
   }
 }
 
@@ -390,23 +509,106 @@ function safePattern(owner) {
   return state.regexOwners[owner] || { enabled: false, pattern: '', flags: 'iu', plain: '' };
 }
 
-function matchesSearch(value, inputOrOwner) {
+function searchOwnerAndQuery(inputOrOwner) {
   const owner = typeof inputOrOwner === 'string' ? inputOrOwner : inputOrOwner?.dataset?.searchOwner;
   const query = typeof inputOrOwner === 'string' ? safePattern(owner).plain : inputOrOwner?.value || '';
-  if (!query) return true;
-  const config = safePattern(owner);
-  if (!config.enabled) return String(value).toLocaleLowerCase().includes(String(query).toLocaleLowerCase());
+  return { owner: owner || 'unowned-search', query: String(query), config: safePattern(owner) };
+}
+
+async function filterSearchItems(items, textForItem, inputOrOwner) {
+  const { owner, query, config } = searchOwnerAndQuery(inputOrOwner);
+  if (!query) return items;
+  if (!config.enabled) {
+    const needle = query.toLocaleLowerCase();
+    return items.filter((item) => String(textForItem(item)).toLocaleLowerCase().includes(needle));
+  }
+  if (!regexWorkerClient) return [];
+  searchControllers.get(owner)?.abort();
+  const controller = new AbortController();
+  searchControllers.set(owner, controller);
+  const generation = (searchGenerations.get(owner) || 0) + 1;
+  searchGenerations.set(owner, generation);
+  const source = config.pattern || query;
+  const values = items.map((item) => String(textForItem(item)).slice(0, 20000));
+  const verdicts = [];
   try {
-    const source = config.pattern || query;
-    const flags = [...new Set((config.flags || 'iu').replace(/g/g, '').split(''))].join('');
-    return new RegExp(source, flags).test(String(value));
-  } catch { return false; }
+    let offset = 0;
+    while (offset < values.length) {
+      const batch = [];
+      let characters = 0;
+      while (offset < values.length && batch.length < 500 && characters + values[offset].length <= 100000) {
+        batch.push(values[offset]);
+        characters += values[offset].length;
+        offset += 1;
+      }
+      if (!batch.length) {
+        batch.push(values[offset].slice(0, 100000));
+        offset += 1;
+      }
+      const result = await regexWorkerClient.run({ operation: 'testMany', pattern: source, flags: config.flags || 'iu', values: batch }, { signal: controller.signal });
+      verdicts.push(...result.matches);
+    }
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      const status = document.querySelector(`[data-regex-status-for="${CSS.escape(owner)}"]`);
+      if (status) status.textContent = `Search pattern rejected: ${error.message}`;
+    }
+    return null;
+  } finally {
+    if (searchControllers.get(owner) === controller) searchControllers.delete(owner);
+  }
+  if (searchGenerations.get(owner) !== generation) return null;
+  return items.filter((item, index) => verdicts[index]);
 }
 
 function applyPrivateVocabulary(text) {
-  if (state.settings.schoolMode || !state.vocabulary.loaded) return text;
-  const mappings = state.vocabulary.vocabularyMappings || {};
-  return Object.entries(mappings).reduce((result, [from, to]) => result.split(from).join(to), String(text));
+  if (state.settings.schoolMode) return String(text);
+  const cache = validatePersonalVocabularyCache(state.vocabulary);
+  const mappings = Object.entries(cache.entries).sort(([left], [right]) => right.length - left.length);
+  return mappings.reduce((result, [from, to]) => result.split(from).join(to), String(text));
+}
+
+function applyVocabularyToOwnedText(rootNode = document.body) {
+  if (!rootNode) return;
+  const excluded = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE', 'TEXTAREA']);
+  const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parent = node.parentElement;
+    if (!parent || excluded.has(parent.tagName) || parent.closest('[data-vocabulary-exempt]')) continue;
+    const prior = vocabularyTextState.get(node);
+    const current = node.nodeValue || '';
+    const original = prior && current === prior.applied ? prior.original : current;
+    const applied = applyPrivateVocabulary(original);
+    vocabularyTextState.set(node, { original, applied });
+    if (current !== applied) node.nodeValue = applied;
+  }
+  const attributes = ['aria-label', 'aria-description', 'aria-valuetext', 'aria-roledescription', 'title', 'placeholder', 'alt'];
+  for (const element of rootNode.querySelectorAll('*')) {
+    if (element.closest('[data-vocabulary-exempt]')) continue;
+    let states = vocabularyAttributeState.get(element);
+    if (!states) { states = new Map(); vocabularyAttributeState.set(element, states); }
+    for (const attribute of attributes) {
+      if (!element.hasAttribute(attribute)) continue;
+      const current = element.getAttribute(attribute) || '';
+      const prior = states.get(attribute);
+      const original = prior && current === prior.applied ? prior.original : current;
+      const applied = applyPrivateVocabulary(original);
+      states.set(attribute, { original, applied });
+      if (current !== applied) element.setAttribute(attribute, applied);
+    }
+  }
+}
+
+let vocabularyPassScheduled = false;
+function scheduleVocabularyTextBoundary() {
+  if (vocabularyPassScheduled) return;
+  vocabularyPassScheduled = true;
+  queueMicrotask(() => {
+    vocabularyPassScheduled = false;
+    applyVocabularyToOwnedText(document.body);
+  });
 }
 
 function currentTabDefinition(id) { return TAB_DEFINITIONS.find((tab) => tab.id === id); }
@@ -421,13 +623,27 @@ function localizedTabLabel(tab) {
   return tab.label;
 }
 
-function renderTabs() {
+function focusFilteredTabFallback(previouslyFocusedId = null) {
+  const tabs = $$('.tab-button:not([hidden])');
+  if (!tabs.length) {
+    $('#strip-search')?.focus();
+    return;
+  }
+  const preferred = tabs.find((button) => button.dataset.tab === state.activeTab) || tabs[0];
+  tabs.forEach((button) => { button.tabIndex = button === preferred ? 0 : -1; });
+  const focusTarget = previouslyFocusedId ? tabs.find((button) => button.id === previouslyFocusedId) || preferred : null;
+  if (focusTarget) focusTarget.focus();
+}
+
+async function renderTabs() {
   const list = $('#tab-list');
+  const focusedId = list.contains(document.activeElement) ? document.activeElement.id : null;
   list.innerHTML = '';
   const ordered = state.tabs.order.map(currentTabDefinition).filter(Boolean);
   const visible = ordered.filter((tab) => !state.tabs.closed.includes(tab.id));
   const queryInput = $('#strip-search');
-  const filtered = visible.filter((tab) => matchesSearch(`${localizedTabLabel(tab)} ${tabGroup(tab)}`, queryInput));
+  const filtered = await filterSearchItems(visible, (tab) => `${localizedTabLabel(tab)} ${tabGroup(tab)}`, queryInput);
+  if (filtered === null) return;
   filtered.sort((a, b) => Number(!state.tabs.pinned.includes(a.id)) - Number(!state.tabs.pinned.includes(b.id)));
   filtered.forEach((tab) => {
     const button = document.createElement('button');
@@ -451,8 +667,10 @@ function renderTabs() {
     list.append(button);
   });
   list.setAttribute('aria-orientation', ['left', 'right'].includes(state.settings.dock) ? 'vertical' : 'horizontal');
+  focusFilteredTabFallback(focusedId);
   applyLocks();
   applyAppearance();
+  scheduleVocabularyTextBoundary();
 }
 
 function handleTabKeyboard(event) {
@@ -541,20 +759,53 @@ function renderEstimator() {
   $('#target-progress').style.width = `${progress}%`;
 }
 
-function renderHaircuts() {
+function appendTextElement(parent, tagName, text, className = '', vocabularyExempt = false) {
+  const element = document.createElement(tagName);
+  if (className) element.className = className;
+  if (vocabularyExempt) element.setAttribute('data-vocabulary-exempt', '');
+  element.textContent = String(text ?? '');
+  parent.append(element);
+  return element;
+}
+
+function renderEmptyCollection(container, message) {
+  container.replaceChildren();
+  appendTextElement(container, 'div', message, 'empty-state');
+}
+
+async function renderHaircuts() {
   const list = $('#haircut-list');
   const query = $('#haircut-search');
-  const records = state.haircuts.filter((record) => matchesSearch(`${record.date} ${record.note} ${record.postCutLengthCm}`, query));
-  if (!records.length) { list.innerHTML = '<div class="empty-state">No haircut records match this view.</div>'; return; }
+  const records = await filterSearchItems(state.haircuts, (record) => `${record.date} ${record.note} ${record.postCutLengthCm}`, query);
+  if (records === null) return;
+  if (!records.length) { renderEmptyCollection(list, 'No haircut records match this view.'); return; }
   const today = todayDateString();
-  list.innerHTML = records.map((record) => {
+  list.replaceChildren();
+  records.forEach((record) => {
+    const article = document.createElement('article');
+    article.className = 'collection-item';
+    article.dataset.recordId = record.id;
+    article.dataset.elementId = `haircut:${record.id}`;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.selectHaircut = record.id;
+    checkbox.setAttribute('aria-label', `Select haircut on ${record.date}`);
+    article.append(checkbox);
+    const copy = document.createElement('div');
+    appendTextElement(copy, 'h4', `${record.date} · ${displayUnit(record.postCutLengthCm)}`);
+    appendTextElement(copy, 'p', record.note || 'No note', '', true);
     const chronology = validateDateNotFuture(record.date, today);
-    const warning = chronology.valid ? '' : `<p class="field-error">${escapeHtml(chronology.message)} This record is excluded from the active baseline while its date remains in the future.</p>`;
-    return `<article class="collection-item" data-record-id="${record.id}" data-element-id="haircut:${record.id}"><input type="checkbox" aria-label="Select haircut on ${escapeHtml(record.date)}" data-select-haircut="${record.id}"><div><h4>${escapeHtml(record.date)} · ${displayUnit(record.postCutLengthCm)}</h4><p>${escapeHtml(record.note || 'No note')}</p>${warning}</div><button class="text-button" type="button" data-edit-haircut="${record.id}">Edit</button></article>`;
-  }).join('');
+    if (!chronology.valid) appendTextElement(copy, 'p', `${chronology.message} This record is excluded from the active baseline while its date remains in the future.`, 'field-error');
+    article.append(copy);
+    const edit = appendTextElement(article, 'button', 'Edit', 'text-button');
+    edit.type = 'button';
+    edit.dataset.editHaircut = record.id;
+    list.append(article);
+  });
   $$('[data-edit-haircut]').forEach((button) => button.addEventListener('click', () => editHaircut(button.dataset.editHaircut)));
   applyLocks();
   applyAppearance();
+  scheduleVocabularyTextBoundary();
 }
 
 function editHaircut(id) {
@@ -576,31 +827,91 @@ function formatRelative(timestamp) {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function renderHistory() {
+async function renderHistory() {
   const container = $('#history-list');
   if (!container) return;
   const from = $('#history-from')?.value ? new Date(`${$('#history-from').value}T00:00:00`).getTime() : -Infinity;
   const to = $('#history-to')?.value ? new Date(`${$('#history-to').value}T23:59:59`).getTime() : Infinity;
-  const query = $('#history-search');
-  const entries = state.history.filter((entry) => { const at = new Date(entry.at).getTime(); return at >= from && at <= to && matchesSearch(`${entry.action} ${entry.detail}`, query); });
-  container.innerHTML = entries.length ? entries.map((entry) => `<article class="collection-item"><span aria-hidden="true">↶</span><div><h4>${escapeHtml(entry.action)}</h4><p>${escapeHtml(entry.detail)} · ${formatRelative(entry.at)}</p></div><button class="text-button" type="button" data-copy-text="${escapeHtml(entry.detail)}">Copy</button></article>`).join('') : '<div class="empty-state">No history entries match the active filters.</div>';
+  const dateEntries = state.history.filter((entry) => { const at = new Date(entry.at).getTime(); return at >= from && at <= to && !isSchoolSensitiveText(`${entry.action} ${entry.detail}`); });
+  const entries = await filterSearchItems(dateEntries, (entry) => `${entry.action} ${entry.detail}`, $('#history-search'));
+  if (entries === null) return;
+  if (!entries.length) { renderEmptyCollection(container, 'No history entries match the active filters.'); return; }
+  container.replaceChildren();
+  entries.forEach((entry) => {
+    const article = document.createElement('article');
+    article.className = 'collection-item';
+    const icon = appendTextElement(article, 'span', '↶');
+    icon.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('div');
+    appendTextElement(copy, 'h4', entry.action);
+    appendTextElement(copy, 'p', `${entry.detail} · ${formatRelative(entry.at)}`);
+    article.append(copy);
+    const button = appendTextElement(article, 'button', 'Copy', 'text-button');
+    button.type = 'button';
+    button.dataset.copyText = entry.detail;
+    button.addEventListener('click', () => copyText(entry.detail));
+    container.append(article);
+  });
+  scheduleVocabularyTextBoundary();
 }
 
-function renderNotifications() {
+async function renderNotifications() {
   const container = $('#notification-list');
   if (!container) return;
-  const query = $('#notification-search');
-  const entries = state.notifications.filter((entry) => matchesSearch(`${entry.title} ${entry.body} ${entry.type}`, query));
-  container.innerHTML = entries.length ? entries.map((entry) => `<article class="collection-item"><input type="checkbox" aria-label="Select notification ${escapeHtml(entry.title)}" data-select-notification="${entry.id}"><div><h4>${escapeHtml(entry.title)}</h4><p>${escapeHtml(entry.body)} · ${formatRelative(entry.at)}</p></div><button class="text-button" type="button" data-dismiss-notification="${entry.id}">Dismiss</button></article>`).join('') : '<div class="empty-state">No notifications match this view.</div>';
+  const visibleNotifications = state.notifications.filter((entry) => !isSchoolSensitiveText(`${entry.title} ${entry.body}`));
+  const entries = await filterSearchItems(visibleNotifications, (entry) => `${entry.title} ${entry.body} ${entry.type}`, $('#notification-search'));
+  if (entries === null) return;
+  if (!entries.length) { renderEmptyCollection(container, 'No notifications match this view.'); return; }
+  container.replaceChildren();
+  entries.forEach((entry) => {
+    const article = document.createElement('article');
+    article.className = 'collection-item';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.selectNotification = entry.id;
+    checkbox.setAttribute('aria-label', `Select notification ${entry.title}`);
+    article.append(checkbox);
+    const copy = document.createElement('div');
+    appendTextElement(copy, 'h4', entry.title);
+    appendTextElement(copy, 'p', `${entry.body} · ${formatRelative(entry.at)}`);
+    article.append(copy);
+    const button = appendTextElement(article, 'button', 'Dismiss', 'text-button');
+    button.type = 'button';
+    button.dataset.dismissNotification = entry.id;
+    article.append(button);
+    container.append(article);
+  });
   $$('[data-dismiss-notification]').forEach((button) => button.addEventListener('click', () => { const item = state.notifications.find((entry) => entry.id === button.dataset.dismissNotification); if (item) item.dismissed = true; persist('Notification dismissed', item?.title || 'Notification'); renderNotifications(); }));
+  scheduleVocabularyTextBoundary();
 }
 
 function renderSchedules() {
   $('#schedule-timezone').textContent = `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'browser local timezone'}. Daylight-saving changes follow the browser clock.`;
   const container = $('#schedule-list');
-  container.innerHTML = state.schedules.length ? state.schedules.map((rule) => `<article class="collection-item"><input type="checkbox" ${rule.enabled ? 'checked' : ''} aria-label="Enable ${escapeHtml(rule.label)}" data-schedule-enabled="${rule.id}"><div><h4>${escapeHtml(rule.label)}</h4><p>${escapeHtml(rule.start)} to ${escapeHtml(rule.end)}, ${escapeHtml(rule.theme)}, days ${rule.days.join(', ')}</p></div><button class="text-button" type="button" data-remove-schedule="${rule.id}">Remove</button></article>`).join('') : '<div class="empty-state">No scheduled setting rules.</div>';
+  if (!state.schedules.length) { renderEmptyCollection(container, 'No scheduled setting rules.'); return; }
+  container.replaceChildren();
+  state.schedules.forEach((rule) => {
+    const article = document.createElement('article');
+    article.className = 'collection-item';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = rule.enabled;
+    checkbox.dataset.scheduleEnabled = rule.id;
+    checkbox.setAttribute('aria-label', `Enable ${rule.label}`);
+    article.append(checkbox);
+    const copy = document.createElement('div');
+    appendTextElement(copy, 'h4', rule.label, '', true);
+    appendTextElement(copy, 'p', `${rule.start} to ${rule.end}, ${rule.theme}, days ${rule.days.join(', ')}`);
+    article.append(copy);
+    const remove = appendTextElement(article, 'button', 'Remove', 'text-button');
+    remove.type = 'button';
+    remove.dataset.removeSchedule = rule.id;
+    article.append(remove);
+    container.append(article);
+  });
   $$('[data-schedule-enabled]').forEach((input) => input.addEventListener('change', () => { const rule = state.schedules.find((item) => item.id === input.dataset.scheduleEnabled); if (rule) rule.enabled = input.checked; persist('Schedule changed', `${rule?.label || 'Rule'} ${input.checked ? 'enabled' : 'disabled'}.`); applySchedules(); }));
   $$('[data-remove-schedule]').forEach((button) => button.addEventListener('click', () => requestDestructiveAction('Remove scheduled rule', `The selected schedule rule will be removed from this browser.`, () => { state.schedules = state.schedules.filter((item) => item.id !== button.dataset.removeSchedule); persist('Schedule removed', 'A scheduled settings rule was removed.'); renderSchedules(); })));
+  scheduleVocabularyTextBoundary();
 }
 
 function applySchedules() {
@@ -620,20 +931,41 @@ function applySchedules() {
   else document.documentElement.dataset.theme = state.settings.theme;
 }
 
-function renderTickets() {
+async function renderTickets() {
   const container = $('#ticket-list');
-  const query = $('#ticket-search');
-  const entries = state.tickets.filter((ticket) => matchesSearch(`${ticket.number} ${ticket.category} ${ticket.description} ${ticket.status}`, query));
-  container.innerHTML = entries.length ? entries.map((ticket) => `<article class="collection-item"><input type="checkbox" aria-label="Select ticket ${ticket.number}"><div><h4>${ticket.number} · ${escapeHtml(ticket.category)}</h4><p>${escapeHtml(ticket.status)} · ${escapeHtml(ticket.description)}</p></div><button class="text-button" type="button" data-advance-ticket="${ticket.id}">Advance</button></article>`).join('') : '<div class="empty-state">No local tickets match this view.</div>';
+  const entries = await filterSearchItems(state.tickets, (ticket) => `${ticket.number} ${ticket.category} ${ticket.description} ${ticket.status}`, $('#ticket-search'));
+  if (entries === null) return;
+  if (!entries.length) { renderEmptyCollection(container, 'No local tickets match this view.'); return; }
+  container.replaceChildren();
+  entries.forEach((ticket) => {
+    const article = document.createElement('article');
+    article.className = 'collection-item';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.setAttribute('aria-label', `Select ticket ${ticket.number}`);
+    article.append(checkbox);
+    const copy = document.createElement('div');
+    appendTextElement(copy, 'h4', `${ticket.number} · ${ticket.category}`, '', true);
+    appendTextElement(copy, 'p', `${ticket.status} · ${ticket.description}`, '', true);
+    article.append(copy);
+    const button = appendTextElement(article, 'button', 'Advance', 'text-button');
+    button.type = 'button';
+    button.dataset.advanceTicket = ticket.id;
+    article.append(button);
+    container.append(article);
+  });
   $$('[data-advance-ticket]').forEach((button) => button.addEventListener('click', () => { const ticket = state.tickets.find((item) => item.id === button.dataset.advanceTicket); if (!ticket) return; ticket.status = ticket.status === 'Created' ? 'Manual browser reset explained' : 'Closed locally'; persist('Support ticket advanced', `${ticket.number} moved to ${ticket.status}.`); renderTickets(); }));
+  scheduleVocabularyTextBoundary();
 }
 
-function renderChangelog() {
+async function renderChangelog() {
   const container = $('#changelog-list');
   if (!container) return;
   const from = $('#changelog-from')?.value ? new Date(`${$('#changelog-from').value}T00:00:00`).getTime() : -Infinity;
   const to = $('#changelog-to')?.value ? new Date(`${$('#changelog-to').value}T23:59:59`).getTime() : Infinity;
-  const entries = bundledChangelog.filter((entry) => { const at = entry.date ? new Date(`${entry.date}T12:00:00`).getTime() : 0; return at >= from && at <= to && matchesSearch(`${entry.version} ${entry.title} ${entry.body} ${entry.commit}`, $('#changelog-search')); });
+  const dateEntries = bundledChangelog.filter((entry) => { const at = entry.date ? new Date(`${entry.date}T12:00:00`).getTime() : 0; return at >= from && at <= to && !isSchoolSensitiveText(`${entry.title} ${entry.body}`); });
+  const entries = await filterSearchItems(dateEntries, (entry) => `${entry.version} ${entry.title} ${entry.body} ${entry.commit}`, $('#changelog-search'));
+  if (entries === null) return;
   container.innerHTML = entries.length ? entries.map((entry) => `<article class="surface-card"><p class="eyebrow">${escapeHtml(entry.version || 'Unreleased')} · ${escapeHtml(entry.date || 'Date unavailable')}</p><h3>${escapeHtml(entry.title || 'Recorded changes')}</h3><p>${escapeHtml(entry.body || 'No release notes were provided.')}</p>${entry.commit && /^[a-f0-9]{40}$/.test(entry.commit) ? `<a href="https://github.com/Ding-Ding-Projects/HairGrowthEstimator/commit/${entry.commit}">${entry.commit.slice(0, 12)}</a>` : '<span>Commit unavailable</span>'}</article>`).join('') : '<div class="empty-state">No changelog entries match the active filters.</div>';
 }
 
@@ -652,7 +984,7 @@ function markdownToHtml(markdown) {
     }
     if (inCode) { output.push(`${line}\n`); continue; }
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) { if (inList) { output.push('</ul>'); inList = false; } const level = heading[1].length; output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`); continue; }
+    if (heading) { if (inList) { output.push('</ul>'); inList = false; } const level = heading[1].length; const headingId = heading[2].replace(/&[a-z0-9#]+;/gi, ' ').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'section'; output.push(`<h${level} id="doc-heading-${headingId}" data-doc-heading="${headingId}">${inlineMarkdown(heading[2])}</h${level}>`); continue; }
     const bullet = line.match(/^[-*]\s+(.+)$/);
     if (bullet) { if (!inList) { output.push('<ul>'); inList = true; } output.push(`<li>${inlineMarkdown(bullet[1])}</li>`); continue; }
     if (inList) { output.push('</ul>'); inList = false; }
@@ -670,21 +1002,93 @@ function inlineMarkdown(value) {
     .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+|#[^\s)]+|\.\.?\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
 }
 
-function renderDocs() {
-  const list = $('#docs-list');
-  const entries = bundledDocs.filter((article) => matchesSearch(`${article.title} ${article.category} ${article.content}`, $('#docs-search')));
-  list.innerHTML = entries.length ? entries.map((article, index) => `<button type="button" role="option" aria-selected="${index === 0}" data-doc-id="${escapeHtml(article.id)}"><strong>${escapeHtml(article.title)}</strong><br><small>${escapeHtml(article.category)}</small></button>`).join('') : '<div class="empty-state">No documentation articles match this search.</div>';
-  $$('[data-doc-id]').forEach((button) => button.addEventListener('click', () => openDoc(button.dataset.docId)));
-  if (entries.length) openDoc(entries[0].id);
+let currentDocumentationId = null;
+
+function resolveDocumentationPath(currentPath, href) {
+  const [rawPath, rawHash = ''] = String(href || '').split('#', 2);
+  if (!rawPath) return { path: currentPath, heading: rawHash };
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rawPath) || rawPath.startsWith('//')) return null;
+  const base = String(currentPath || '').split('/').slice(0, -1);
+  const source = rawPath.startsWith('/') ? rawPath.slice(1).split('/') : [...base, ...rawPath.split('/')];
+  const normalized = [];
+  for (const segment of source) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (!normalized.length) return null;
+      normalized.pop();
+    } else normalized.push(segment);
+  }
+  const path = normalized.join('/');
+  if (!path.startsWith('docs/') || !path.endsWith('.md')) return null;
+  return { path, heading: rawHash };
 }
 
-function openDoc(id) {
+function navigateDocumentationLink(event, currentArticle) {
+  const anchor = event.target.closest('a[href]');
+  if (!anchor || !currentArticle) return;
+  const resolved = resolveDocumentationPath(currentArticle.path, anchor.getAttribute('href'));
+  if (!resolved) return;
+  const targetArticle = bundledDocs.find((article) => article.path === resolved.path);
+  if (!targetArticle) return;
+  event.preventDefault();
+  openDoc(targetArticle.id, { focusArticle: true, heading: resolved.heading });
+}
+
+async function renderDocs() {
+  const list = $('#docs-list');
+  const visibleArticles = bundledDocs.filter((article) => !isSchoolSensitiveText(`${article.title} ${article.category} ${article.content}`));
+  const entries = await filterSearchItems(visibleArticles, (article) => `${article.title} ${article.category} ${article.content}`, $('#docs-search'));
+  if (entries === null) return;
+  if (!entries.length) { list.setAttribute('aria-activedescendant', ''); renderEmptyCollection(list, 'No documentation articles match this search.'); return; }
+  list.replaceChildren();
+  entries.forEach((article, index) => {
+    const option = document.createElement('div');
+    option.id = `docs-option-${article.id.replace(/[^a-z0-9_-]/gi, '-')}`;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String((currentDocumentationId || entries[0].id) === article.id));
+    option.dataset.docId = article.id;
+    option.tabIndex = index === 0 ? 0 : -1;
+    appendTextElement(option, 'strong', article.title);
+    option.append(document.createElement('br'));
+    appendTextElement(option, 'small', article.category);
+    option.addEventListener('click', () => openDoc(article.id, { focusArticle: true }));
+    option.addEventListener('keydown', handleDocumentationOptionKeydown);
+    list.append(option);
+  });
+  if (!entries.some((article) => article.id === currentDocumentationId)) currentDocumentationId = entries[0].id;
+  openDoc(currentDocumentationId, { focusArticle: false });
+  scheduleVocabularyTextBoundary();
+}
+
+function handleDocumentationOptionKeydown(event) {
+  const options = $$('[role="option"][data-doc-id]', $('#docs-list'));
+  const index = options.indexOf(event.currentTarget);
+  if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : event.key === 'ArrowUp' ? (index - 1 + options.length) % options.length : (index + 1) % options.length;
+    options[nextIndex]?.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    openDoc(event.currentTarget.dataset.docId, { focusArticle: true });
+  }
+}
+
+function openDoc(id, { focusArticle = true, heading = '' } = {}) {
   const article = bundledDocs.find((item) => item.id === id);
   if (!article) return;
-  $$('[data-doc-id]').forEach((button) => button.setAttribute('aria-selected', String(button.dataset.docId === id)));
+  currentDocumentationId = id;
+  $$('[data-doc-id]').forEach((option) => {
+    const active = option.dataset.docId === id;
+    option.setAttribute('aria-selected', String(active));
+    option.tabIndex = active ? 0 : -1;
+    if (active) $('#docs-list').setAttribute('aria-activedescendant', option.id);
+  });
   $('#docs-article').innerHTML = markdownToHtml(article.content);
   $('#docs-article').setAttribute('aria-label', article.title);
-  $('#docs-article').focus?.();
+  $('#docs-article').onclick = (event) => navigateDocumentationLink(event, article);
+  if (focusArticle) $('#docs-article').focus?.();
+  if (heading) requestAnimationFrame(() => $(`[data-doc-heading="${CSS.escape(heading)}"]`, $('#docs-article'))?.scrollIntoView({ block: 'start' }));
+  scheduleVocabularyTextBoundary();
 }
 
 function renderAttentionBar() {
@@ -696,6 +1100,35 @@ function renderAttentionBar() {
   $('#session-elapsed').textContent = `Session ${Math.floor((Date.now() - startedAt) / 60000)} min`;
   $('#last-change').textContent = `Last change ${formatRelative(new Date(lastChangedAt).toISOString())}`;
   $('#next-action-display').textContent = settings.one && settings.nextAction ? `Next: ${settings.nextAction}` : '';
+}
+
+function applyExplicitSettingNames() {
+  for (const [id, name] of Object.entries(SETTING_CONTROL_NAMES)) {
+    const control = document.getElementById(id);
+    if (control) control.setAttribute('aria-label', name);
+  }
+  $$('input[name="schedule-day"]').forEach((control) => control.setAttribute('aria-label', `Schedule on ${control.closest('label')?.textContent?.trim() || control.value}`));
+  $$('#panel-settings button, #panel-settings input, #panel-settings select, #panel-settings textarea').forEach((control) => {
+    if (control.getAttribute('aria-label') || control.getAttribute('aria-labelledby') || control.closest('label')) return;
+    const heading = control.closest('.setting-card, .surface-card')?.querySelector('h3')?.textContent?.trim();
+    if (heading) control.setAttribute('aria-label', `${heading}: ${control.textContent?.trim() || control.type || 'control'}`);
+  });
+}
+
+function vocabularyStatusCopy() {
+  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
+  const copy = VOCABULARY_STATUS_COPY[vocabularyUiState] || VOCABULARY_STATUS_COPY.empty;
+  if (mode === 'yue') return copy.yue;
+  if (mode === 'both') return `${copy.en} · ${copy.yue}`;
+  return copy.en;
+}
+
+function localizedVocabularyAction(action) {
+  const mode = state.settings.schoolMode ? 'en' : state.settings.language;
+  const copy = VOCABULARY_ACTION_COPY[action];
+  if (mode === 'yue') return copy.yue;
+  if (mode === 'both') return `${copy.en} · ${copy.yue}`;
+  return copy.en;
 }
 
 function renderSettings() {
@@ -731,7 +1164,32 @@ function renderSettings() {
   $('#adhd-momentum').checked = s.attention.momentum;
   $('#next-action').value = s.attention.nextAction;
   $('#ollama-url').value = state.ollama.url;
-  $('#vocabulary-status').textContent = state.vocabulary.loaded ? 'A validated local cache is active. File name and mappings are not exposed.' : 'No file loaded';
+  $('#vocabulary-status').textContent = vocabularyStatusCopy();
+  const hasVocabularyCache = Object.keys(validatePersonalVocabularyCache(state.vocabulary).entries).length > 0;
+  $('#replace-vocabulary').textContent = localizedVocabularyAction(hasVocabularyCache ? 'replace' : 'choose');
+  $('#clear-vocabulary').disabled = !hasVocabularyCache;
+  $('#school-mode-label').textContent = s.schoolModeName;
+  applyExplicitSettingNames();
+  scheduleVocabularyTextBoundary();
+}
+
+function applySchoolModeVisibility() {
+  const changed = lastRenderedSchoolMode !== state.settings.schoolMode;
+  lastRenderedSchoolMode = state.settings.schoolMode;
+  if (changed) {
+    renderHistory();
+    renderNotifications();
+    renderDocs();
+    renderChangelog();
+    filterSettings();
+  }
+  if (!state.settings.schoolMode) return;
+  $$('.snackbar').filter((item) => isSchoolSensitiveText(item.textContent)).forEach((item) => item.remove());
+  if ($('#command-palette').open) renderCommandPalette();
+  if ($('#regex-dialog').open && SCHOOL_SENSITIVE_REGEX_OWNERS.has(activeRegexOwner)) $('#regex-dialog').close();
+  if (!$('#context-menu').hidden && contextTarget?.closest?.('[data-school-sensitive], .school-hidden')) closeContextMenu();
+  if ($('#appearance-dialog').open && appearanceTarget?.closest?.('[data-school-sensitive], .school-hidden')) $('#appearance-dialog').close();
+  if ($('#lock-dialog').open && lockTarget?.closest?.('[data-school-sensitive], .school-hidden')) $('#lock-dialog').close();
 }
 
 function applySettings() {
@@ -748,8 +1206,8 @@ function applySettings() {
   document.body.classList.toggle('rainbow-accent', s.rainbow);
   $$('.dialog-emoji').forEach((emoji) => { emoji.hidden = !s.dialogEmoji; });
   $('#app-shell').dataset.dock = s.dock;
-  $('#display-name').textContent = applyPrivateVocabulary(s.displayName);
-  document.title = applyPrivateVocabulary(s.displayName);
+  $('#display-name').textContent = s.displayName;
+  document.title = s.displayName;
   const logo = $('#brand-mark');
   logo.style.objectFit = s.logo.fit;
   logo.style.background = s.logo.background;
@@ -760,6 +1218,8 @@ function applySettings() {
   renderTabs();
   renderAttentionBar();
   applySchedules();
+  applySchoolModeVisibility();
+  scheduleVocabularyTextBoundary();
 }
 
 function renderAll() {
@@ -837,7 +1297,7 @@ function mountRegexWorkbench(host, owner) {
     const file = event.target.files?.[0];
     if (!file || file.size > 32768) return showNotification('Regex snippet rejected', 'Choose a JSON snippet no larger than 32 KiB.', 'error');
     try {
-      const imported = JSON.parse(await file.text());
+      const imported = parseJsonStrict(await file.text(), { maxDepth: 3, maxBytes: 32768 });
       if (typeof imported.pattern !== 'string' || typeof imported.flags !== 'string') throw new Error('Snippet must contain string pattern and flags fields.');
       patternInput.value = imported.pattern.slice(0, 2000);
       flagsInput.value = imported.flags.replace(/[^dgimsuvy]/g, '').slice(0, 8);
@@ -858,7 +1318,9 @@ function mountRegexWorkbench(host, owner) {
     persist('Regex test case added', `Added an expected ${expected} case for ${owner}.`);
     runRegexWorkbench(root, owner);
   });
-  runRegexWorkbench(root, owner);
+  $('[data-regex-results]', root).innerHTML = '<div class="empty-state">Run the bounded evaluation when you are ready. No pattern runs automatically at startup.</div>';
+  $('[data-regex-preview]', root).textContent = 'Replacement preview waits for an explicit run.';
+  $('[data-regex-performance]', root).textContent = 'Evaluation has not run.';
 }
 
 function explainRegex(pattern) {
@@ -890,7 +1352,7 @@ function regexRisk(pattern) {
   return 'No common catastrophic-backtracking shape was detected. This is a heuristic, not a proof.';
 }
 
-function runRegexWorkbench(root, owner) {
+async function runRegexWorkbench(root, owner) {
   const pattern = $('[data-regex-pattern]', root).value.slice(0, 2000);
   const flagsRaw = $('[data-regex-flags]', root).value.replace(/[^dgimsuvy]/g, '').slice(0, 8);
   const sample = $('[data-regex-sample]', root).value.slice(0, 20000);
@@ -905,32 +1367,36 @@ function runRegexWorkbench(root, owner) {
   risk.textContent = regexRisk(pattern);
   const started = window.performance?.now?.() ?? Date.now();
   try {
+    const testCases = safePattern(owner).cases || [];
     if (mode === 'plain') {
       const index = sample.toLocaleLowerCase().indexOf(pattern.toLocaleLowerCase());
       results.innerHTML = index >= 0 ? `<div class="collection-item"><span>#1</span><div><strong>${escapeHtml(pattern)}</strong><p>Index ${index}</p></div></div>` : '<div class="empty-state">No match.</div>';
       preview.textContent = pattern ? sample.split(pattern).join(replacement) : sample;
+      $('[data-regex-cases]', root).innerHTML = testCases.length ? testCases.map((testCase) => {
+        const actual = testCase.sample.toLocaleLowerCase().includes(pattern.toLocaleLowerCase());
+        const pass = actual === (testCase.expected === 'match');
+        return `<div class="collection-item"><span>${pass ? 'Pass' : 'Fail'}</span><div><strong>${escapeHtml(testCase.sample)}</strong><p>Expected ${escapeHtml(testCase.expected)}, actual ${actual ? 'match' : 'no match'}</p></div></div>`;
+      }).join('') : '<div class="empty-state">No expected-outcome cases.</div>';
     } else {
-      const baseFlags = [...new Set(flagsRaw.split(''))].join('');
-      const navigationFlags = baseFlags.includes('g') ? baseFlags : `${baseFlags}g`;
-      const expression = new RegExp(pattern, navigationFlags);
-      const matches = [];
-      let match;
-      while ((match = expression.exec(sample)) && matches.length < 500) {
-        matches.push({ text: match[0], index: match.index, captures: match.slice(1), groups: match.groups || {} });
-        if (match[0] === '') expression.lastIndex += 1;
-      }
+      if (!regexWorkerClient) throw new Error('Disposable Worker support is unavailable, so regular expression evaluation is disabled.');
+      const evaluated = await regexWorkerClient.run({
+        operation: 'scan',
+        pattern,
+        flags: flagsRaw,
+        sample,
+        replacement,
+        testCases: testCases.map((testCase) => ({ text: testCase.sample, expected: testCase.expected === 'match' }))
+      });
+      const matches = evaluated.matches;
       results.innerHTML = matches.length ? matches.map((item, index) => `<div class="collection-item"><span>#${index + 1}</span><div><strong>${escapeHtml(item.text || '(zero-width)')}</strong><p>Index ${item.index}; captures ${escapeHtml(JSON.stringify(item.captures))}; named ${escapeHtml(JSON.stringify(item.groups))}</p></div></div>`).join('') : '<div class="empty-state">No match.</div>';
-      preview.textContent = sample.replace(new RegExp(pattern, baseFlags), replacement);
+      preview.textContent = evaluated.preview;
+      $('[data-regex-cases]', root).innerHTML = evaluated.tests.length ? evaluated.tests.map((testCase, index) => {
+        const sourceCase = testCases[index];
+        return `<div class="collection-item"><span>${testCase.passed ? 'Pass' : 'Fail'}</span><div><strong>${escapeHtml(sourceCase.sample)}</strong><p>Expected ${sourceCase.expected === 'match' ? 'match' : 'no match'}, actual ${testCase.actual ? 'match' : 'no match'}</p></div></div>`;
+      }).join('') : '<div class="empty-state">No expected-outcome cases.</div>';
     }
     const elapsed = (window.performance?.now?.() ?? Date.now()) - started;
     performanceOutput.textContent = `Evaluation completed in ${elapsed.toFixed(3)} ms. Pattern ${pattern.length}/2,000 characters, sample ${sample.length}/20,000 characters, maximum 500 navigated matches.`;
-    const testCases = safePattern(owner).cases || [];
-    $('[data-regex-cases]', root).innerHTML = testCases.length ? testCases.map((testCase) => {
-      let actual = false;
-      try { actual = mode === 'plain' ? testCase.sample.toLocaleLowerCase().includes(pattern.toLocaleLowerCase()) : new RegExp(pattern, flagsRaw.replace(/g/g, '')).test(testCase.sample); } catch {}
-      const pass = actual === (testCase.expected === 'match');
-      return `<div class="collection-item"><span>${pass ? 'Pass' : 'Fail'}</span><div><strong>${escapeHtml(testCase.sample)}</strong><p>Expected ${escapeHtml(testCase.expected)}, actual ${actual ? 'match' : 'no match'}</p></div></div>`;
-    }).join('') : '<div class="empty-state">No expected-outcome cases.</div>';
   } catch (error) {
     results.innerHTML = `<div class="empty-state">Invalid pattern: ${escapeHtml(error.message)}</div>`;
     preview.textContent = 'Replacement preview unavailable for an invalid pattern.';
@@ -977,10 +1443,13 @@ function enhanceDropdowns(root = document) {
     wrapper.append(filter, builder, status);
     select.before(wrapper);
     setupInputSearchState(filter);
-    filter.addEventListener('input', () => {
-      let visible = 0;
-      [...select.options].forEach((option) => { const matches = matchesSearch(option.textContent, filter); option.hidden = !matches; if (matches) visible += 1; });
-      status.textContent = `${visible} choices visible.`;
+    filter.addEventListener('input', async () => {
+      const options = [...select.options];
+      const visibleOptions = await filterSearchItems(options, (option) => option.textContent, filter);
+      if (visibleOptions === null) return;
+      const visible = new Set(visibleOptions);
+      options.forEach((option) => { option.hidden = !visible.has(option); });
+      status.textContent = `${visible.size} choices visible.`;
     });
     builder.addEventListener('click', () => openRegexBuilder(filter));
   });
@@ -1114,15 +1583,18 @@ function openAppearanceEditor(element = null) {
   $$('[data-layer-delete]', root).forEach((button) => button.addEventListener('click', () => { if (config.layers.length <= 1) return showNotification('Layer retained', 'At least one layer is required.', 'warning'); config.layers = config.layers.filter((layer) => layer.id !== button.dataset.layerDelete); persist('Appearance layer removed', `Removed a layer from ${targetName(appearanceTarget)}.`); openAppearanceEditor(appearanceTarget); }));
   $$('[data-layer-up]', root).forEach((button) => button.addEventListener('click', () => { const index = config.layers.findIndex((layer) => layer.id === button.dataset.layerUp); if (index > 0) [config.layers[index - 1], config.layers[index]] = [config.layers[index], config.layers[index - 1]]; persist('Appearance layers reordered', `Reordered layers on ${targetName(appearanceTarget)}.`); openAppearanceEditor(appearanceTarget); }));
   $('[data-apply-style]', root).addEventListener('click', () => {
-    config.styles[config.state || 'normal'] = Object.fromEntries($$('[data-style]', root).map((control) => [control.dataset.style, control.value]).filter(([, value]) => value !== ''));
+    const nextConfig = cloneStateSnapshot(config);
+    nextConfig.styles[nextConfig.state || 'normal'] = Object.fromEntries($$('[data-style]', root).map((control) => [control.dataset.style, control.value]).filter(([, value]) => value !== ''));
+    try { state.appearance[id] = validateAppearanceMap({ [id]: nextConfig })[id]; }
+    catch (error) { showNotification('Appearance not applied', error.message, 'error'); return; }
     persist('Appearance changed', `Updated ${config.state || 'normal'} appearance for ${targetName(appearanceTarget)}.`);
     applyAppearance();
-    renderColorTranslations(root, config.styles[config.state || 'normal'].color || '#a7f3d0');
+    renderColorTranslations(root, state.appearance[id].styles[state.appearance[id].state || 'normal'].color || '#a7f3d0');
   });
   $('[data-copy-style]', root).addEventListener('click', () => copyText(JSON.stringify(config, null, 2)));
   $('[data-export-style]', root).addEventListener('click', () => downloadText(`appearance-${id.replace(/[^a-z0-9]+/gi, '-')}.json`, JSON.stringify(config, null, 2), 'application/json'));
   $('[data-import-style]', root).addEventListener('click', () => $('[data-style-file]', root).click());
-  $('[data-style-file]', root).addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file || file.size > 65536) return showNotification('Appearance preset rejected', 'Choose JSON no larger than 64 KiB.', 'error'); try { const value = JSON.parse(await file.text()); if (!value || !Array.isArray(value.layers) || typeof value.styles !== 'object') throw new Error('Preset shape is invalid.'); state.appearance[id] = value; persist('Appearance preset imported', `Imported a preset for ${targetName(appearanceTarget)}.`); applyAppearance(); openAppearanceEditor(appearanceTarget); } catch (error) { showNotification('Appearance preset rejected', error.message, 'error'); } });
+  $('[data-style-file]', root).addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file || file.size > 65536) return showNotification('Appearance preset rejected', 'Choose JSON no larger than 64 KiB.', 'error'); try { const value = parseJsonStrict(await file.text(), { maxDepth: 8, maxBytes: 65536 }); state.appearance[id] = validateAppearanceMap({ [id]: value })[id]; persist('Appearance preset imported', `Imported a validated preset for ${targetName(appearanceTarget)}.`); applyAppearance(); openAppearanceEditor(appearanceTarget); } catch (error) { showNotification('Appearance preset rejected', error.message, 'error'); } finally { event.target.value = ''; } });
   $('[data-reset-style]', root).addEventListener('click', () => requestDestructiveAction('Reset target appearance', `All local appearance overrides for ${targetName(appearanceTarget)} will be removed.`, () => { delete state.appearance[id]; persist('Appearance reset', `Reset ${targetName(appearanceTarget)}.`); applyAppearance(); $('#appearance-dialog').close(); }));
   enhanceDropdowns(root);
   $('#appearance-dialog').showModal();
@@ -1130,7 +1602,10 @@ function openAppearanceEditor(element = null) {
 
 function applyAppearance() {
   assignStableElementIds();
-  Object.entries(state.appearance).forEach(([id, config]) => {
+  let appearance;
+  try { appearance = validateAppearanceMap(state.appearance); }
+  catch (error) { showNotification('Appearance data quarantined', `Invalid appearance overrides were ignored: ${error.message}`, 'error', false); state.appearance = {}; return; }
+  Object.entries(appearance).forEach(([id, config]) => {
     const element = id === 'global' ? document.documentElement : document.querySelector(`[data-element-id="${CSS.escape(id)}"]`);
     if (!element) return;
     const style = { ...(config.styles?.normal || {}), ...(config.styles?.[config.state] || {}) };
@@ -1341,7 +1816,8 @@ function parseOtpUri(value, fallbackLabel) {
 async function renderTotpEntries() {
   const container = $('#totp-list');
   if (!container) return;
-  const entries = state.totpEntries.filter((entry) => matchesSearch(`${entry.label} ${entry.issuer}`, $('#totp-search')));
+  const entries = await filterSearchItems(state.totpEntries, (entry) => `${entry.label} ${entry.issuer}`, $('#totp-search'));
+  if (entries === null) return;
   if (!entries.length) { container.innerHTML = '<div class="empty-state">No local authenticator entries match this view.</div>'; return; }
   const rows = [];
   for (const entry of entries) {
@@ -1349,8 +1825,8 @@ async function renderTotpEntries() {
       const current = await totpCode(entry.totpSecret, Date.now(), entry.algorithm, entry.digits, entry.period);
       const next = await totpCode(entry.totpSecret, Date.now() + entry.period * 1000, entry.algorithm, entry.digits, entry.period);
       const remaining = entry.period - Math.floor(Date.now() / 1000) % entry.period;
-      rows.push(`<article class="collection-item" data-element-id="totp:${entry.id}"><span aria-hidden="true">◴</span><div><h4>${escapeHtml(entry.label)}</h4><p><strong aria-label="Current code ${current.split('').join(' ')}">${current.match(/.{1,3}/g).join(' ')}</strong> · ${remaining}s · next ${next.match(/.{1,3}/g).join(' ')}</p></div><div><button class="text-button" type="button" data-copy-code="${current}">Copy</button><button class="danger-button" type="button" data-remove-totp="${entry.id}">Delete</button></div></article>`);
-    } catch { rows.push(`<article class="collection-item"><span>!</span><div><h4>${escapeHtml(entry.label)}</h4><p>Code generation failed in this browser.</p></div></article>`); }
+      rows.push(`<article class="collection-item" data-element-id="totp:${entry.id}"><span aria-hidden="true">◴</span><div><h4 data-vocabulary-exempt>${escapeHtml(entry.label)}</h4><p><strong data-vocabulary-exempt aria-label="Current code ${current.split('').join(' ')}">${current.match(/.{1,3}/g).join(' ')}</strong> · ${remaining}s · next <span data-vocabulary-exempt>${next.match(/.{1,3}/g).join(' ')}</span></p></div><div><button class="text-button" type="button" data-copy-code="${current}">Copy</button><button class="danger-button" type="button" data-remove-totp="${entry.id}">Delete</button></div></article>`);
+    } catch { rows.push(`<article class="collection-item"><span>!</span><div><h4 data-vocabulary-exempt>${escapeHtml(entry.label)}</h4><p>Code generation failed in this browser.</p></div></article>`); }
   }
   container.innerHTML = rows.join('');
   $$('[data-copy-code]').forEach((button) => button.addEventListener('click', () => copyText(button.dataset.copyCode)));
@@ -1358,11 +1834,12 @@ async function renderTotpEntries() {
   applyLocks();
 }
 
-function renderOllamaModels() {
+async function renderOllamaModels() {
   const container = $('#ollama-model-list');
   if (!container) return;
-  const models = state.ollama.models.filter((model) => matchesSearch(`${model.name} ${model.size || ''}`, $('#ollama-search')));
-  container.innerHTML = models.length ? models.map((model) => `<article class="collection-item"><span aria-hidden="true">◫</span><div><h4>${escapeHtml(model.name)}</h4><p>${model.size ? `${Number(model.size / 1024 / 1024 / 1024).toFixed(2)} GiB` : 'Size unavailable'} · Hardware fit Unknown, browser evidence is incomplete</p></div><button class="text-button" type="button" disabled aria-label="Chat unavailable in this static website">Chat unavailable</button></article>`).join('') : '<div class="empty-state">No installed local models are available in this browser state.</div>';
+  const models = await filterSearchItems(state.ollama.models, (model) => `${model.name} ${model.size || ''}`, $('#ollama-search'));
+  if (models === null) return;
+  container.innerHTML = models.length ? models.map((model) => `<article class="collection-item"><span aria-hidden="true">◫</span><div><h4 data-vocabulary-exempt>${escapeHtml(model.name)}</h4><p>${model.size ? `${Number(model.size / 1024 / 1024 / 1024).toFixed(2)} GiB` : 'Size unavailable'} · Hardware fit Unknown, browser evidence is incomplete</p></div><button class="text-button" type="button" disabled aria-label="Chat unavailable in this static website">Chat unavailable</button></article>`).join('') : '<div class="empty-state">No installed local models are available in this browser state.</div>';
 }
 
 async function connectOllama() {
@@ -1370,9 +1847,10 @@ async function connectOllama() {
   let url;
   try {
     url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Use an explicit loopback HTTP or HTTPS URL without embedded credentials.');
+    const allowedOrigins = new Set(['http://127.0.0.1:11434', 'http://localhost:11434']);
+    if (!allowedOrigins.has(url.origin) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Use exactly http://127.0.0.1:11434 or http://localhost:11434 without credentials, paths, queries, or fragments.');
   } catch (error) { return showNotification('Local API URL rejected', error.message, 'error'); }
-  state.ollama.url = url.href;
+  state.ollama.url = url.origin;
   $('#ollama-status').textContent = 'Checking the user-selected loopback API...';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
@@ -1381,7 +1859,13 @@ async function connectOllama() {
     if (!response.ok) throw new Error(`Local API returned HTTP ${response.status}.`);
     const body = await response.json();
     if (!body || !Array.isArray(body.models) || JSON.stringify(body).length > 1024 * 1024) throw new Error('Local API response is malformed or exceeds 1 MiB.');
-    state.ollama.models = body.models.slice(0, 2000).map((model) => ({ name: String(model.name || '').slice(0, 300), size: Number(model.size) || null }));
+    state.ollama.models = body.models.slice(0, 2000).map((model, index) => {
+      if (!model || typeof model !== 'object' || Array.isArray(model)) throw new Error(`Local model row ${index + 1} is malformed.`);
+      const name = typeof model.name === 'string' ? model.name.trim().slice(0, 300) : '';
+      const numericSize = Number(model.size);
+      if (!name || !Number.isSafeInteger(numericSize) || numericSize < 0) throw new Error(`Local model row ${index + 1} has an invalid name or size.`);
+      return { name, size: numericSize };
+    });
     state.ollama.checkedAt = new Date().toISOString();
     $('#ollama-status').textContent = `Connected to a local API. ${state.ollama.models.length} installed tags reported.`;
     persist('Local model API checked', `The user-selected loopback API reported ${state.ollama.models.length} installed tags.`);
@@ -1448,15 +1932,15 @@ function redactedExportRecord() {
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
     encoding: 'UTF-8',
-    omissions: ['Authenticator secrets', 'Lock credentials', 'Private vocabulary mappings', 'Custom logo bytes'],
-    state: deepRedact({ ...state, totpEntries: state.totpEntries.map(({ id, label, issuer, algorithm, digits, period }) => ({ id, label, issuer, algorithm, digits, period, totpSecret: '[omitted]' })), locks: Object.fromEntries(Object.entries(state.locks).map(([id, lock]) => [id, { id, name: lock.name, policy: lock.policy, duration: lock.duration, credentials: '[omitted]' }])) })
+    omissions: ['Authenticator entries and secrets', 'Element locks and verifier material', 'Presentation-mode verifier material', 'Private vocabulary cache and source metadata', 'Custom logo bytes', 'Transient conversion output'],
+    state: buildRedactedExportState(state)
   };
 }
 
 function serializeExport(record, format) {
   const json = JSON.stringify(record, null, 2);
   if (format === 'JSON') return { text: `${json}\n`, extension: 'json', type: 'application/json' };
-  if (format === 'JSONL') return { text: `${[record, ...state.haircuts.map((haircut) => ({ type: 'haircut', ...haircut }))].map((item) => JSON.stringify(item)).join('\n')}\n`, extension: 'jsonl', type: 'application/x-ndjson' };
+  if (format === 'JSONL') return { text: `${[record, ...record.state.haircuts.map((haircut) => ({ type: 'haircut', ...haircut }))].map((item) => JSON.stringify(item)).join('\n')}\n`, extension: 'jsonl', type: 'application/x-ndjson' };
   if (format === 'YAML') return { text: `schemaVersion: ${record.schemaVersion}\nexportedAt: "${record.exportedAt}"\nomissions:\n${record.omissions.map((item) => `  - "${item}"`).join('\n')}\ndataJson: |\n${json.split('\n').map((line) => `  ${line}`).join('\n')}\n`, extension: 'yaml', type: 'application/yaml' };
   if (format === 'TOML') return { text: `schemaVersion = ${record.schemaVersion}\nexportedAt = "${record.exportedAt}"\nomissions = [${record.omissions.map((item) => JSON.stringify(item)).join(', ')}]\ndataJson = ${JSON.stringify(json)}\n`, extension: 'toml', type: 'application/toml' };
   if (format === 'XML') return { text: `<?xml version="1.0" encoding="UTF-8"?>\n<hairGrowthExport schemaVersion="1"><exportedAt>${escapeHtml(record.exportedAt)}</exportedAt><omissions>${record.omissions.map((item) => `<item>${escapeHtml(item)}</item>`).join('')}</omissions><json>${escapeHtml(json)}</json></hairGrowthExport>\n`, extension: 'xml', type: 'application/xml' };
@@ -1511,30 +1995,71 @@ function startHairAnimation() {
   if (!state.settings.reducedMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches) heroTimer = setInterval(render, 2600);
 }
 
-function renderCommandPalette() {
-  const query = $('#palette-search').value;
-  const rows = FEATURE_COMMANDS.filter(([label]) => matchesSearch(label, $('#palette-search'))).map(([label, tab, target]) => ({ label, tab, target }));
+async function renderCommandPalette() {
+  const allowedCommands = FEATURE_COMMANDS.filter(([label, , target]) => !state.settings.schoolMode || (!isSchoolSensitiveText(label) && !['language-mode', 'vocabulary-file', 'vocabulary-status', 'replace-vocabulary', 'clear-vocabulary'].includes(target)));
+  const matchingCommands = await filterSearchItems(allowedCommands, ([label]) => label, $('#palette-search'));
+  if (matchingCommands === null) return;
+  const rows = matchingCommands.map(([label, tab, target]) => ({ label, tab, target }));
   $('#palette-results').innerHTML = rows.length ? rows.map((row, index) => `<button class="palette-row" type="button" role="option" data-command-index="${index}"><span><strong>${escapeHtml(row.label)}</strong><br><small>${escapeHtml(currentTabDefinition(row.tab)?.label || row.tab)}</small></span><span>Open</span></button>`).join('') : '<div class="empty-state">No command or setting matches this search.</div>';
-  $$('[data-command-index]').forEach((button) => button.addEventListener('click', () => { const row = rows[Number(button.dataset.commandIndex)]; $('#command-palette').close(); if (row.target === 'support') return $('#support-dialog').showModal(); activateTab(row.tab, row.target); if (row.tab === 'tools' && ['regex', 'converter', 'ollama', 'authenticator', 'exports'].includes(row.target)) activateSubtab(row.target); }));
+  $$('[data-command-index]').forEach((button) => button.addEventListener('click', () => {
+    const row = rows[Number(button.dataset.commandIndex)];
+    $('#command-palette').close();
+    if (row.target === 'support') return $('#support-dialog').showModal();
+    if (row.tab === 'tools' && ['regex', 'converter', 'ollama', 'authenticator', 'exports'].includes(row.target)) activateSubtab(row.target);
+    if (row.tab === 'settings' && row.target) {
+      const target = document.getElementById(row.target);
+      const panel = target?.closest('[data-settings-panel]');
+      if (panel) activateSettingsTab(panel.dataset.settingsPanel);
+    }
+    activateTab(row.tab, row.target);
+  }));
 }
 
-function activateSubtab(id) {
-  $$('[data-subtab]').forEach((button) => button.setAttribute('aria-selected', String(button.dataset.subtab === id)));
-  $$('[data-tool-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.toolPanel === id));
+function activateManagedTab(buttonSelector, panelSelector, id, { focus = false } = {}) {
+  const buttons = $$(buttonSelector).filter((button) => !button.hidden && !button.closest('[hidden]'));
+  buttons.forEach((button) => {
+    const active = (button.dataset.subtab || button.dataset.settingsTab) === id;
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+    if (active && focus) button.focus();
+  });
+  $$(panelSelector).forEach((panel) => {
+    const active = (panel.dataset.toolPanel || panel.dataset.settingsPanel) === id;
+    panel.classList.toggle('active', active);
+    panel.hidden = !active;
+  });
 }
 
-function activateSettingsTab(id) {
-  $$('[data-settings-tab]').forEach((button) => button.setAttribute('aria-selected', String(button.dataset.settingsTab === id)));
-  $$('[data-settings-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.settingsPanel === id));
+function handleManagedTabKeydown(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const tablist = event.currentTarget.closest('[role="tablist"]');
+  const tabs = $$('[role="tab"]', tablist).filter((tab) => !tab.hidden && !tab.closest('[hidden]'));
+  const index = tabs.indexOf(event.currentTarget);
+  if (index < 0 || !tabs.length) return;
+  event.preventDefault();
+  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length : (index + 1) % tabs.length;
+  const next = tabs[nextIndex];
+  const id = next.dataset.subtab || next.dataset.settingsTab;
+  if (next.dataset.subtab) activateSubtab(id, true); else activateSettingsTab(id, true);
 }
 
-function renderOverflow() {
-  const tabs = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id) && matchesSearch(`${tab.label} ${tabGroup(tab)}`, $('#overflow-search')));
+function activateSubtab(id, focus = false) {
+  activateManagedTab('[data-subtab]', '[data-tool-panel]', id, { focus });
+}
+
+function activateSettingsTab(id, focus = false) {
+  activateManagedTab('[data-settings-tab]', '[data-settings-panel]', id, { focus });
+}
+
+async function renderOverflow() {
+  const openTabs = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id));
+  const tabs = await filterSearchItems(openTabs, (tab) => `${tab.label} ${tabGroup(tab)}`, $('#overflow-search'));
+  if (tabs === null) return;
   $('#overflow-list').innerHTML = tabs.map((tab) => `<button type="button" class="palette-row" data-overflow-tab="${tab.id}"><span>${escapeHtml(localizedTabLabel(tab))}</span><small>${escapeHtml(tabGroup(tab))}</small></button>`).join('') || '<div class="empty-state">No tabs match this filter.</div>';
   $$('[data-overflow-tab]').forEach((button) => button.addEventListener('click', () => { $('#tab-overflow-dialog').close(); activateTab(button.dataset.overflowTab); }));
 }
 
-function updateBulkTabPreview() {
+async function updateBulkTabPreview() {
   const query = $('#bulk-tab-query').value;
   if (!query) { $('#bulk-tab-preview').textContent = 'Enter text to preview affected tabs.'; $('#run-bulk-tabs').disabled = true; return; }
   const config = safePattern('bulk-tab-query');
@@ -1542,24 +2067,41 @@ function updateBulkTabPreview() {
   state.regexOwners['bulk-tab-query'] = config;
   const inverse = $('input[name="bulk-mode"]:checked').value === 'not-contains';
   const includePinned = $('#bulk-include-pinned').checked;
-  const targets = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id) && (includePinned || !state.tabs.pinned.includes(tab.id)) && (inverse ? !matchesSearch(tab.label, 'bulk-tab-query') : matchesSearch(tab.label, 'bulk-tab-query')));
+  const candidates = TAB_DEFINITIONS.filter((tab) => !state.tabs.closed.includes(tab.id) && (includePinned || !state.tabs.pinned.includes(tab.id)));
+  const matching = await filterSearchItems(candidates, (tab) => tab.label, 'bulk-tab-query');
+  if (matching === null) return;
+  const matchingSet = new Set(matching);
+  const targets = candidates.filter((tab) => inverse ? !matchingSet.has(tab) : matchingSet.has(tab));
   $('#bulk-tab-preview').textContent = `${targets.length} tabs will close. ${includePinned ? 'Pinned tabs are included.' : 'Pinned tabs are excluded.'}`;
   $('#run-bulk-tabs').disabled = !targets.length;
   $('#run-bulk-tabs').dataset.targets = targets.map((tab) => tab.id).join(',');
 }
 
-function filterSettings() {
+async function filterSettings() {
   const query = $('#settings-search');
-  $$('.setting-card').forEach((card) => { card.hidden = !matchesSearch(`${card.dataset.settingKeywords || ''} ${card.textContent}`, query); });
+  const cards = $$('.setting-card').filter((card) => !state.settings.schoolMode || !card.matches('[data-school-sensitive], .school-hidden'));
+  const matches = await filterSearchItems(cards, (card) => `${card.dataset.settingKeywords || ''} ${card.textContent}`, query);
+  if (matches === null) return;
+  const visible = new Set(matches);
+  $$('.setting-card').forEach((card) => { card.hidden = state.settings.schoolMode && card.matches('[data-school-sensitive], .school-hidden') ? true : !visible.has(card); });
+  if (query.value && matches.length) {
+    const panel = matches[0].closest('[data-settings-panel]');
+    if (panel) activateSettingsTab(panel.dataset.settingsPanel);
+  }
 }
 
-function filterContextMenu() {
+async function filterContextMenu() {
   const query = $('#context-search');
-  $$('[data-context-action]').forEach((button) => { button.hidden = !matchesSearch(button.textContent, query); });
+  const buttons = $$('[data-context-action]');
+  const matches = await filterSearchItems(buttons, (button) => button.textContent, query);
+  if (matches === null) return;
+  const visible = new Set(matches);
+  buttons.forEach((button) => { button.hidden = !visible.has(button); });
 }
 
 function openContextMenu(event, element) {
   contextTarget = element;
+  contextMenuOpener = element instanceof HTMLElement && element.tabIndex >= 0 ? element : document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const menu = $('#context-menu');
   $('#context-search').value = '';
   menu.hidden = false;
@@ -1568,25 +2110,38 @@ function openContextMenu(event, element) {
   $('#context-search').focus();
 }
 
-function validateVocabulary(value, byteLength) {
-  if (byteLength > 32768) throw new Error('File exceeds the 32 KiB limit.');
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Root must be an object.');
-  const keys = Object.keys(value);
-  if (keys.some((key) => !['schemaVersion', 'mappings'].includes(key))) throw new Error('Unexpected root field.');
-  if (value.schemaVersion !== 1) throw new Error('Only schemaVersion 1 is supported.');
-  if (!value.mappings || typeof value.mappings !== 'object' || Array.isArray(value.mappings)) throw new Error('mappings must be an object.');
-  const entries = Object.entries(value.mappings);
-  if (entries.length > 100) throw new Error('At most 100 mappings are allowed.');
-  const unsafe = new Set(['__proto__', 'prototype', 'constructor']);
-  const seen = new Set();
-  const result = {};
-  for (const [from, to] of entries) {
-    if (unsafe.has(from) || seen.has(from)) throw new Error('Unsafe or duplicate mapping key.');
-    if (typeof from !== 'string' || typeof to !== 'string' || !from || from.length > 120 || to.length > 240) throw new Error('Mapping keys must be 1 to 120 characters and values at most 240 characters.');
-    seen.add(from);
-    result[from] = to;
+function closeContextMenu({ returnFocus = true } = {}) {
+  const menu = $('#context-menu');
+  menu.hidden = true;
+  $('#context-search').value = '';
+  if (returnFocus && contextMenuOpener?.isConnected) contextMenuOpener.focus();
+}
+
+function handleContextMenuKeydown(event) {
+  if ($('#context-menu').hidden) return;
+  const search = $('#context-search');
+  const items = $$('[role="menuitem"]:not([hidden])', $('#context-menu'));
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    if (search.value) { search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); }
+    else closeContextMenu();
+    return;
   }
-  return result;
+  if (event.target === search && event.key === 'ArrowDown') {
+    event.preventDefault();
+    items[0]?.focus();
+    return;
+  }
+  if (!items.includes(event.target)) return;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    const index = items.indexOf(event.target);
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowUp' ? (index - 1 + items.length) % items.length : (index + 1) % items.length;
+    items[nextIndex]?.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    event.target.click();
+  }
 }
 
 function createSchoolDialog(mode) {
@@ -1606,7 +2161,6 @@ function createSchoolDialog(mode) {
       const salt = crypto.randomUUID();
       state.schoolLock = { salt, hash: await hashSecret(value, salt) };
       state.settings.schoolMode = true;
-      state.settings.language = 'en';
       persist('School mode enabled', 'The shared browser presentation mode was enabled. Credential material was not recorded in history.');
     } else {
       const valid = state.schoolLock && (await hashSecret(value, state.schoolLock.salt)) === state.schoolLock.hash;
@@ -1703,10 +2257,10 @@ function setupEvents() {
       openContextMenu({ clientX: rect.left + 10, clientY: rect.top + 10 }, element);
       return;
     }
-    if (event.key === 'Escape' && !$('#context-menu').hidden) $('#context-menu').hidden = true;
+    if (event.key === 'Escape' && !$('#context-menu').hidden) handleContextMenuKeydown(event);
   });
   document.addEventListener('contextmenu', (event) => { event.preventDefault(); openContextMenu(event, event.target); });
-  document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#context-menu')) $('#context-menu').hidden = true; });
+  document.addEventListener('pointerdown', (event) => { if (!event.target.closest('#context-menu') && !$('#context-menu').hidden) closeContextMenu(); });
   let longPressTimer;
   document.addEventListener('pointerdown', (event) => { if (event.pointerType === 'touch') longPressTimer = setTimeout(() => openContextMenu(event, event.target), 650); });
   document.addEventListener('pointerup', () => clearTimeout(longPressTimer));
@@ -1714,6 +2268,14 @@ function setupEvents() {
 
   $$('[data-open-regex-for]').forEach((button) => button.addEventListener('click', () => openRegexBuilder(button.dataset.openRegexFor)));
   $$('[data-search-owner]').forEach(setupInputSearchState);
+  $('#context-menu').addEventListener('keydown', handleContextMenuKeydown);
+  $('#docs-list').addEventListener('keydown', (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || event.target !== event.currentTarget) return;
+    event.preventDefault();
+    const options = $$('[role="option"][data-doc-id]', event.currentTarget);
+    const target = event.key === 'End' || event.key === 'ArrowUp' ? options.at(-1) : options[0];
+    target?.focus();
+  });
   $('#strip-search').addEventListener('input', renderTabs);
   $('#haircut-search').addEventListener('input', renderHaircuts);
   $('#docs-search').addEventListener('input', renderDocs);
@@ -1737,8 +2299,8 @@ function setupEvents() {
   $('#haircut-date').addEventListener('input', () => setDateFieldValidation($('#haircut-date'), '#haircut-date-error', $('#haircut-date').value));
 
   $$('[data-go-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.goTab)));
-  $$('[data-subtab]').forEach((button) => button.addEventListener('click', () => activateSubtab(button.dataset.subtab)));
-  $$('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => activateSettingsTab(button.dataset.settingsTab)));
+  $$('[data-subtab]').forEach((button) => { button.addEventListener('click', () => activateSubtab(button.dataset.subtab)); button.addEventListener('keydown', handleManagedTabKeydown); });
+  $$('[data-settings-tab]').forEach((button) => { button.addEventListener('click', () => activateSettingsTab(button.dataset.settingsTab)); button.addEventListener('keydown', handleManagedTabKeydown); });
   $$('[data-copy]').forEach((button) => button.addEventListener('click', () => copyText($(button.dataset.copy)?.textContent || '')));
 
   $('#estimator-form').addEventListener('submit', (event) => {
@@ -1827,7 +2389,8 @@ function setupEvents() {
   $('#import-state').addEventListener('click', () => $('#import-file').click());
   $('#import-file').addEventListener('change', handleStateImport);
   $('#vocabulary-file').addEventListener('change', handleVocabularyFile);
-  $('#clear-vocabulary').addEventListener('click', () => { state.vocabulary = { loaded: false, vocabularyMappings: {} }; persist('Personal vocabulary cleared', 'Cleared the validated local cache. Mappings were not recorded.'); renderSettings(); applySettings(); });
+  $('#replace-vocabulary').addEventListener('click', () => $('#vocabulary-file').click());
+  $('#clear-vocabulary').addEventListener('click', () => { state.vocabulary = { schemaVersion: 1, entries: {} }; vocabularyUiState = 'cleared'; $('#vocabulary-file').value = ''; persist('Personal vocabulary cleared', 'Cleared the validated local cache. Source details and mappings were not recorded.'); renderSettings(); applySettings(); });
 
   $('#lock-policy').addEventListener('change', updateLockFactorVisibility);
   $('#save-lock').addEventListener('click', saveLock);
@@ -1842,7 +2405,7 @@ function setupEvents() {
   $('#download-button').addEventListener('click', () => { const url = $('#download-button').dataset.url; if (url) location.href = url; });
 
   $$('[data-context-action]').forEach((button) => button.addEventListener('click', () => {
-    $('#context-menu').hidden = true;
+    closeContextMenu();
     const action = button.dataset.contextAction;
     if (action === 'activate') contextTarget?.click?.();
     if (action === 'appearance') openAppearanceEditor(contextTarget);
@@ -1911,46 +2474,78 @@ async function handleCustomLogo(event) {
 async function handleVocabularyFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const hadValidCache = Object.keys(state.vocabulary.entries).length > 0;
   try {
+    vocabularyUiState = 'loading';
+    renderSettings();
+    if (!Number.isSafeInteger(file.size) || file.size > MAX_VOCABULARY_BYTES) throw new Error('Personal vocabulary exceeds the 256 KiB limit.');
     const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength !== file.size) throw new Error('Personal vocabulary bytes changed while the file was being read.');
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    const parsed = JSON.parse(text);
-    const mappings = validateVocabulary(parsed, bytes.length);
-    state.vocabulary = { loaded: true, vocabularyMappings: mappings };
-    persist('Personal vocabulary loaded', 'A complete validated local cache was applied. File name and mappings were not recorded.');
+    state.vocabulary = validatePersonalVocabularyText(text, bytes.byteLength);
+    vocabularyUiState = hadValidCache ? 'replaced' : 'loaded';
+    persist('Personal vocabulary changed', 'A complete validated local cache was applied. Source details and mappings were not recorded.');
     renderSettings();
     applySettings();
-  } catch (error) { showNotification('Personal vocabulary rejected', error.message, 'error'); }
+  } catch (error) {
+    vocabularyUiState = hadValidCache ? 'invalid-preserved' : 'invalid';
+    renderSettings();
+    showNotification('Personal vocabulary rejected', `${error.message} ${hadValidCache ? 'The last valid local cache remains active.' : 'Original wording remains active.'}`, 'error');
+  } finally {
+    event.target.value = '';
+  }
 }
 
 async function handleStateImport(event) {
   const file = event.target.files?.[0];
   if (!file || file.size > MAX_FILE_BYTES) return showNotification('Import rejected', 'Choose a compatible JSON export no larger than 1 MiB.', 'error');
   try {
-    const parsed = JSON.parse(await file.text());
+    const parsed = parseJsonStrict(await file.text(), { maxDepth: 16, maxBytes: MAX_FILE_BYTES });
+    const allowed = new Set(['schemaVersion', 'exportedAt', 'encoding', 'omissions', 'state']);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || Object.keys(parsed).some((key) => !allowed.has(key))) throw new Error('Export contains an unexpected root field.');
     if (parsed.schemaVersion !== 1 || !parsed.state || typeof parsed.state !== 'object') throw new Error('Export schema is unsupported.');
-    const imported = parsed.state;
-    delete imported.totpEntries;
-    delete imported.locks;
-    delete imported.vocabulary;
-    if (imported.settings?.logo) delete imported.settings.logo.customLogoData;
-    state = mergeState(state, { ...imported, schemaVersion: 1 });
+    const imported = sanitizeImportedState(parsed.state);
+    const currentPrivateState = {
+      locks: state.locks,
+      unlocks: state.unlocks,
+      totpEntries: state.totpEntries,
+      vocabulary: state.vocabulary,
+      schoolLock: state.schoolLock,
+      customLogoData: state.settings.logo.customLogoData,
+      schoolMode: state.settings.schoolMode,
+      schoolModeName: state.settings.schoolModeName
+    };
+    imported.locks = currentPrivateState.locks;
+    imported.unlocks = currentPrivateState.unlocks;
+    imported.totpEntries = currentPrivateState.totpEntries;
+    imported.vocabulary = currentPrivateState.vocabulary;
+    imported.settings.logo.customLogoData = currentPrivateState.customLogoData;
+    imported.settings.schoolMode = currentPrivateState.schoolMode;
+    imported.settings.schoolModeName = currentPrivateState.schoolModeName;
+    if (currentPrivateState.schoolLock) imported.schoolLock = currentPrivateState.schoolLock;
+    state = validateBrowserState(imported);
     reconcileEstimatorBaseline();
     persist('State imported', 'Imported compatible redacted browser state. Private credential and vocabulary data was omitted.');
     renderAll();
   } catch (error) { showNotification('Import rejected', error.message, 'error'); }
+  finally { event.target.value = ''; }
 }
 
 function handleStateStorageEvent(event) {
   if (event.key !== STATE_KEY) return;
   if (event.newValue === null) {
-    adoptStoredEnvelope(decodeStateEnvelope(null, defaultState()), { announce: false });
+    adoptStoredEnvelope(validateStoredStateEnvelopeText(null, defaultState()), { announce: false });
     showNotification('Browser storage reset detected', 'Another same-origin tab removed the revisioned state. This tab returned to its local defaults.', 'warning', false);
     return;
   }
-  const incoming = decodeStateEnvelope(event.newValue, defaultState());
-  if (incoming.writerId === writerId || incoming.revision <= stateRevision) return;
-  adoptStoredEnvelope(incoming);
+  try {
+    const incoming = validateStoredStateEnvelopeText(event.newValue, defaultState());
+    if (incoming.writerId === writerId || incoming.revision <= stateRevision) return;
+    adoptStoredEnvelope(incoming);
+  } catch {
+    try { localStorage.setItem(STATE_QUARANTINE_KEY, JSON.stringify({ schemaVersion: 1, quarantinedAt: new Date().toISOString(), reason: 'Invalid storage event state', rawState: String(event.newValue).slice(0, 4 * 1024 * 1024) })); } catch {}
+    showNotification('Invalid browser revision ignored', 'A malformed same-origin storage update was quarantined locally and was not rendered.', 'error', false);
+  }
 }
 
 function initialize() {
@@ -1959,14 +2554,22 @@ function initialize() {
   mountRegexWorkbench($('#regex-workbench-host'), 'standalone-workbench');
   setupEvents();
   enhanceDropdowns(document);
+  activateSubtab('regex');
+  activateSettingsTab('language');
   renderAll();
+  applyExplicitSettingNames();
+  filterSettings();
   populateVoices();
   renderStorageRevision();
+  const vocabularyObserver = new MutationObserver(() => scheduleVocabularyTextBoundary());
+  vocabularyObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-label', 'aria-description', 'aria-valuetext', 'aria-roledescription', 'title', 'placeholder', 'alt'] });
+  scheduleVocabularyTextBoundary();
+  if (initialQuarantineNotice) showNotification('Saved browser state quarantined', 'Invalid saved browser state was quarantined locally before the first render. The website started from validated defaults.', 'warning', false);
   window.addEventListener('storage', handleStateStorageEvent);
   if ('speechSynthesis' in window) speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
   maybeDimSumSurprise();
   scheduleTimer = setInterval(() => { applySchedules(); renderAttentionBar(); momentumCheck(); renderTotpEntries(); }, 1000);
-  window.addEventListener('beforeunload', () => { clearInterval(scheduleTimer); if (heroTimer) clearInterval(heroTimer); window.removeEventListener('storage', handleStateStorageEvent); if ('speechSynthesis' in window) speechSynthesis.cancel(); });
+  window.addEventListener('beforeunload', () => { vocabularyObserver.disconnect(); regexWorkerClient?.cancelQueued(); clearInterval(scheduleTimer); if (heroTimer) clearInterval(heroTimer); window.removeEventListener('storage', handleStateStorageEvent); if ('speechSynthesis' in window) speechSynthesis.cancel(); });
 }
 
 initialize();

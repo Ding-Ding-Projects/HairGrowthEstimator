@@ -4,7 +4,9 @@
 
 Every website search field, dropdown, picker, menu, and context menu owns an independent plain-text filter and an adjacent anchored entry to the complete regex workbench. Opening one owner must not reuse or overwrite another owner's query, flags, validation, samples, replacement preview, or regex-enabled state.
 
-This is a hand-written list. It includes missing owners deliberately so that removing a control or never adding its builder cannot make the inventory look complete. The template declares builder buttons with `data-open-regex-for`. The runtime implements independent `state.regexOwners` records, adjacent builder registration, bounded input sizes, result limits, dropdown enhancement, and source consumers for the rows identified below. Anchored popover positioning, isolated evaluation timeouts, complete keyboard behavior, focused tests, built interactions, and captures remain pending.
+This is a hand-written list. It includes missing owners deliberately so that removing a control or never adding its builder cannot make the inventory look complete. The template declares builder buttons with `data-open-regex-for`. The inspected runtime implements independent `state.regexOwners` records, adjacent builder registration, bounded input sizes, result limits, dropdown enhancement, and source consumers for the rows identified below. `site/regex-worker.js`, `site/regex-client.js`, asynchronous `runRegexWorkbench`, and `filterSearchItems` now implement bounded isolated evaluation, disposable Workers, response identifiers, per-owner cancellation, stale-generation refusal, deadlines, queue limits, termination, and refusal of synchronous regular-expression fallback. Worker construction and `postMessage` refusal release the active slot, pump queued work, and reject the affected request cleanly. Anchored popover positioning, complete keyboard behavior, built interactions, and captures remain pending.
+
+`SCHOOL_SENSITIVE_REGEX_OWNERS` lists `language-mode`, `funny-en`, `funny-yue`, `voice-yue`, `vocabulary-file`, `replace-vocabulary`, and `clear-vocabulary`. When School mode becomes active, an open regex dialog owned by one of those exact targets closes. A context menu, appearance editor, or lock editor also closes when its current target belongs to a marked School-sensitive or hidden surface. This is source behavior only; complete built interaction and restoration evidence remain pending.
 
 ## Collection and navigation searches
 
@@ -108,13 +110,13 @@ The workbench renders several internal result surfaces, but those surfaces do no
 | `regex-test-cases` | Expected match and no-match cases | `site.regex.internal.test-cases` | Source implemented with up to 100 persisted cases and pass or fail results; edit, delete, and internal search are missing |
 | `regex-snippets` | Saved snippets | `site.regex.internal.snippets` | Current owner JSON import, export, and copy are implemented; named saved-snippet list and internal search are missing |
 | `regex-replacements` | Replacement templates and previews | `site.regex.internal.replacements` | Source implemented for current owner; internal preview search is missing |
-| `regex-trace` | Bounded trace and performance diagnostics | `site.regex.internal.trace` | Elapsed timing, size caps, result cap, and heuristic risk warning exist; isolated timeout and execution trace are missing |
+| `regex-trace` | Bounded trace and performance diagnostics | `site.regex.internal.trace` | Elapsed timing, size caps, result cap, and heuristic risk warning exist; accepted Worker isolation and timeout are pending, and execution trace is missing |
 
 ## Required verification
 
-Focused verification must prove plain-text default behavior, explicit regex opt-in, bidirectional query and flag synchronization, invalid patterns, Unicode, multiline input, captures, replacements, zero-width matches, no-match states, adversarial inputs, evaluation timeouts, anchored placement, focus return, keyboard filtering, screen-reader result counts, independent owner state, and the complete owner list above. The negative regression must remove each exact owner or builder registration in turn, turn red, restore it, and turn green.
+Focused verification must prove plain-text default behavior, explicit regex opt-in, bidirectional query and flag synchronization, invalid patterns, Unicode, multiline input, captures, replacements, zero-width matches, no-match states, adversarial inputs, Worker evaluation deadlines and termination, refusal of synchronous fallback, anchored placement, focus return, keyboard filtering, screen-reader result counts, independent owner state, and the complete owner list above. A complete negative regression must remove each exact owner or builder registration in turn, turn red, restore it, and turn green.
 
-No built-artifact interaction, capture, focused-test, or deliberate negative-regression evidence existed at the latest documentation inspection.
+Negative-regression evidence is partial. The current website suite deliberately removes only the current-strip builder registration, `data-open-regex-for="strip-search"`, and observes the source check fail before restoring it. That result does not cover every owner in this inventory, Worker isolation, focused interaction, or capture evidence. No built-artifact interaction or capture proof exists at the latest documentation inspection.
 
 ## Suggested articles
 

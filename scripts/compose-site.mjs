@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -10,6 +10,8 @@ const root = resolve(scriptDirectory, '..');
 const output = resolve(process.env.SITE_OUTPUT_DIR || join(root, '_site'));
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const expectedStages = [0.3, 1.5, 3, 5, 9, 14, 20, 28];
+const MAX_INSTALLER_MANIFEST_BYTES = 64 * 1024;
+const MAX_HAIR_MANIFEST_BYTES = 64 * 1024;
 
 function git(...args) {
   try { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
@@ -26,13 +28,52 @@ function buildTimestamp() {
   return validIso(commitTime) ? new Date(commitTime).toISOString() : null;
 }
 
-async function optionalInstaller() {
+function exactFields(value, fields, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
+  const keys = Object.keys(value);
+  const missing = fields.filter((field) => !Object.hasOwn(value, field));
+  const extra = keys.filter((field) => !fields.includes(field));
+  if (missing.length || extra.length) throw new Error(`${label} manifest mismatch. Missing: ${missing.join(', ') || 'none'}. Unexpected: ${extra.join(', ') || 'none'}.`);
+}
+
+function validateInstallerManifest(value, { commit, version }) {
+  const fields = ['schemaVersion', 'owner', 'repository', 'tag', 'target', 'version', 'platform', 'filename', 'bytes', 'sha256', 'unsigned', 'publication'];
+  exactFields(value, fields, 'Installer');
+  if (value.schemaVersion !== 1) throw new Error('Installer manifest schemaVersion must be 1.');
+  if (value.owner !== 'Ding-Ding-Projects' || value.repository !== 'HairGrowthEstimator') throw new Error('Installer manifest owner and repository do not match this project.');
+  if (value.version !== version) throw new Error(`Installer manifest version must match package version ${version}.`);
+  if (value.target !== commit || !/^[a-f0-9]{40}$/.test(value.target)) throw new Error('Installer manifest target must match the exact composed commit.');
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (typeof value.tag !== 'string' || value.tag.length > 128 || !new RegExp(`^v?${escapedVersion}(?:[-.][0-9A-Za-z.-]+)?$`).test(value.tag)) throw new Error('Installer manifest tag must be a bounded immutable version tag for this package version.');
+  if (value.platform !== 'windows-x64') throw new Error('Installer manifest platform must be windows-x64.');
+  if (typeof value.filename !== 'string' || value.filename.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$/.test(value.filename) || !value.filename.includes(version)) throw new Error('Installer manifest filename must be a safe versioned .exe basename.');
+  if (!Number.isSafeInteger(value.bytes) || value.bytes < 1 || value.bytes > 2 * 1024 * 1024 * 1024) throw new Error('Installer manifest bytes must be a positive safe value no larger than 2 GiB.');
+  if (!/^[a-f0-9]{64}$/.test(value.sha256)) throw new Error('Installer manifest SHA-256 must be lowercase 64-hex.');
+  if (value.unsigned !== true) throw new Error('Installer manifest must state that the artifact is unsigned.');
+  exactFields(value.publication, ['state', 'draft', 'prerelease', 'publishedAt', 'releaseId', 'assetId', 'url'], 'Installer publication');
+  if (value.publication.state !== 'published' || value.publication.draft !== false || typeof value.publication.prerelease !== 'boolean') throw new Error('Installer publication must describe a published, non-draft release.');
+  if (!validIso(value.publication.publishedAt)) throw new Error('Installer publication time must be a valid ISO date and time.');
+  if (!Number.isSafeInteger(value.publication.releaseId) || value.publication.releaseId < 1 || !Number.isSafeInteger(value.publication.assetId) || value.publication.assetId < 1) throw new Error('Installer publication release and asset identifiers must be positive safe integers.');
+  const expectedUrl = `https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/download/${value.tag}/${value.filename}`;
+  if (value.publication.url !== expectedUrl) throw new Error('Installer publication URL must be the exact immutable GitHub release asset URL.');
+  return structuredClone(value);
+}
+
+async function optionalInstaller(commit) {
   const candidates = [process.env.INSTALLER_MANIFEST, join(root, 'release', 'installer-manifest.json')].filter(Boolean);
   for (const candidate of candidates) {
     try {
-      const value = JSON.parse(await readFile(resolve(candidate), 'utf8'));
-      if (typeof value.url === 'string' && /^https:\/\//.test(value.url) && /^[a-f0-9]{64}$/.test(value.sha256 || '')) return { url: value.url, sha256: value.sha256, unsigned: value.unsigned !== false };
-    } catch {}
+      const bytes = await readFile(resolve(candidate));
+      if (bytes.length > MAX_INSTALLER_MANIFEST_BYTES) throw new Error(`Installer manifest exceeds the ${MAX_INSTALLER_MANIFEST_BYTES} byte limit.`);
+      let text;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      catch { throw new Error('Installer manifest must be valid UTF-8 text.'); }
+      const value = JSON.parse(text);
+      return validateInstallerManifest(value, { commit, version: packageJson.version });
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw new Error(`Installer manifest ${candidate} was rejected: ${error.message}`);
+    }
   }
   return null;
 }
@@ -76,50 +117,121 @@ async function bundledChangelog() {
   });
 }
 
+function inspectPng(bytes, file) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!Buffer.isBuffer(bytes) || bytes.length < 57 || !bytes.subarray(0, 8).equals(signature)) throw new Error(`Hair asset ${file} has an invalid PNG signature.`);
+  let offset = 8;
+  let width = null;
+  let height = null;
+  let bitDepth = null;
+  let colorType = null;
+  let interlace = null;
+  let sawHeader = false;
+  let sawEnd = false;
+  const imageData = [];
+  while (offset < bytes.length) {
+    if (offset + 12 > bytes.length) throw new Error(`Hair asset ${file} has a truncated PNG chunk.`);
+    const length = bytes.readUInt32BE(offset);
+    if (length > 16 * 1024 * 1024 || offset + 12 + length > bytes.length) throw new Error(`Hair asset ${file} has an invalid PNG chunk length.`);
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    if (!/^[A-Za-z]{4}$/.test(type)) throw new Error(`Hair asset ${file} has an invalid PNG chunk type.`);
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    const expectedCrc = bytes.readUInt32BE(offset + 8 + length);
+    const actualCrc = crc32(Buffer.concat([Buffer.from(type, 'ascii'), data]));
+    if (actualCrc !== expectedCrc) throw new Error(`Hair asset ${file} has an invalid PNG chunk checksum.`);
+    if (!sawHeader && type !== 'IHDR') throw new Error(`Hair asset ${file} does not begin with IHDR.`);
+    if (type === 'IHDR') {
+      if (sawHeader || length !== 13) throw new Error(`Hair asset ${file} has an invalid or duplicate IHDR chunk.`);
+      sawHeader = true;
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      if (data[10] !== 0 || data[11] !== 0) throw new Error(`Hair asset ${file} uses an unsupported PNG compression or filter method.`);
+      interlace = data[12];
+      if (interlace !== 0) throw new Error(`Hair asset ${file} must use the validated non-interlaced PNG layout.`);
+    } else if (type === 'IDAT') imageData.push(data);
+    else if (type === 'IEND') {
+      if (sawEnd || length !== 0) throw new Error(`Hair asset ${file} has an invalid or duplicate IEND chunk.`);
+      sawEnd = true;
+      offset += 12;
+      if (offset !== bytes.length) throw new Error(`Hair asset ${file} has bytes after IEND.`);
+      break;
+    }
+    offset += 12 + length;
+  }
+  if (!sawHeader || !sawEnd || !imageData.length) throw new Error(`Hair asset ${file} is missing required PNG chunks.`);
+  if (width !== 1254 || height !== 1254) throw new Error(`Hair asset ${file} must be exactly 1254 by 1254 pixels.`);
+  const channels = ({ 0: 1, 2: 3, 4: 2, 6: 4 })[colorType];
+  if (!channels || bitDepth !== 8) throw new Error(`Hair asset ${file} must use an 8-bit grayscale, RGB, grayscale-alpha, or RGBA PNG layout.`);
+  const expectedInflatedLength = (1 + width * channels) * height;
+  let inflated;
+  try { inflated = inflateSync(Buffer.concat(imageData), { maxOutputLength: expectedInflatedLength }); }
+  catch (error) { throw new Error(`Hair asset ${file} has invalid bounded PNG image data: ${error.message}`); }
+  if (inflated.length !== expectedInflatedLength) throw new Error(`Hair asset ${file} PNG scanline dimensions do not match IHDR.`);
+  for (let row = 0; row < height; row += 1) if (inflated[row * (1 + width * channels)] > 4) throw new Error(`Hair asset ${file} has an invalid PNG row filter.`);
+  return { width, height, bitDepth, colorType };
+}
+
 function normalizeHairManifest(value) {
-  const entries = Array.isArray(value) ? value : Array.isArray(value?.stages) ? value.stages : Array.isArray(value?.images) ? value.images : [];
-  return entries.map((entry) => {
-    const cm = Number(entry.cm ?? entry.length ?? entry.lengthCm ?? entry.targetLengthCm ?? entry.approximateLengthCm);
-    return {
-      file: String(entry.file || entry.filename || entry.path || '').replace(/\\/g, '/').replace(/^\.\//, ''),
-      cm,
-      sha256: String(entry.sha256 || '').toLowerCase(),
-      alt: String(entry.alt || entry.altText || `Male hair reference at approximately ${cm} centimetres`).slice(0, 300)
-    };
-  }).filter((entry) => entry.file && Number.isFinite(entry.cm)).sort((a, b) => a.cm - b.cm);
+  exactFields(value, ['schemaVersion', 'unit', 'stages'], 'Hair asset');
+  if (value.schemaVersion !== 1 || value.unit !== 'cm' || !Array.isArray(value.stages)) throw new Error('Hair asset manifest must use schemaVersion 1, unit cm, and a stages array.');
+  if (value.stages.length !== expectedStages.length) throw new Error(`Hair asset manifest must contain exactly ${expectedStages.length} stages.`);
+  return value.stages.map((entry, index) => {
+    exactFields(entry, ['length', 'file', 'sha256'], `Hair asset stage ${index + 1}`);
+    if (typeof entry.length !== 'number' || !Number.isFinite(entry.length)) throw new Error(`Hair asset manifest stage ${index + 1} must use a finite numeric length.`);
+    if (typeof entry.file !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.png$/.test(entry.file)) throw new Error(`Hair asset stage ${index + 1} must use a safe PNG basename.`);
+    if (typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) throw new Error(`Hair asset stage ${index + 1} must use a lowercase SHA-256 digest.`);
+    return { file: entry.file, cm: entry.length, sha256: entry.sha256, alt: `Male hair reference at approximately ${entry.length} centimetres` };
+  });
 }
 
 async function bundledHairStages() {
   const sourceDirectory = join(root, 'assets', 'hair-growth');
+  let sourceEntries;
   try {
-    const manifestNames = ['stages.json'];
-    let manifestValue = null;
-    for (const name of manifestNames) {
-      try {
-        manifestValue = JSON.parse(await readFile(join(sourceDirectory, name), 'utf8'));
-        break;
-      } catch {}
-    }
-    if (!manifestValue) throw new Error(`Hair asset manifest is unavailable. Expected one of: ${manifestNames.join(', ')}.`);
-    if (manifestValue.schemaVersion !== undefined && manifestValue.schemaVersion !== 1) throw new Error('Hair asset manifest schemaVersion must be 1.');
-    if (manifestValue.unit !== undefined && manifestValue.unit !== 'cm') throw new Error('Hair asset manifest unit must be cm.');
+    sourceEntries = await readdir(sourceDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === 'ENOENT' && process.env.REQUIRE_HAIR_ASSETS !== '1') return [];
+    throw error;
+  }
+  try {
+    const manifestBytes = await readFile(join(sourceDirectory, 'stages.json'));
+    if (manifestBytes.length > MAX_HAIR_MANIFEST_BYTES) throw new Error(`Hair asset manifest exceeds the ${MAX_HAIR_MANIFEST_BYTES} byte limit.`);
+    let manifestText;
+    try { manifestText = new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes); }
+    catch { throw new Error('Hair asset manifest must be valid UTF-8 text.'); }
+    const manifestValue = JSON.parse(manifestText);
     const manifest = normalizeHairManifest(manifestValue);
-    if (manifest.length !== expectedStages.length || manifest.some((entry, index) => Math.abs(entry.cm - expectedStages[index]) > 0.001)) throw new Error(`Hair asset manifest must contain stages ${expectedStages.join(', ')} cm in ascending order.`);
+    const stageSet = new Set();
+    const fileSet = new Set();
+    const digestSet = new Set();
     for (const entry of manifest) {
-      if (entry.file.includes('..') || entry.file.startsWith('/')) throw new Error(`Unsafe hair asset path ${entry.file}.`);
+      if (stageSet.has(entry.cm)) throw new Error(`Hair asset manifest contains duplicate stage ${entry.cm}.`);
+      if (fileSet.has(entry.file)) throw new Error(`Hair asset manifest contains duplicate file ${entry.file}.`);
+      if (digestSet.has(entry.sha256)) throw new Error(`Hair asset manifest contains duplicate SHA-256 ${entry.sha256}.`);
+      stageSet.add(entry.cm); fileSet.add(entry.file); digestSet.add(entry.sha256);
+    }
+    if (manifest.some((entry, index) => entry.cm !== expectedStages[index])) throw new Error(`Hair asset manifest stages must remain in canonical order: ${expectedStages.join(', ')} cm.`);
+    for (const entry of manifest) {
       const path = join(sourceDirectory, entry.file);
       const info = await stat(path);
       if (!info.isFile() || info.size < 1024 || info.size > 12 * 1024 * 1024) throw new Error(`Hair asset ${entry.file} has an invalid size.`);
-      if (!/^[a-f0-9]{64}$/.test(entry.sha256)) throw new Error(`Hair asset ${entry.file} is missing a valid SHA-256 digest.`);
-      const actualDigest = createHash('sha256').update(await readFile(path)).digest('hex');
+      const bytes = await readFile(path);
+      inspectPng(bytes, entry.file);
+      const actualDigest = createHash('sha256').update(bytes).digest('hex');
       if (actualDigest !== entry.sha256) throw new Error(`Hair asset ${entry.file} does not match its manifest SHA-256 digest.`);
     }
-    await mkdir(join(output, 'assets'), { recursive: true });
-    await cp(sourceDirectory, join(output, 'assets', 'hair-growth'), { recursive: true });
+    const actualNames = sourceEntries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
+    const expectedNames = ['stages.json', ...manifest.map((entry) => entry.file)].sort();
+    if (sourceEntries.some((entry) => !entry.isFile()) || actualNames.length !== expectedNames.length || actualNames.some((name, index) => name !== expectedNames[index])) throw new Error('Unexpected hair asset or manifest mismatch in the canonical source directory.');
+    const targetDirectory = join(output, 'assets', 'hair-growth');
+    await mkdir(targetDirectory, { recursive: true });
+    await cp(join(sourceDirectory, 'stages.json'), join(targetDirectory, 'stages.json'));
+    for (const entry of manifest) await cp(join(sourceDirectory, entry.file), join(targetDirectory, entry.file));
     return manifest.map((entry) => ({ src: `assets/hair-growth/${entry.file}`, cm: entry.cm, inches: Number((entry.cm / 2.54).toFixed(4)), alt: entry.alt }));
   } catch (error) {
-    if (process.env.REQUIRE_HAIR_ASSETS === '1') throw error;
-    return [];
+    throw new Error(`Canonical hair assets were rejected: ${error.message}`);
   }
 }
 
@@ -227,7 +339,7 @@ const provenance = {
   commit: /^[a-f0-9]{40}$/.test(commit) ? commit : null,
   source: 'package.json plus Git commit provenance',
   releaseCodeName: { en: 'Classic Har Gow', zhHant: '蝦餃', catalogId: 'hk-dish-0001', catalogCommit: '736e8c1d9e40e1d146f3c3b11bb329b97c4ef515', publicAsset: 'https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png' },
-  installer: await optionalInstaller(),
+  installer: await optionalInstaller(commit),
   socialPreview
 };
 

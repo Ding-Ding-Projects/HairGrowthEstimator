@@ -24,6 +24,7 @@ Checkboxes are marked complete only when the named work is implemented and local
 - [ ] Capture the animated timeline from the built website.
 - [ ] Capture every installed-application surface from the packaged artifact.
 - [ ] Record a real packaged-application walkthrough.
+- [ ] Add the final real capture set to the README after the exact built artifact has been inspected.
 
 ## Visitor controls
 
@@ -36,12 +37,19 @@ Checkboxes are marked complete only when the named work is implemented and local
 - [x] Reject future manual baselines and haircut dates with guided inline validation, and exclude legacy future haircut records while their dates remain in the future.
 - [x] Serialize same-origin visitor-state writes with monotonic revisions, fresh per-document writer identity, storage-event reconciliation, stale-write refusal, and Web Locks or IndexedDB transactions.
 - [x] Export faithful normalized CSV and TSV rows with JSON Pointer paths, typed JSON values, and explicit representation and privacy metadata.
+- [ ] Inspect the source-present strict personal-vocabulary parsing, schema bounds, cache revalidation, School-mode absence, and privacy behavior through focused failure cases and the composed browser artifact.
+- [ ] Inspect the source-present strict browser-state and appearance import validation plus positive export allowlisting through focused mutation cases and the composed browser artifact.
+- [x] Implement and source-check nested-tab relationships, filtered-tab focus, context-menu keyboard behavior, narrow-layout discovery access, and an explicitly focusable article target.
+- [ ] Run the focused internal-documentation-routing check, then exercise routing, filtered focus, context-menu focus return, and unknown-route handling in the composed browser artifact.
+- [ ] Inspect the source-present Worker-isolated regular-expression consumers and static Content Security Policy in the composed artifact, including focused failure cases and no-synchronous-fallback proof.
 - [ ] Complete a real browser interaction ledger through the approved off-screen route.
 - [ ] Capture keyboard, touch, narrow-layout, high-contrast, and screen-reader evidence.
 
 ## Release and delivery
 
 - [x] Keep the installer state disabled until an immutable release manifest exists.
+- [x] Add a 65,536-byte fatal-UTF-8 installer-manifest input boundary and repeat complete manifest validation in the runtime, with focused red-then-green source proof.
+- [ ] Exercise a real immutable installer manifest through composition and the built download control.
 - [x] Document the `Classic Har Gow · 蝦餃` release code name and public catalog record.
 - [ ] Add release workflow wiring only after feature work is integrated.
 - [ ] Build and verify the unsigned Squirrel.Windows installer set.
@@ -53,8 +61,12 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 - [x] Add source-level structure, provenance, responsive, privacy, and local-asset checks.
 - [x] Add hand-written feature and regular-expression-builder inventories.
-- [x] Demonstrate deliberate red-then-green regressions for provenance and builder removal.
+- [x] Demonstrate the two named deliberate source breaks for provenance and the current-strip builder registration.
 - [x] Add focused correctness tests and a deliberate red-then-green source-boundary regression for baseline, chronology, concurrent storage, and CSV or TSV behavior.
+- [ ] Complete deliberate red-then-green coverage for every required inventory boundary. The current evidence is partial.
+- [x] Prove the three named accessibility and installer repair checks red before restoration and green after restoration.
+- [x] Run the focused hardening suite, including the integrated service-counterpart audit and deliberate health-route break. Complete inventory-wide mutation coverage remains pending above.
+- [ ] Inspect the source-present byte-level PNG signature, chunk, CRC, exact 1254 by 1254 dimension, bounded decompression, scanline, and termination checks against all eight canonical source assets.
 - [ ] Run built-artifact interaction checks.
 - [ ] Run genuine capture review against the exact verified commit.
 - [ ] Verify the deployed page response, Open Graph metadata, and image bytes.

@@ -34,13 +34,13 @@ const REQUIRED_BOUNDARIES = Object.freeze([
   { name: 'notifications', source: 'app', token: 'function showNotification(', docs: 'docs/site/notifications-and-history.md', inventory: 'Searchable notification center with bulk actions' },
   { name: 'local history', source: 'app', token: 'function appendHistory(', docs: 'docs/site/notifications-and-history.md', inventory: 'Append-only local version history' },
   { name: 'exports', source: 'app', token: 'function serializeExport(record, format)', docs: 'docs/features/export.md', inventory: 'Export all visible records and settings' },
-  { name: 'personal vocabulary loader', source: 'app', token: 'function validateVocabulary(value, byteLength)', docs: 'docs/site/settings-and-appearance.md', inventory: 'Local personal-vocabulary JSON upload' },
+  { name: 'personal vocabulary loader', source: 'app', token: 'state.vocabulary = validatePersonalVocabularyText(text, bytes.byteLength);', docs: 'docs/site/settings-and-appearance.md', inventory: 'Local personal-vocabulary JSON upload' },
   { name: 'logo customization', source: 'app', token: 'async function handleCustomLogo(event)', docs: 'docs/site/logo-customization.md', inventory: 'Logo presets and bounded custom upload' },
   { name: 'file converter', source: 'app', token: 'async function convertFile()', docs: 'docs/site/local-file-converter.md', inventory: 'Local file-converter surface' },
   { name: 'Ollama mediation', source: 'app', token: 'async function connectOllama()', docs: 'docs/site/ollama-mediation.md', inventory: 'Local Ollama mediation' },
   { name: 'authenticator', source: 'app', token: 'async function totpCode(', docs: 'docs/site/locks-and-authenticator.md', inventory: 'Local TOTP authenticator' },
   { name: 'Support Tickets', source: 'template', token: 'id="support-dialog"', docs: 'docs/site/support-tickets.md', inventory: 'Support Tickets local recovery desk' },
-  { name: 'changelog', source: 'app', token: 'function renderChangelog()', docs: 'docs/site/changelog-viewer.md', inventory: 'Changelog viewer with date and text filters' }
+  { name: 'changelog', source: 'app', token: 'async function renderChangelog()', docs: 'docs/site/changelog-viewer.md', inventory: 'Changelog viewer with date and text filters' }
 ]);
 
 const REQUIRED_BUILDERS = Object.freeze([

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://objects.githubusercontent.com; font-src 'self'; connect-src 'self' http://127.0.0.1:11434 http://localhost:11434; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#a7f3d0">
   <meta name="description" content="Hair Growth Estimator documentation, downloads, status, privacy details, and browser-local planning tools.">
@@ -28,13 +29,13 @@
     <img class="brand-mark" id="brand-mark" src="logo.svg" alt="Hair Growth Estimator logo" width="56" height="56">
     <div>
       <p class="eyebrow" id="provenance-heading">Running website artifact</p>
-      <h1 id="display-name">Hair Growth Estimator</h1>
+      <h1 id="display-name" data-vocabulary-exempt>Hair Growth Estimator</h1>
       <p class="provenance-line">
         <span>Version <strong id="running-version">Unavailable</strong></span>
         <span aria-hidden="true">•</span>
         <span>Updated <strong id="running-updated-at">Unavailable</strong></span>
         <span aria-hidden="true">•</span>
-        <span>Release code name <a href="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Classic Har Gow · 蝦餃</a></span>
+        <span class="school-hidden" data-school-sensitive>Release code name <a data-vocabulary-exempt href="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Classic Har Gow · 蝦餃</a></span>
       </p>
     </div>
     <button class="icon-button" type="button" data-action="open-command-palette" aria-label="Open command palette" title="Open command palette, Ctrl+Shift+F">⌕</button>
@@ -241,27 +242,27 @@
         <div class="docs-layout">
           <aside class="surface-card docs-index">
             <div class="search-row"><label class="sr-only" for="docs-search">Search documentation</label><input id="docs-search" type="search" placeholder="Search titles and text" data-search-owner="documentation" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="docs-search" aria-label="Open regex builder for documentation search">.*</button></div>
-            <div id="docs-list" role="listbox" aria-label="Documentation articles"></div>
+            <div id="docs-list" role="listbox" tabindex="0" aria-activedescendant="" aria-label="Documentation articles"></div>
           </aside>
-          <article class="surface-card markdown-body" id="docs-article" aria-live="polite"><h3>Choose an article</h3><p>The article list will appear after build composition.</p></article>
+          <article class="surface-card markdown-body" id="docs-article" tabindex="-1" aria-live="polite"><h3>Choose an article</h3><p>The article list will appear after build composition.</p></article>
         </div>
       </section>
 
       <section class="page-panel" id="panel-tools" role="tabpanel" aria-labelledby="tab-tools" data-panel="tools" data-feature="tools">
         <header class="page-header"><p class="eyebrow">Browser-local utilities</p><h2>Tools</h2><p>These utilities operate on user-selected local data. They do not upload files.</p></header>
         <div class="subtab-bar" role="tablist" aria-label="Tools">
-          <button role="tab" aria-selected="true" data-subtab="regex">Regex workbench</button>
-          <button role="tab" aria-selected="false" data-subtab="converter">File converter</button>
-          <button role="tab" aria-selected="false" data-subtab="ollama">Local model manager</button>
-          <button role="tab" aria-selected="false" data-subtab="authenticator">Authenticator</button>
-          <button role="tab" aria-selected="false" data-subtab="exports">Export center</button>
+          <button id="tool-tab-regex" role="tab" aria-controls="tool-panel-regex" tabindex="0" aria-selected="true" data-subtab="regex">Regex workbench</button>
+          <button id="tool-tab-converter" role="tab" aria-controls="tool-panel-converter" tabindex="-1" aria-selected="false" data-subtab="converter">File converter</button>
+          <button id="tool-tab-ollama" role="tab" aria-controls="tool-panel-ollama" tabindex="-1" aria-selected="false" data-subtab="ollama">Local model manager</button>
+          <button id="tool-tab-authenticator" role="tab" aria-controls="tool-panel-authenticator" tabindex="-1" aria-selected="false" data-subtab="authenticator">Authenticator</button>
+          <button id="tool-tab-exports" role="tab" aria-controls="tool-panel-exports" tabindex="-1" aria-selected="false" data-subtab="exports">Export center</button>
         </div>
 
-        <section class="tool-panel active" data-tool-panel="regex" data-feature="regex-workbench">
+        <section id="tool-panel-regex" class="tool-panel active" role="tabpanel" aria-labelledby="tool-tab-regex" tabindex="0" data-tool-panel="regex" data-feature="regex-workbench">
           <div id="regex-workbench-host"></div>
         </section>
 
-        <section class="tool-panel" data-tool-panel="converter" data-feature="file-converter">
+        <section id="tool-panel-converter" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-converter" tabindex="0" data-tool-panel="converter" data-feature="file-converter">
           <article class="surface-card form-grid">
             <h3>Local file converter</h3>
             <label>Source file<input id="converter-file" type="file"></label>
@@ -276,7 +277,7 @@
           </article>
         </section>
 
-        <section class="tool-panel" data-tool-panel="ollama" data-feature="ollama-manager">
+        <section id="tool-panel-ollama" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-ollama" tabindex="0" data-tool-panel="ollama" data-feature="ollama-manager">
           <article class="surface-card form-grid">
             <h3>Local Ollama mediation</h3>
             <p>A public HTTPS page cannot start local processes, inspect hardware, bypass browser mixed-content rules, or promise CORS access. This browser-local equivalent can make an explicit user-requested loopback API call, store local profiles, and report the exact browser refusal.</p>
@@ -289,7 +290,7 @@
           </article>
         </section>
 
-        <section class="tool-panel" data-tool-panel="authenticator" data-feature="authenticator">
+        <section id="tool-panel-authenticator" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-authenticator" tabindex="0" data-tool-panel="authenticator" data-feature="authenticator">
           <article class="surface-card form-grid">
             <h3>Browser-local TOTP authenticator</h3>
             <p class="warning-callout">This website uses localStorage rather than an operating-system credential vault. That is not suitable for valuable account secrets. Prefer a dedicated authenticator. Clearing this site's storage removes entries.</p>
@@ -304,7 +305,7 @@
           </article>
         </section>
 
-        <section class="tool-panel" data-tool-panel="exports" data-feature="exports">
+        <section id="tool-panel-exports" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-exports" tabindex="0" data-tool-panel="exports" data-feature="exports">
           <article class="surface-card form-grid"><h3>Export center</h3><p>Exports include browser-local settings, estimates, haircut records, notifications, and redacted history. Authenticator secrets, lock credentials, private vocabulary mappings, and custom-logo bytes are omitted and identified as omitted. CSV and TSV use normalized long-form rows with JSON Pointer paths, JSON values, representation metadata, and the same explicit privacy omissions.</p><label>Format<select id="export-format" data-search-owner="export-format"><option>JSON</option><option>JSONL</option><option>YAML</option><option>TOML</option><option>XML</option><option>CSV</option><option>TSV</option><option>Markdown</option><option>HTML</option><option>SQL</option><option>TypeScript</option><option>JavaScript</option><option>Python</option><option>Go</option><option>Rust</option><option>JSON Schema</option><option>Protobuf</option></select><button type="button" class="builder-button" data-open-regex-for="export-format" aria-label="Open regex builder for export format">.*</button></label><button class="filled-button" type="button" id="export-state">Export redacted browser state</button><button class="tonal-button" type="button" id="import-state">Import compatible state</button><input id="import-file" type="file" accept="application/json" hidden></article>
         </section>
       </section>
@@ -336,17 +337,17 @@
       <section class="page-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" data-feature="settings">
         <header class="page-header"><p class="eyebrow">Per-visitor preferences</p><h2>Settings</h2><p>Settings apply to this website only and persist in local browser storage.</p></header>
         <div class="search-row settings-search"><label class="sr-only" for="settings-search">Search settings</label><input id="settings-search" type="search" placeholder="Search settings" data-search-owner="settings" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="settings-search" aria-label="Open regex builder for settings search">.*</button></div>
-        <div class="settings-tabs" role="tablist" aria-label="Settings sections"><button role="tab" aria-selected="true" data-settings-tab="language">Language</button><button role="tab" aria-selected="false" data-settings-tab="appearance">Appearance</button><button role="tab" aria-selected="false" data-settings-tab="accessibility">Accessibility</button><button role="tab" aria-selected="false" data-settings-tab="privacy">Privacy</button><button role="tab" aria-selected="false" data-settings-tab="schedule">Schedule</button><button role="tab" aria-selected="false" data-settings-tab="attention">Attention</button></div>
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections"><button id="settings-tab-language" role="tab" aria-controls="settings-panel-language" tabindex="0" aria-selected="true" data-settings-tab="language">Language</button><button id="settings-tab-appearance" role="tab" aria-controls="settings-panel-appearance" tabindex="-1" aria-selected="false" data-settings-tab="appearance">Appearance</button><button id="settings-tab-accessibility" role="tab" aria-controls="settings-panel-accessibility" tabindex="-1" aria-selected="false" data-settings-tab="accessibility">Accessibility</button><button id="settings-tab-privacy" role="tab" aria-controls="settings-panel-privacy" tabindex="-1" aria-selected="false" data-settings-tab="privacy">Privacy</button><button id="settings-tab-schedule" role="tab" aria-controls="settings-panel-schedule" tabindex="-1" aria-selected="false" data-settings-tab="schedule">Schedule</button><button id="settings-tab-attention" role="tab" aria-controls="settings-panel-attention" tabindex="-1" aria-selected="false" data-settings-tab="attention">Attention</button></div>
 
-        <section class="settings-panel active" data-settings-panel="language">
-          <article class="setting-card" data-setting-keywords="language English Cantonese bilingual"><div><h3>Language mode</h3><p>Choose English, playful Hong Kong-style Cantonese, or compact bilingual presentation.</p><small data-provenance-for="language">Compiled default: English</small></div><select id="language-mode" data-search-owner="language-mode"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="both">Bilingual</option></select><button type="button" class="builder-button" data-open-regex-for="language-mode" aria-label="Open regex builder for language mode">.*</button></article>
+        <section id="settings-panel-language" class="settings-panel active" role="tabpanel" aria-labelledby="settings-tab-language" tabindex="0" data-settings-panel="language">
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="language English Cantonese bilingual"><div><h3>Language mode</h3><p>Choose English, playful Hong Kong-style Cantonese, or compact bilingual presentation.</p><small data-provenance-for="language">Compiled default: English</small></div><select id="language-mode" data-search-owner="language-mode"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="both">Bilingual</option></select><button type="button" class="builder-button" data-open-regex-for="language-mode" aria-label="Open regex builder for language mode">.*</button></article>
           <article class="setting-card school-hidden" data-setting-keywords="funny playful English"><div><h3>English funny level</h3><p>Level 1 is fully serious. Level 5 is most playful. Facts remain unchanged.</p><small data-provenance-for="funnyEn">Compiled default: 5</small></div><input id="funny-en" type="range" min="1" max="5" value="5"><output for="funny-en">5</output></article>
           <article class="setting-card school-hidden" data-setting-keywords="funny playful Cantonese"><div><h3>Cantonese funny level</h3><p>Level 1 is fully serious. Level 5 is most playful. Facts remain unchanged.</p><small data-provenance-for="funnyYue">Compiled default: 5</small></div><input id="funny-yue" type="range" min="1" max="5" value="5"><output for="funny-yue">5</output></article>
           <article class="setting-card" data-setting-keywords="emoji dialog message"><div><h3>Show emojis in dialogs and message boxes</h3><p>Decorative emoji never changes an action label or accessible name.</p><small data-provenance-for="dialogEmoji">Compiled default: on</small></div><input id="dialog-emoji" type="checkbox" checked></article>
-          <article class="setting-card" data-setting-keywords="school focus language lock"><div><h3 id="school-mode-label">School mode</h3><p>Forces English and removes Cantonese, funny-level, vocabulary, and dim-sum controls until turned off.</p><small data-provenance-for="schoolMode">Compiled default: off</small></div><input id="school-mode" type="checkbox"></article>
+          <article class="setting-card" data-setting-keywords="school focus language lock"><div><h3 id="school-mode-label" data-vocabulary-exempt>School mode</h3><p>Forces English and removes Cantonese, funny-level, vocabulary, and dim-sum controls until turned off.</p><small data-provenance-for="schoolMode">Compiled default: off</small></div><input id="school-mode" type="checkbox"></article>
         </section>
 
-        <section class="settings-panel" data-settings-panel="appearance">
+        <section id="settings-panel-appearance" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0" data-settings-panel="appearance">
           <article class="setting-card" data-setting-keywords="theme light dark contrast"><div><h3>Theme</h3><p>Applies color roles, contrast, surfaces, and status layers.</p><small data-provenance-for="theme">Compiled default: dark</small></div><select id="theme-select" data-search-owner="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select><button type="button" class="builder-button" data-open-regex-for="theme-select" aria-label="Open regex builder for theme">.*</button></article>
           <article class="setting-card" data-setting-keywords="density compact comfortable spacious"><div><h3>Density</h3><p>Changes spacing and target presentation while preserving minimum interactive sizes.</p><small data-provenance-for="density">Compiled default: comfortable</small></div><select id="density-select" data-search-owner="density"><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="spacious">Spacious</option></select><button type="button" class="builder-button" data-open-regex-for="density-select" aria-label="Open regex builder for density">.*</button></article>
           <article class="setting-card" data-setting-keywords="accent seed color rainbow"><div><h3>Accent color</h3><p>Choose any color or the animated rainbow sentinel. Reduced motion settles the rainbow on one hue.</p><small data-provenance-for="accent">Compiled default: #a7f3d0</small></div><input id="accent-color" type="color" value="#a7f3d0"><button type="button" class="tonal-button" id="accent-rainbow">Rainbow</button></article>
@@ -358,25 +359,25 @@
           <button class="tonal-button" type="button" data-action="open-appearance-editor">Open global appearance editor</button><button class="danger-button" type="button" data-action="reset-appearance">Reset all appearance</button>
         </section>
 
-        <section class="settings-panel" data-settings-panel="accessibility">
+        <section id="settings-panel-accessibility" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-accessibility" tabindex="0" data-settings-panel="accessibility">
           <article class="setting-card" data-setting-keywords="narrator speech voice English Cantonese"><div><h3>Narrator</h3><p>Off by default. Events are serialized and respect reduced-motion and screen-reader use.</p><small data-provenance-for="narrator">Compiled default: off</small></div><input id="narrator-enabled" type="checkbox"></article>
           <article class="setting-card"><div><h3>English narrator voice</h3><p id="voice-en-status">Choose automatically. Waiting for browser voice enumeration.</p></div><select id="voice-en" data-search-owner="voice-en"><option value="auto">Choose automatically</option></select><button type="button" class="builder-button" data-open-regex-for="voice-en" aria-label="Open regex builder for English voice">.*</button></article>
-          <article class="setting-card"><div><h3>Cantonese narrator voice</h3><p id="voice-yue-status">Choose automatically. Waiting for browser voice enumeration.</p></div><select id="voice-yue" data-search-owner="voice-yue"><option value="auto">Choose automatically</option></select><button type="button" class="builder-button" data-open-regex-for="voice-yue" aria-label="Open regex builder for Cantonese voice">.*</button></article>
+          <article class="setting-card school-hidden" data-school-sensitive><div><h3>Cantonese narrator voice</h3><p id="voice-yue-status">Choose automatically. Waiting for browser voice enumeration.</p></div><select id="voice-yue" data-search-owner="voice-yue"><option value="auto">Choose automatically</option></select><button type="button" class="builder-button" data-open-regex-for="voice-yue" aria-label="Open regex builder for Cantonese voice">.*</button></article>
           <article class="setting-card"><div><h3>Narrator rate and pitch</h3><p>Uses the browser's documented speech synthesis ranges.</p></div><label>Rate<input id="narrator-rate" type="range" min="0.5" max="2" step="0.1" value="1"></label><label>Pitch<input id="narrator-pitch" type="range" min="0" max="2" step="0.1" value="1"></label></article>
           <article class="setting-card"><div><h3>Reduced motion</h3><p>The operating-system preference always wins. This switch can request even less motion.</p></div><input id="reduced-motion" type="checkbox"></article>
         </section>
 
-        <section class="settings-panel" data-settings-panel="privacy">
-          <article class="setting-card school-hidden" data-setting-keywords="vocabulary JSON upload replace clear local"><div><h3>Local personal-vocabulary JSON</h3><p>Original wording remains active until a complete bounded file validates. No mapping is bundled.</p><small id="vocabulary-status">No file loaded</small></div><input id="vocabulary-file" type="file" accept="application/json"><button class="text-button" type="button" id="clear-vocabulary">Clear local cache</button></article>
+        <section id="settings-panel-privacy" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-privacy" tabindex="0" data-settings-panel="privacy">
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="vocabulary JSON upload replace clear local"><div><h3>Local personal-vocabulary JSON</h3><p>Original wording remains active until a complete bounded file validates. No mapping is bundled.</p><small id="vocabulary-status" role="status" aria-live="polite" aria-atomic="true">No local cache is active.</small></div><input id="vocabulary-file" type="file" accept="application/json"><button class="text-button" type="button" id="replace-vocabulary">Choose local file</button><button class="text-button" type="button" id="clear-vocabulary" disabled>Clear local cache</button></article>
           <article class="setting-card"><div><h3>Browser storage</h3><p>Settings, haircut planning, locks, tickets, notifications, and history stay in a revisioned localStorage envelope. Same-origin tabs use Web Locks or an IndexedDB transaction to serialize writes, reconcile storage events, and visibly refuse stale changes. This is convenience storage, not a security boundary.</p></div><button class="danger-button" type="button" data-action="clear-site-data">Clear all local data</button></article>
           <article class="setting-card"><div><h3>Support Tickets</h3><p>A fictional, local-only recovery desk that sends nothing anywhere and cannot delete storage for you.</p></div><button class="tonal-button" type="button" data-action="open-support">Open Support Tickets</button></article>
         </section>
 
-        <section class="settings-panel" data-settings-panel="schedule">
+        <section id="settings-panel-schedule" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-schedule" tabindex="0" data-settings-panel="schedule">
           <article class="surface-card form-grid"><h3>Scheduled settings</h3><p>Rules use the browser's local timezone. Later matching rules win. Cross-midnight windows continue into the next day.</p><label>Rule label<input id="schedule-label" type="text" maxlength="80"></label><label>Start time<input id="schedule-start" type="time"></label><label>End time<input id="schedule-end" type="time"></label><label>Theme<select id="schedule-theme" data-search-owner="schedule-theme"><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select><button type="button" class="builder-button" data-open-regex-for="schedule-theme" aria-label="Open regex builder for scheduled theme">.*</button></label><fieldset><legend>Weekdays</legend><label><input type="checkbox" name="schedule-day" value="1" checked>Mon</label><label><input type="checkbox" name="schedule-day" value="2" checked>Tue</label><label><input type="checkbox" name="schedule-day" value="3" checked>Wed</label><label><input type="checkbox" name="schedule-day" value="4" checked>Thu</label><label><input type="checkbox" name="schedule-day" value="5" checked>Fri</label><label><input type="checkbox" name="schedule-day" value="6" checked>Sat</label><label><input type="checkbox" name="schedule-day" value="0" checked>Sun</label></fieldset><button class="filled-button" type="button" id="add-schedule">Add rule</button><p id="schedule-timezone"></p><div id="schedule-list" class="collection-list"></div></article>
         </section>
 
-        <section class="settings-panel" data-settings-panel="attention" data-feature="adhd-modes">
+        <section id="settings-panel-attention" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-attention" tabindex="0" data-settings-panel="attention" data-feature="adhd-modes">
           <article class="setting-card"><div><h3>Focus</h3><p>De-emphasizes inactive sections without hiding them.</p></div><input id="adhd-focus" type="checkbox"></article>
           <article class="setting-card"><div><h3>Low stimulation</h3><p>Reduces non-essential motion, contrast shifts, and informational interruptions.</p></div><input id="adhd-low-stim" type="checkbox"></article>
           <article class="setting-card"><div><h3>Time awareness</h3><p>Shows session elapsed time and time since the last browser-local change.</p></div><input id="adhd-time" type="checkbox"></article>
@@ -387,7 +388,7 @@
     </main>
   </div>
 
-  <aside class="attention-bar" id="attention-bar" hidden><span id="session-elapsed">Session 0 min</span><span id="last-change">Last change just now</span><span id="next-action-display"></span></aside>
+  <aside class="attention-bar" id="attention-bar" hidden><span id="session-elapsed">Session 0 min</span><span id="last-change">Last change just now</span><span id="next-action-display" data-vocabulary-exempt></span></aside>
 
   <div class="snackbar-region" id="snackbar-region" aria-live="polite" aria-relevant="additions"></div>
 
@@ -470,6 +471,8 @@
   <script id="bundled-docs" type="application/json">__DOCS_JSON__</script>
   <script id="bundled-changelog" type="application/json">__CHANGELOG_JSON__</script>
   <script id="bundled-hair-assets" type="application/json">__HAIR_ASSETS_JSON__</script>
+  <script src="security-contract.js" defer></script>
+  <script src="regex-client.js" defer></script>
   <script src="state-contract.js" defer></script>
   <script src="app.js" defer></script>
 </body>
