@@ -19,6 +19,8 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 
 ### Fixed
 
+- The browser estimator and its public documentation now share one average Gregorian month, `365.2425 / 12 = 30.436875 days`, for both the elapsed current-length calculation and the remaining projected-target calculation.
+- The documented 1.0 cm per month default remains adjustable, explicitly non-medical, subject to meaningful individual variation, and linked to the existing NCBI clinical overview.
 - The browser estimator now derives its active baseline from the newest valid remaining haircut after create, edit, and delete while retaining the visitor's independent manual fallback.
 - Manual baseline and haircut forms now reject future dates with guided inline errors. Legacy future haircut records remain visible but do not become active while their dates remain in the future.
 - Same-origin tabs now store monotonic browser revisions with a fresh writer identity for each loaded document, serialize writes through Web Locks or an IndexedDB transaction, reconcile storage events, verify each write, and refuse stale mutations visibly.
@@ -56,5 +58,5 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - Deployed Open Graph and anonymous image-fetch verification are pending.
 - Installer and automatic-update verification are pending.
 - The final three-check repair subset was red 3 of 3 when its exact article-focus, bounded manifest-reader, and runtime installer-validation boundaries were removed, then passed 3 with 0 failed and 0 skipped after restoration. The full focused hardening suite and integrated service-counterpart audit now pass, but complete negative-regression coverage for every inventory, localization, interaction, and capture boundary remains pending. The counterpart audit deliberately breaks only the server health-route boundary, while the other accepted fixtures cover only their named source boundaries.
-- Cross-surface verification of the 1.0 cm per month default and elapsed-month calculation remains pending.
+- Website source parity is implemented through the shared calculator and deterministic vectors. Desktop and core consumption, integrated cross-surface proof, and built-artifact interaction remain pending for the adjustable 1.0 cm per month default and both calculations that use the canonical 30.436875-day month.
 - The final README capture update remains pending and is not part of this documentation-only lane.

@@ -4,6 +4,7 @@
   const STORAGE_ENVELOPE_SCHEMA = 1;
   const LOCK_DATABASE = 'hair-growth-estimator-coordination-v1';
   const LOCK_STORE = 'exclusive-locks';
+  const DAYS_PER_ESTIMATE_MONTH = 365.2425 / 12;
   const DELIMITED_COLUMNS = Object.freeze([
     'schemaVersion',
     'exportedAt',
@@ -45,6 +46,25 @@
   function finiteNonNegative(value, fallback = 0) {
     const number = Number(value);
     return Number.isFinite(number) && number >= 0 ? number : fallback;
+  }
+
+  function calculateGrowthProjection({ baselineLengthCm, growthRateCmPerMonth, elapsedDays, targetLengthCm } = {}) {
+    const baseline = finiteNonNegative(baselineLengthCm, 0);
+    const monthlyRate = finiteNonNegative(growthRateCmPerMonth, 0);
+    const elapsed = finiteNonNegative(elapsedDays, 0);
+    const target = finiteNonNegative(targetLengthCm, 0);
+    const elapsedMonths = elapsed / DAYS_PER_ESTIMATE_MONTH;
+    const currentLengthCm = Math.max(0, baseline + monthlyRate * elapsedMonths);
+    const remainingLengthCm = Math.max(0, target - currentLengthCm);
+    const monthsToTarget = remainingLengthCm === 0 ? 0 : monthlyRate > 0 ? remainingLengthCm / monthlyRate : Infinity;
+    const daysToTarget = Number.isFinite(monthsToTarget) ? monthsToTarget * DAYS_PER_ESTIMATE_MONTH : Infinity;
+    return Object.freeze({
+      elapsedMonths,
+      currentLengthCm,
+      remainingLengthCm,
+      monthsToTarget,
+      daysToTarget
+    });
   }
 
   function compareHaircuts(left, right) {
@@ -344,7 +364,9 @@
   }
 
   root.HairGrowthStateContract = Object.freeze({
+    DAYS_PER_ESTIMATE_MONTH,
     STORAGE_ENVELOPE_SCHEMA,
+    calculateGrowthProjection,
     createStateCoordinator,
     createStateEnvelope,
     decodeStateEnvelope,

@@ -18,6 +18,9 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 - [x] Document estimation, haircut resets, history, units, visual stages, service connectivity, privacy, export, update status, and installer status.
 - [x] Present 1.0 cm per month as an adjustable non-medical estimate with a research citation.
+- [x] Define `365.2425 / 12 = 30.436875 days` as the single documented month length for current-length and projected-target calculations.
+- [x] Implement website source parity in `site/state-contract.js` and focused deterministic proof through `tests/site/fixtures/growth-calculation-vectors.json` and `tests/site/month-parity.test.mjs`.
+- [ ] Implement desktop and core consumption of the shared month contract, then verify integrated cross-surface behavior and built-artifact interaction.
 - [x] Use exact 2.54 cm per inch conversion.
 - [x] Define all eight canonical hair-reference lengths.
 - [ ] Verify all eight generated hair-reference images after integration.

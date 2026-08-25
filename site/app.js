@@ -16,7 +16,7 @@ const RegexClientContract = globalThis.HairGrowthRegexClient;
 if (!StateContract) throw new Error('The browser state contract did not load.');
 if (!SecurityContract) throw new Error('The browser security contract did not load.');
 if (!RegexClientContract) throw new Error('The disposable regex client did not load.');
-const { createStateCoordinator, decodeStateEnvelope, reconcileBaseline, serializeDelimitedExport, todayDateString, validateDateNotFuture } = StateContract;
+const { calculateGrowthProjection, createStateCoordinator, decodeStateEnvelope, reconcileBaseline, serializeDelimitedExport, todayDateString, validateDateNotFuture } = StateContract;
 const { MAX_VOCABULARY_BYTES, buildRedactedExportState, parseJsonStrict, sanitizeImportedState, validateAppearanceMap, validateBrowserState, validatePersonalVocabularyCache, validatePersonalVocabularyText, validateStoredStateEnvelopeText } = SecurityContract;
 const { createRegexWorkerClient } = RegexClientContract;
 const DIM_SUM = Object.freeze({
@@ -746,10 +746,15 @@ function renderEstimator() {
   const baseline = new Date(`${state.estimator.baselineDate}T00:00:00`);
   const now = new Date();
   const elapsedDays = (now - baseline) / 86400000;
-  const current = Math.max(0, state.estimator.baselineLengthCm + state.estimator.growthRateCmPerMonth * (elapsedDays / 30.4375));
-  const remaining = Math.max(0, state.estimator.targetLengthCm - current);
-  const months = state.estimator.growthRateCmPerMonth > 0 ? remaining / state.estimator.growthRateCmPerMonth : Infinity;
-  const targetDate = Number.isFinite(months) ? new Date(now.getTime() + months * 30.4375 * 86400000) : null;
+  const projection = calculateGrowthProjection({
+    baselineLengthCm: state.estimator.baselineLengthCm,
+    growthRateCmPerMonth: state.estimator.growthRateCmPerMonth,
+    elapsedDays,
+    targetLengthCm: state.estimator.targetLengthCm
+  });
+  const current = projection.currentLengthCm;
+  const remaining = projection.remainingLengthCm;
+  const targetDate = Number.isFinite(projection.daysToTarget) ? new Date(now.getTime() + projection.daysToTarget * 86400000) : null;
   $('#current-length-result').textContent = displayUnit(current, unit);
   $('#elapsed-result').textContent = `${Math.floor(elapsedDays)} days`;
   $('#target-date-result').textContent = targetDate ? targetDate.toLocaleDateString() : 'Unavailable at a zero growth rate';

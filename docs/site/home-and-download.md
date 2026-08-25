@@ -4,6 +4,8 @@
 
 The Home page must explain what the desktop product does, show the complete feature set, link to detailed documentation, expose current status, and provide a direct Windows installer download only after an immutable release asset has been verified. It must state visibly that the website is not the installed product.
 
+Estimator explanations on the Home page use one average Gregorian month of `365.2425 / 12 = 30.436875 days` for both elapsed current-length calculations and remaining projected-target calculations. The 1.0 cm per month planning default is adjustable, non-medical, and subject to meaningful individual variation. The supporting clinical overview remains [Hair Growth Disorders, StatPearls](https://www.ncbi.nlm.nih.gov/books/NBK499948/).
+
 ## Configuration
 
 The installer link is derived from a strictly validated immutable release manifest. `optionalInstaller` reads no more than `MAX_INSTALLER_MANIFEST_BYTES`, which is 65,536 bytes, and decodes the input through a fatal UTF-8 `TextDecoder` before parsing JSON. `validateInstallerManifest` accepts exactly `schemaVersion`, `owner`, `repository`, `tag`, `target`, `version`, `platform`, `filename`, `bytes`, `sha256`, `unsigned`, and `publication`. It binds owner and repository, the composed commit, package version, a versioned tag and executable filename, `windows-x64`, a positive asset size no larger than 2 GiB, a lowercase SHA-256 digest, explicit unsigned status, published non-draft release state, publication time, positive release and asset IDs, and the exact immutable GitHub release-asset URL. Missing or unknown fields, mismatched identity, mutable or altered URLs, unsupported platforms, invalid sizes or hashes, and draft or unverified publication states are rejected as a whole.

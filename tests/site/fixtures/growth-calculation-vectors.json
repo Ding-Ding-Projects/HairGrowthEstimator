@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "contract": {
+    "daysPerYear": 365.2425,
+    "monthsPerYear": 12,
+    "daysPerMonth": 30.436875,
+    "lengthUnit": "cm"
+  },
+  "vectors": [
+    {
+      "id": "one-estimate-month",
+      "input": {
+        "baselineLengthCm": 1,
+        "growthRateCmPerMonth": 1,
+        "elapsedDays": 30.436875,
+        "targetLengthCm": 12
+      },
+      "expected": {
+        "elapsedMonths": 1,
+        "currentLengthCm": 2,
+        "remainingLengthCm": 10,
+        "monthsToTarget": 10,
+        "daysToTarget": 304.36875,
+        "targetAvailable": true
+      }
+    },
+    {
+      "id": "half-estimate-month",
+      "input": {
+        "baselineLengthCm": 0.5,
+        "growthRateCmPerMonth": 1.25,
+        "elapsedDays": 15.2184375,
+        "targetLengthCm": 3
+      },
+      "expected": {
+        "elapsedMonths": 0.5,
+        "currentLengthCm": 1.125,
+        "remainingLengthCm": 1.875,
+        "monthsToTarget": 1.5,
+        "daysToTarget": 45.6553125,
+        "targetAvailable": true
+      }
+    },
+    {
+      "id": "six-estimate-months",
+      "input": {
+        "baselineLengthCm": 2,
+        "growthRateCmPerMonth": 1.2,
+        "elapsedDays": 182.62125,
+        "targetLengthCm": 14
+      },
+      "expected": {
+        "elapsedMonths": 6,
+        "currentLengthCm": 9.2,
+        "remainingLengthCm": 4.8,
+        "monthsToTarget": 4,
+        "daysToTarget": 121.7475,
+        "targetAvailable": true
+      }
+    },
+    {
+      "id": "target-already-reached",
+      "input": {
+        "baselineLengthCm": 5,
+        "growthRateCmPerMonth": 1,
+        "elapsedDays": 365.2425,
+        "targetLengthCm": 14
+      },
+      "expected": {
+        "elapsedMonths": 12,
+        "currentLengthCm": 17,
+        "remainingLengthCm": 0,
+        "monthsToTarget": 0,
+        "daysToTarget": 0,
+        "targetAvailable": true
+      }
+    },
+    {
+      "id": "zero-rate-unavailable-target",
+      "input": {
+        "baselineLengthCm": 4,
+        "growthRateCmPerMonth": 0,
+        "elapsedDays": 60.87375,
+        "targetLengthCm": 10
+      },
+      "expected": {
+        "elapsedMonths": 2,
+        "currentLengthCm": 4,
+        "remainingLengthCm": 6,
+        "monthsToTarget": null,
+        "daysToTarget": null,
+        "targetAvailable": false
+      }
+    }
+  ]
+}

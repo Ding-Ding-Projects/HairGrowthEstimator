@@ -6,6 +6,8 @@ The visualization maps a projected male hair length to eight photographic refere
 
 The website template declares `#hero-hair-stage`, `#timeline-progress`, `#hero-stage-caption`, and the pause action `[data-action="toggle-animation"]`. The runtime `startHairAnimation` consumes only the composed `#bundled-hair-assets` records, advances through the available stages every 2.6 seconds, supports pause and resume, and stops non-essential animation for reduced-motion preferences. Until the canonical files under `assets/hair-growth/` are present, it shows an honest text placeholder. The numeric estimate remains usable even if every image fails.
 
+The canonical calculation is `365.2425 / 12 = 30.436875 days per estimate month`. The current-length calculation uses that value to convert elapsed days into estimate months. The projected-target calculation uses the same value to convert the remaining target interval into a projected date. The shipped planning default remains an adjustable 1.0 cm per month estimate, not a medical fact. Hair growth varies meaningfully between people and over time. The clinical boundary is documented through [Hair Growth Disorders, StatPearls](https://www.ncbi.nlm.nih.gov/books/NBK499948/).
+
 ## Configuration
 
 The visualization must read canonical centimetre values, display the selected unit, expose the stage's approximate measured length, and provide a non-animated reduced-motion state. Images must be bundled locally with the product and have meaningful alt text.
@@ -34,6 +36,7 @@ The root `assets/hair-growth/stages.json` file is the single mapping authority f
 - A value between stages must identify whether it uses nearest-stage selection or visual interpolation. It must not imply that an interpolated picture is a measurement.
 - Reduced-motion settings must stop non-essential animation.
 - Image decode failure must retain the numeric estimate.
+- Current-length and projected-target calculations that use different month lengths, or a month length other than 30.436875 days, must fail verification.
 - A file that matches a manifest digest but is not a structurally valid bounded PNG must remain unavailable.
 - A file with zero, excessive, truncated, or inconsistent declared dimensions must remain unavailable.
 
