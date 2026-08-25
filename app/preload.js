@@ -28,8 +28,8 @@ contextBridge.exposeInMainWorld('hairGrowth', Object.freeze({
     onChanged: (callback) => subscribe('school:changed', callback)
   }),
   secrets: Object.freeze({
-    setApiKey: (value) => ipcRenderer.invoke('secret:setApiKey', value),
-    hasApiKey: () => ipcRenderer.invoke('secret:hasApiKey')
+    setApiKey: (sync, value) => ipcRenderer.invoke('secret:setApiKey', { sync, value }),
+    hasApiKey: (sync) => ipcRenderer.invoke('secret:hasApiKey', sync)
   }),
   locks: Object.freeze({
     set: (value) => ipcRenderer.invoke('lock:set', value),
@@ -83,9 +83,12 @@ contextBridge.exposeInMainWorld('hairGrowth', Object.freeze({
   ollama: Object.freeze({
     request: (request) => ipcRenderer.invoke('ollama:request', request)
   }),
+  regex: Object.freeze({
+    evaluate: (request) => ipcRenderer.invoke('regex:evaluate', request)
+  }),
   updates: Object.freeze({
     state: () => ipcRenderer.invoke('update:state'),
-    check: (feedUrl) => ipcRenderer.invoke('update:check', feedUrl),
+    check: () => ipcRenderer.invoke('update:check'),
     restart: () => ipcRenderer.invoke('update:restart'),
     onState: (callback) => subscribe('update:state', callback)
   })

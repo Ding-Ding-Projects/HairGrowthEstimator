@@ -187,7 +187,7 @@
       <section class="view" id="view-tools" data-view="tools" role="tabpanel" aria-labelledby="tab-tools" tabindex="0" hidden>
         <header class="view-header"><div><span class="eyebrow">LOCAL TOOLS</span><h2>Workbenches</h2><p>Regex work, local conversion, and authenticators stay on this computer.</p></div></header>
         <article class="surface regex-workbench" data-element-id="regex-workbench">
-          <div class="surface-heading"><div><span class="eyebrow">ECMASCRIPT ENGINE</span><h3>Advanced regex workbench</h3></div><span class="state-chip">JavaScript RegExp</span></div>
+          <div class="surface-heading"><div><span class="eyebrow">ECMASCRIPT ENGINE</span><h3>Advanced regex workbench</h3></div><span class="state-chip">Isolated worker, 250 ms deadline</span></div>
           <div class="workbench-grid">
             <label class="wide"><span>Pattern</span><input id="regex-pattern" type="text" value="(?&lt;word&gt;hair)\s+(growth)" spellcheck="false"></label>
             <label><span>Flags</span><input id="regex-flags" type="text" value="giu" spellcheck="false"></label>
@@ -231,7 +231,7 @@
               <label><span>Storage mode</span><select id="sync-mode"><option value="local">Local only</option><option value="server">Direct private LAN</option><option value="ssh">SSH tunnel</option></select></label>
               <label><span>Profile ID</span><input id="server-profile-id" pattern="[A-Za-z0-9_-]{1,64}"></label>
               <label class="wide"><span>Service URL</span><input id="server-url" type="url"></label>
-              <label class="wide"><span>API key</span><input id="server-api-key" type="password" autocomplete="new-password" placeholder="Stored in the operating-system vault"></label>
+              <label class="wide"><span>API key</span><input id="server-api-key" type="password" autocomplete="new-password" placeholder="Stored in the operating-system vault"><small>Stored for this exact service destination. Public health and version checks never include it.</small></label>
               <div class="form-actions wide"><button type="button" class="filled-button" id="server-test">Test connection</button><button type="button" class="tonal-button" id="server-push">Send local data</button><button type="button" class="tonal-button" id="server-pull">Fetch service data</button></div>
             </form>
           </article>
@@ -377,7 +377,7 @@
         <header class="view-header"><div><span class="eyebrow">EVIDENCE FIRST</span><h2>Application status</h2><p>Unrun checks remain unrun. Pending work never appears as verified.</p></div></header>
         <div class="status-grid">
           <article class="surface"><h3>Running build</h3><dl id="status-provenance" class="fact-list"></dl></article>
-          <article class="surface"><h3>Automatic updates</h3><p id="update-message">No update check has run.</p><div class="form-actions"><button type="button" class="filled-button" id="check-updates">Check for updates</button><button type="button" class="tonal-button" id="restart-update" disabled>Restart to install update</button></div><p class="plain-disclosure">Squirrel.Windows packages are unsigned and may trigger an unknown-publisher or SmartScreen warning.</p></article>
+          <article class="surface"><h3>Automatic updates</h3><p id="update-message">No update check has run.</p><div class="form-actions"><button type="button" class="filled-button" id="check-updates">Check for updates</button><button type="button" class="tonal-button" id="restart-update" disabled>Restart to install update</button></div><p class="plain-disclosure">The update source is fixed by the installed application and cannot be selected by page content. Squirrel.Windows packages are unsigned and may trigger an unknown-publisher or SmartScreen warning.</p></article>
           <article class="surface"><h3>Status Hub</h3><label><span>Optional HTTPS status URL</span><input id="status-hub-url" type="url" placeholder="https://status.example/"></label><button type="button" class="tonal-button" id="open-status-hub">Open configured status</button><p>No built-in private infrastructure address is shipped.</p></article>
           <article class="surface"><h3>Privacy posture</h3><ul><li>Hair data stays local unless direct service sync is selected.</li><li>Credentials use operating-system protection.</li><li>Personal vocabulary and custom logos are local-only.</li><li>No analytics or third-party runtime assets.</li></ul></article>
         </div>

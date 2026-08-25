@@ -6,12 +6,26 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { pathToFileURL } = require('node:url');
 const { atomicWriteFile, atomicWriteJson } = require('./core/atomic');
-const { buildSshArguments, resolveServiceBaseUrl } = require('./core/ssh');
+const { buildSshArguments } = require('./core/ssh');
+const {
+  createServiceCredentialRecord,
+  isPublicServiceEndpoint,
+  resolveServiceSecurityContext,
+  serviceCredentialHeaders
+} = require('./core/service-security');
 const { validateProvenance } = require('./core/provenance');
 const { StateStore, drainStateAndHistory } = require('./core/state-store');
 const { LocalVault } = require('./core/vault');
 const { LocalHistory } = require('./core/history');
+const { evaluateRegex: evaluateRegexInWorker } = require('./core/regex-worker');
+const {
+  CANONICAL_UPDATE_FEED_URL,
+  UpdateRestartAuthorization,
+  assertTrustedMainFrame,
+  createObservedDownloadedUpdate
+} = require('./core/update-security');
 const { LIMITS: VOCABULARY_LIMITS, VocabularyStore, serializeVocabularyCache } = require('./core/vocabulary');
 
 const execFileAsync = promisify(execFile);
@@ -27,6 +41,8 @@ let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
 let localVault = null;
 let localHistory = null;
 let stateStore = null;
+const updateAuthorization = new UpdateRestartAuthorization();
+let activeUpdateCheck = null;
 let lastSchoolRecord = '';
 let schoolPoll = null;
 let shutdownStarted = false;
@@ -169,21 +185,22 @@ async function boundedFetch(url, options = {}) {
 }
 
 async function apiRequest(request) {
-  const base = resolveServiceBaseUrl(request.sync, sshState);
+  const policy = resolveServiceSecurityContext(request.sync, sshState);
   const endpoint = String(request.endpoint || '');
   if (!/^\/(?:health|version|api\/profiles\/[a-zA-Z0-9_-]{1,64}(?:\/haircuts(?:\/[a-zA-Z0-9-]{8,64})?)?)$/.test(endpoint)) {
     throw new TypeError('Service endpoint is not allowlisted.');
   }
-  const url = new URL(endpoint, base);
+  const url = new URL(endpoint, policy.baseUrl);
   const bodyText = request.body === undefined ? null : JSON.stringify(request.body);
   if (bodyText && Buffer.byteLength(bodyText) > 64 * 1024) throw new RangeError('Request body exceeds 64 KiB.');
-  const apiKey = await localVault.apiKey();
+  const apiKey = isPublicServiceEndpoint(endpoint) ? '' : await localVault.apiKeyForScope(policy.credentialScope);
+  const credential = apiKey ? createServiceCredentialRecord(policy, apiKey) : null;
   const { response, body } = await boundedFetch(url, {
     method: ['GET', 'PUT', 'POST', 'DELETE'].includes(request.method) ? request.method : 'GET',
     headers: {
       accept: 'application/json',
       ...(bodyText ? { 'content-type': 'application/json' } : {}),
-      ...(apiKey ? { 'x-api-key': apiKey } : {})
+      ...serviceCredentialHeaders(policy, endpoint, credential)
     },
     body: bodyText,
     timeoutMs: request.timeoutMs
@@ -226,6 +243,9 @@ async function startSshTunnel(config) {
       settled = true;
       const state = sendSshState({
         status: 'connected',
+        host: String(config.host || '').trim(),
+        port: Number(config.port),
+        remoteApiPort: Number(config.remoteApiPort),
         localForwardPort: Number(config.localForwardPort),
         message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.`
       });
@@ -417,28 +437,118 @@ async function ollamaRequest({ endpoint, method = 'GET', body, timeoutMs = 10000
 }
 
 const updateState = { status: 'idle', currentVersion: null, availableVersion: null, message: 'No update check has run.' };
+const rendererApplicationUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
 
 function publishUpdateState(patch) {
   Object.assign(updateState, patch);
   mainWindow?.webContents.send('update:state', { ...updateState });
 }
 
-function registerUpdaterEvents() {
-  autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: 'Checking the unsigned HTTPS update feed.' }));
-  autoUpdater.on('update-available', (_event, notes, name) => publishUpdateState({ status: 'available', availableVersion: name || null, message: String(notes || 'An update is available.') }));
-  autoUpdater.on('update-not-available', () => publishUpdateState({ status: 'current', message: 'This version is current.' }));
-  autoUpdater.on('update-downloaded', (_event, notes, name) => publishUpdateState({ status: 'ready', availableVersion: name || null, message: `${String(notes || 'Update downloaded.')} The package is unsigned. Restart only after saving work.` }));
-  autoUpdater.on('error', (error) => publishUpdateState({ status: 'error', message: error.message }));
+function assertTrustedIpcSender(event) {
+  if (!mainWindow || event?.sender !== mainWindow.webContents) {
+    const error = new Error('The request did not originate from the application window.');
+    error.code = 'ERR_UNTRUSTED_IPC_SENDER';
+    throw error;
+  }
+  return assertTrustedMainFrame({
+    senderFrame: event.senderFrame,
+    mainFrame: mainWindow.webContents.mainFrame,
+    applicationUrl: rendererApplicationUrl
+  });
 }
 
-async function checkForUpdates(feedUrl) {
-  if (!app.isPackaged) return publishUpdateState({ status: 'unavailable', message: 'Update checks are available in packaged builds.' });
-  const url = new URL(feedUrl);
-  if (url.protocol !== 'https:' || url.username || url.password) throw new TypeError('Update feed must be an HTTPS URL without embedded credentials.');
-  autoUpdater.setFeedURL({ url: url.href });
+function registerUpdaterEvents() {
+  autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: 'Checking the unsigned HTTPS update feed.' }));
+  autoUpdater.on('update-available', (_event, notes, name) => {
+    if (!activeUpdateCheck) return;
+    activeUpdateCheck.availableVersion = typeof name === 'string' ? name.slice(0, 80) : null;
+    publishUpdateState({
+      status: 'available',
+      availableVersion: activeUpdateCheck.availableVersion,
+      message: String(notes || 'An update is available.').slice(0, 4000)
+    });
+  });
+  autoUpdater.on('update-not-available', () => {
+    updateAuthorization.supersede();
+    activeUpdateCheck = null;
+    publishUpdateState({ status: 'current', availableVersion: null, message: 'This version is current.' });
+  });
+  autoUpdater.on('update-downloaded', (_event, notes, name) => {
+    try {
+      if (!activeUpdateCheck) throw new Error('No active update check owns this downloaded update event.');
+      const observedUpdate = createObservedDownloadedUpdate({
+        provider: 'squirrel-windows',
+        releaseName: name,
+        downloadedEvent: true
+      });
+      const ready = updateAuthorization.markReady({
+        version: observedUpdate.releaseName,
+        feedUrl: activeUpdateCheck.feedUrl,
+        generation: activeUpdateCheck.generation,
+        observedUpdate
+      });
+      activeUpdateCheck = null;
+      publishUpdateState({
+        status: 'ready',
+        availableVersion: ready.version,
+        message: `${String(notes || 'Update downloaded.').slice(0, 3800)} The package is unsigned. Restart only after saving work.`
+      });
+    } catch (error) {
+      activeUpdateCheck = null;
+      updateAuthorization.recordError();
+      publishUpdateState({
+        status: 'error',
+        availableVersion: null,
+        message: `The downloaded update could not be authorized: ${error.message}`
+      });
+    }
+  });
+  autoUpdater.on('error', (error) => {
+    activeUpdateCheck = null;
+    updateAuthorization.recordError();
+    publishUpdateState({ status: 'error', availableVersion: null, message: error.message });
+  });
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged) {
+    updateAuthorization.supersede();
+    activeUpdateCheck = null;
+    publishUpdateState({ status: 'unavailable', availableVersion: null, message: 'Update checks are available in packaged builds.' });
+    return { ...updateState };
+  }
+  if (activeUpdateCheck) throw new Error('An update check is already active.');
+  updateAuthorization.applyMainProcessFeed(CANONICAL_UPDATE_FEED_URL);
+  autoUpdater.setFeedURL({ url: CANONICAL_UPDATE_FEED_URL });
+  activeUpdateCheck = { ...updateAuthorization.beginCheck(), availableVersion: null };
   publishUpdateState({ status: 'checking', currentVersion: app.getVersion(), message: 'Checking the unsigned HTTPS update feed.' });
-  autoUpdater.checkForUpdates();
+  try {
+    autoUpdater.checkForUpdates();
+  } catch (error) {
+    activeUpdateCheck = null;
+    updateAuthorization.recordError();
+    publishUpdateState({ status: 'error', availableVersion: null, message: error.message });
+    throw error;
+  }
   return { ...updateState };
+}
+
+async function restartVerifiedUpdate() {
+  const ready = updateAuthorization.snapshot().ready;
+  if (!ready) throw new Error('No verified downloaded update is ready to install.');
+  await drainStateAndHistory(stateStore, localHistory);
+  await stopSshTunnel();
+  updateAuthorization.consumeRestart(ready);
+  shutdownStarted = true;
+  shutdownReady = true;
+  try {
+    autoUpdater.quitAndInstall();
+  } catch (error) {
+    shutdownStarted = false;
+    shutdownReady = false;
+    throw error;
+  }
+  return { restarting: true, version: ready.version };
 }
 
 function createWindow() {
@@ -481,8 +591,16 @@ function registerIpc() {
   ipcMain.handle('state:write', (_event, { state, event }) => writeState(state, event));
   ipcMain.handle('school:read', readSchoolRecord);
   ipcMain.handle('school:write', (_event, value) => writeSchoolRecord(value));
-  ipcMain.handle('secret:setApiKey', (_event, value) => localVault.setApiKey(value));
-  ipcMain.handle('secret:hasApiKey', () => localVault.hasApiKey());
+  ipcMain.handle('secret:setApiKey', (event, { sync, value }) => {
+    assertTrustedIpcSender(event);
+    const policy = resolveServiceSecurityContext(sync, sshState);
+    return localVault.setApiKeyForScope(policy.credentialScope, value);
+  });
+  ipcMain.handle('secret:hasApiKey', (event, sync) => {
+    assertTrustedIpcSender(event);
+    const policy = resolveServiceSecurityContext(sync, sshState);
+    return localVault.hasApiKeyForScope(policy.credentialScope);
+  });
   ipcMain.handle('lock:set', (_event, value) => localVault.setLock(value));
   ipcMain.handle('lock:list', () => localVault.listLocks());
   ipcMain.handle('lock:verify', (_event, value) => localVault.verifyLock(value));
@@ -540,14 +658,30 @@ function registerIpc() {
   ipcMain.handle('history:label', (_event, commit, label, credential) => localHistory.label(commit, label, { credential }));
   ipcMain.handle('history:prune', (_event, maxEntries, credential) => localHistory.prune({ maxEntries, credential }));
   ipcMain.handle('history:export', async (_event, options) => `${JSON.stringify(await localHistory.exportRedacted(options), null, 2)}\n`);
-  ipcMain.handle('server:request', (_event, request) => apiRequest(request));
+  ipcMain.handle('server:request', (event, request) => {
+    assertTrustedIpcSender(event);
+    return apiRequest(request);
+  });
   ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
   ipcMain.handle('ssh:stop', stopSshTunnel);
   ipcMain.handle('ssh:state', () => sshState);
   ipcMain.handle('ollama:request', (_event, request) => ollamaRequest(request));
-  ipcMain.handle('update:state', () => ({ ...updateState, currentVersion: app.getVersion() }));
-  ipcMain.handle('update:check', (_event, feedUrl) => checkForUpdates(feedUrl));
-  ipcMain.handle('update:restart', () => autoUpdater.quitAndInstall());
+  ipcMain.handle('regex:evaluate', (event, request) => {
+    assertTrustedIpcSender(event);
+    return evaluateRegexInWorker(request);
+  });
+  ipcMain.handle('update:state', (event) => {
+    assertTrustedIpcSender(event);
+    return { ...updateState, currentVersion: app.getVersion() };
+  });
+  ipcMain.handle('update:check', (event) => {
+    assertTrustedIpcSender(event);
+    return checkForUpdates();
+  });
+  ipcMain.handle('update:restart', (event) => {
+    assertTrustedIpcSender(event);
+    return restartVerifiedUpdate();
+  });
 }
 
 app.whenReady().then(async () => {

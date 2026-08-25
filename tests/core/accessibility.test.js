@@ -85,7 +85,9 @@ test('notification history is searchable and fully bulk manageable', () => {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(script, /^\s*function selectedNotificationIds\(\)/m);
-  assert.match(script, /matchesSearch\(\$\('#notification-search'\)/);
+  assert.match(script, /^\s*async function renderNotifications\(\)/m);
+  assert.match(script, /filterBySearch\(\$\('#notification-search'\), state\.notifications, \(notice\) =>/);
+  assert.match(script, /^\s*visibleNotificationItems = visible;$/m);
 });
 
 test('hair stages expose meaningful names and selected state', () => {
@@ -126,7 +128,9 @@ test('local support tickets provide routes, search, export, bulk status, and hel
   for (const id of ['open-support-from-settings', 'open-support-from-help', 'support-search', 'support-status-filter', 'support-list', 'select-all-support', 'invert-support', 'advance-support', 'export-support', 'delete-support']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(script, /^\s*function renderSupportTickets\(\)/m);
+  assert.match(script, /^\s*async function renderSupportTickets\(\)/m);
+  assert.match(script, /filterBySearch\(\$\('#support-search'\), statusCandidates, \(ticket\) =>/);
+  assert.match(script, /^\s*visibleSupportTicketItems = visible;$/m);
   assert.match(script, /^\s*function selectedSupportTicketIds\(\)/m);
   assert.match(html, /id="support-result"[^>]*aria-live="polite"/);
 });

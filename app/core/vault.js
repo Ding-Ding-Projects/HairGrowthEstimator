@@ -7,6 +7,27 @@ const { atomicWriteFile } = require('./atomic');
 const { factorOrder, hashSecret, verifySecret } = require('./credentials');
 const { createSecret, normalizeBase32, totp, verifyTotp } = require('./totp');
 
+function isCredentialScope(value) {
+  return typeof value === 'string'
+    && value.length >= 1
+    && value.length <= 2048
+    && value === value.trim()
+    && !/[\u0000-\u001f\u007f]/.test(value)
+    && !['__proto__', 'prototype', 'constructor'].includes(value);
+}
+
+function validateCredentialScope(value) {
+  if (!isCredentialScope(value)) throw new TypeError('Service credential scope is invalid.');
+  return value;
+}
+
+function isApiKey(value) {
+  return typeof value === 'string'
+    && value.length >= 24
+    && value.length <= 512
+    && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
 class LocalVault {
   constructor({ filePath, safeStorage }) {
     this.filePath = path.resolve(filePath);
@@ -23,14 +44,17 @@ class LocalVault {
 
   async read() {
     this.ensureAvailable();
-    const empty = { schemaVersion: 1, apiKey: '', locks: {}, authenticators: {}, historyAccess: null };
+    const empty = { schemaVersion: 2, apiKeys: {}, locks: {}, authenticators: {}, historyAccess: null };
     try {
       const encrypted = await fs.readFile(this.filePath);
       const parsed = JSON.parse(this.safeStorage.decryptString(encrypted));
-      if (parsed?.schemaVersion !== 1) return empty;
+      if (![1, 2].includes(parsed?.schemaVersion)) return empty;
+      const apiKeys = parsed.schemaVersion === 2 && parsed.apiKeys && typeof parsed.apiKeys === 'object' && !Array.isArray(parsed.apiKeys)
+        ? Object.fromEntries(Object.entries(parsed.apiKeys).filter(([scope, value]) => isCredentialScope(scope) && isApiKey(value)))
+        : {};
       return {
-        ...empty,
-        ...parsed,
+        schemaVersion: 2,
+        apiKeys,
         locks: parsed.locks && typeof parsed.locks === 'object' ? parsed.locks : {},
         authenticators: parsed.authenticators && typeof parsed.authenticators === 'object' ? parsed.authenticators : {},
         historyAccess: parsed.historyAccess && typeof parsed.historyAccess === 'object' ? parsed.historyAccess : null
@@ -60,19 +84,25 @@ class LocalVault {
     return operation;
   }
 
-  async setApiKey(value) {
+  async setApiKeyForScope(scope, value) {
+    const credentialScope = validateCredentialScope(scope);
     const apiKey = String(value || '');
     if (apiKey && (apiKey.length < 24 || apiKey.length > 512)) throw new RangeError('API key must contain 24 to 512 characters.');
-    await this.transact((vault) => { vault.apiKey = apiKey; });
-    return { stored: Boolean(apiKey) };
+    if (apiKey && /[\u0000-\u001f\u007f]/.test(apiKey)) throw new TypeError('API key must not contain control characters.');
+    await this.transact((vault) => {
+      if (apiKey) vault.apiKeys[credentialScope] = apiKey;
+      else delete vault.apiKeys[credentialScope];
+    });
+    return { stored: Boolean(apiKey), scope: credentialScope };
   }
 
-  async apiKey() {
-    return (await this.read()).apiKey || '';
+  async apiKeyForScope(scope) {
+    const credentialScope = validateCredentialScope(scope);
+    return (await this.read()).apiKeys[credentialScope] || '';
   }
 
-  async hasApiKey() {
-    return Boolean(await this.apiKey());
+  async hasApiKeyForScope(scope) {
+    return Boolean(await this.apiKeyForScope(scope));
   }
 
   async setHistoryPassword(value) {

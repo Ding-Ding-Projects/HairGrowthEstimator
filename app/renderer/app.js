@@ -6,6 +6,18 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const regexState = new WeakMap();
+  const searchGenerations = new WeakMap();
+  const utf8Encoder = new TextEncoder();
+  const REGEX_LIMITS = Object.freeze({
+    patternBytes: 512,
+    candidateBytes: 8192,
+    candidateTotalBytes: 262144,
+    candidates: 256,
+    sampleBytes: 65536,
+    replacementBytes: 8192,
+    results: 128,
+    deadlineMs: 250
+  });
   const dialogOpeners = new WeakMap();
   let contextMenuOpener = null;
   let regexPopoverOpener = null;
@@ -34,8 +46,13 @@
   let vocabularyCache = { status: 'missing', schemaVersion: null, entries: Object.freeze({}) };
   let historyCredential = '';
   let historyItems = [];
+  let visibleNotificationItems = [];
+  let visibleSupportTicketItems = [];
   let selectedHistoryCommit = '';
   let activeGrowthStageIndex = 0;
+  let regexValidationGeneration = 0;
+  let regexWorkbenchGeneration = 0;
+  let historyRenderGeneration = 0;
 
   const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -81,7 +98,7 @@
     {
       id: 'about',
       title: 'About this build',
-      body: `<h3>About Hair Growth Estimator 1.0.0</h3><p>Release code name: <strong>Classic Har Gow · 蝦餃</strong>, public catalog record <code>hk-dish-0001</code>. The photo remains in the public dim-sum catalog and is not copied into this application.</p><p><a href="#" data-external-url="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Open the public catalog photo</a>.</p><h4>Stable identity</h4><p>Changing the display name or logo changes presentation only. It never changes package identity, data location, executable name, installer identity, or update feed.</p><h4>Suggested articles</h4><p>Hair growth estimation, Privacy and local credentials, Status and recovery.</p>`
+      body: `<h3>About Hair Growth Estimator 1.0.0</h3><p>Release code name: <strong>Classic Har Gow · 蝦餃</strong>, public catalog record <code>hk-dish-0001</code>. The photo remains in the public dim-sum catalog and is not copied into this application.</p><p><a href="#" data-external-url="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Open the public catalog photo</a>.</p><h4>Stable identity</h4><p>Changing the display name or logo changes presentation only. It never changes package identity, data location, executable name, installer identity, or update feed. The installed application owns one exact HTTPS update source. Page content cannot select a different feed, and restart is authorized only for the exact downloaded event that produced the current ready state.</p><h4>Suggested articles</h4><p>Hair growth estimation, Privacy and local credentials, Status and recovery.</p>`
     },
     {
       id: 'estimation',
@@ -96,7 +113,7 @@
     {
       id: 'sync',
       title: 'Private synchronization',
-      body: `<h3>Private synchronization</h3><p>Local mode requires no service. Direct private-LAN mode contacts only the validated HTTP or HTTPS URL you enter and stores an API key through operating-system protection. SSH mode invokes <code>ssh.exe</code> directly without a shell, enables BatchMode, requires an existing trusted host key, uses the persistent user known_hosts file, disables host-key updates, and tears down the child process when stopped or when the application exits.</p><p>While SSH mode is selected, service traffic ignores the direct URL and uses only the validated loopback forward that matches the currently connected tunnel. A disconnected tunnel or changed local port is refused.</p><h4>Pull validation</h4><p>A downloaded profile and every downloaded haircut are validated together before any live state changes. An invalid growth rate, missing pre-cut length, post-cut length above pre-cut length, invalid identifier, or oversized record set leaves the existing local state unchanged.</p><h4>Security boundary</h4><p>The service accepts monthly growth rates from 0.05 through 5 cm, requires both haircut lengths, and refuses apparent growth during a cut. It refuses every non-loopback bind without a strong API key. It validates CORS origins, request sizes, timeouts, dates, lengths, counts, and methods. It never logs request bodies or secrets.</p><h4>Deterministic container build</h4><p>The Dockerfile pins the exact multi-platform Node base-image digest. Its build context is the bounded <code>server/</code> directory, with the root <code>Dockerfile</code> selected explicitly. Release builds target <code>linux/amd64</code>, pass the release version, commit SHA, and commit timestamp as <code>BUILD_VERSION</code>, <code>BUILD_REVISION</code>, and <code>SOURCE_DATE_EPOCH</code>, and export <code>hair-growth-api-1.0.0-linux-amd64.oci.tar</code> as an OCI archive. Registry publication is a separate optional action; local hosting never requires it.</p><h4>Suggested articles</h4><p>Haircut resets, Local persistence and version history, Privacy and local credentials.</p>`
+      body: `<h3>Private synchronization</h3><p>Local mode requires no service. Direct HTTP is accepted only for loopback addresses on this computer. A direct non-loopback service must use HTTPS. Its API key is stored through operating-system protection and bound to that exact canonical origin. Public health and version probes never include the key.</p><p>SSH mode invokes <code>ssh.exe</code> directly without a shell, enables BatchMode, requires an existing trusted host key, uses the persistent user known_hosts file, disables host-key updates, and tears down the child process when stopped or when the application exits. Service traffic ignores the direct URL and uses only the validated loopback forward whose host, SSH port, remote API port, and local forward port match the active tunnel. A disconnected or mismatched tunnel is refused, and its credential is bound to the SSH destination rather than a reusable local port.</p><h4>Pull validation</h4><p>A downloaded profile and every downloaded haircut are validated together before any live state changes. An invalid growth rate, missing pre-cut length, post-cut length above pre-cut length, invalid identifier, or oversized record set leaves the existing local state unchanged.</p><h4>Security boundary</h4><p>The service accepts monthly growth rates from 0.05 through 5 cm, requires both haircut lengths, and refuses apparent growth during a cut. It refuses every non-loopback bind without a strong API key. It validates CORS origins, request sizes, timeouts, dates, lengths, counts, and methods. It never logs request bodies or secrets.</p><h4>Deterministic container build</h4><p>The Dockerfile pins the exact multi-platform Node base-image digest. Its build context is the bounded <code>server/</code> directory, with the root <code>Dockerfile</code> selected explicitly. Release builds target <code>linux/amd64</code>, pass the release version, commit SHA, and commit timestamp as <code>BUILD_VERSION</code>, <code>BUILD_REVISION</code>, and <code>SOURCE_DATE_EPOCH</code>, and export <code>hair-growth-api-1.0.0-linux-amd64.oci.tar</code> as an OCI archive. Registry publication is a separate optional action; local hosting never requires it.</p><h4>Suggested articles</h4><p>Haircut resets, Local persistence and version history, Privacy and local credentials.</p>`
     },
     {
       id: 'persistence',
@@ -111,7 +128,7 @@
     {
       id: 'tools',
       title: 'Regex, converter, and local model tools',
-      body: `<h3>Local tools</h3><p>The regex workbench uses the running JavaScript RegExp engine with bounded sample and pattern sizes, live capture tables, replacement preview, capability notes, and adversarial-risk warnings.</p><p>The local file converter enables only bundled text, JSON, hexadecimal, and base64 adapters. Other format families remain visible and disabled with an exact reason. The local model manager talks only to Ollama on loopback and never embeds a cloud model service.</p><h4>Suggested articles</h4><p>Privacy, Export formats, Status and recovery.</p>`
+      body: `<h3>Local tools</h3><p>Plain-text search remains the default. When regex is enabled, every search field, anchored builder validation, and full workbench evaluation crosses the privileged boundary into a dedicated worker. Pattern, candidate, sample, replacement, capture, and result sizes are bounded. Each worker has a 250 ms hard deadline and is terminated when that deadline expires, so an adversarial pattern cannot keep the interface thread running it.</p><p>The full workbench uses the running JavaScript RegExp engine with live capture tables, a bounded replacement preview, capability notes, truncation notices, and adversarial-risk warnings. Results are capped at 128 matches.</p><p>The local file converter enables only bundled text, JSON, hexadecimal, and base64 adapters. Other format families remain visible and disabled with an exact reason. The local model manager talks only to Ollama on loopback and never embeds a cloud model service.</p><h4>Suggested articles</h4><p>Privacy, Export formats, Status and recovery.</p>`
     },
     {
       id: 'locks',
@@ -125,7 +142,7 @@
       version: '1.0.0',
       date: '2026-08-24',
       commit: 'pending-release-commit',
-      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Strict local personal-vocabulary validation, cache recovery, clear, and School-mode suppression', 'Complete tab relationships, axis-aware roving focus, named dialogs, opener focus restoration, reduced-motion progression, and 44-pixel interaction targets', 'Protected searchable history, dismissible notification history, local Support Tickets management, and persisted attention accommodations', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
+      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Service credentials bound to the exact direct or SSH destination and omitted from public probes', 'Direct HTTP limited to loopback while non-loopback direct service connections require HTTPS', 'Canonical main-process update feed with trusted-frame and exact ready-event restart authorization', 'Killable worker-based regex evaluation with hard deadlines for every search and workbench path', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Strict local personal-vocabulary validation, cache recovery, clear, and School-mode suppression', 'Complete tab relationships, axis-aware roving focus, named dialogs, opener focus restoration, reduced-motion progression, and 44-pixel interaction targets', 'Protected searchable history, dismissible notification history, local Support Tickets management, and persisted attention accommodations', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
     }
   ];
 
@@ -609,15 +626,10 @@
     $('#haircut-form-title').textContent = 'Record a haircut';
   }
 
-  function haircutMatcher(haircut) {
-    const input = $('#haircut-search');
-    const haystack = `${haircut.date} ${haircut.note}`;
-    return matchesSearch(input, haystack);
-  }
-
-  function renderHaircuts() {
+  async function renderHaircuts() {
     const list = $('#haircut-list'); list.replaceChildren();
-    const visible = state.haircuts.filter(haircutMatcher);
+    const visible = await filterBySearch($('#haircut-search'), state.haircuts, (haircut) => `${haircut.date} ${haircut.note}`);
+    if (visible === null) return;
     if (!visible.length) {
       const empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = text('noHaircuts'); list.append(empty);
     }
@@ -749,10 +761,13 @@
       .filter((entry) => !schoolRecord?.enabled || entry.feature !== 'vocabulary');
   }
 
-  function renderPalette() {
+  async function renderPalette() {
     const container = $('#palette-results'); container.replaceChildren();
     const input = $('#palette-search');
-    paletteEntries().filter((entry) => matchesSearch(input, `${entry.label} ${entry.kind}`)).forEach((entry) => {
+    const entries = paletteEntries();
+    const visible = await filterBySearch(input, entries, (entry) => `${entry.label} ${entry.kind}`);
+    if (visible === null) return;
+    visible.forEach((entry) => {
       const row = document.createElement('div'); row.className = 'palette-row';
       const button = document.createElement('button'); button.type = 'button'; button.innerHTML = `<strong></strong><small></small>`; setOwnedText($('strong', button), entry.label); setOwnedText($('small', button), entry.kind); setOwnedAttribute(button, 'aria-label', `${entry.label}, ${entry.kind}`);
       button.addEventListener('click', () => activatePaletteEntry(entry));
@@ -771,21 +786,84 @@
     if (!container.childElementCount) container.innerHTML = '<div class="empty-state">No commands match this search.</div>';
   }
 
-  function matcherFor(input) {
-    const value = input.value || '';
-    const config = regexState.get(input);
-    if (config?.enabled) {
-      try {
-        const expression = new RegExp(config.pattern || value, config.flags || 'iu');
-        return (candidate) => { expression.lastIndex = 0; return expression.test(candidate); };
-      } catch { return () => false; }
-    }
-    const query = value.toLocaleLowerCase();
-    return (candidate) => !query || String(candidate).toLocaleLowerCase().includes(query);
+  function utf8ByteLength(value) {
+    return utf8Encoder.encode(String(value)).byteLength;
   }
 
-  function matchesSearch(input, candidate) {
-    return matcherFor(input)(candidate);
+  function invalidateSearch(input) {
+    searchGenerations.set(input, (searchGenerations.get(input) || 0) + 1);
+    input.removeAttribute('aria-busy');
+  }
+
+  function regexFilterBatches(searchable) {
+    const batches = [];
+    let current = { indexes: [], candidates: [], bytes: 0 };
+
+    searchable.forEach((candidate, index) => {
+      const bytes = utf8ByteLength(candidate);
+      if (bytes > REGEX_LIMITS.candidateBytes) {
+        throw new Error(`Search candidate ${index + 1} exceeds the ${REGEX_LIMITS.candidateBytes}-byte bound.`);
+      }
+      if (
+        current.indexes.length >= REGEX_LIMITS.candidates ||
+        current.bytes + bytes > REGEX_LIMITS.candidateTotalBytes
+      ) {
+        batches.push(current);
+        current = { indexes: [], candidates: [], bytes: 0 };
+      }
+      current.indexes.push(index);
+      current.candidates.push(candidate);
+      current.bytes += bytes;
+    });
+    if (current.indexes.length) batches.push(current);
+    return batches;
+  }
+
+  async function filterBySearch(input, candidates, toSearchText = (candidate) => String(candidate)) {
+    const generation = (searchGenerations.get(input) || 0) + 1;
+    searchGenerations.set(input, generation);
+    const query = input.value || '';
+    const configured = regexState.get(input);
+    const config = configured
+      ? { enabled: Boolean(configured.enabled), pattern: configured.pattern || query, flags: configured.flags || 'iu' }
+      : { enabled: false, pattern: query, flags: 'iu' };
+    const searchable = candidates.map((candidate) => String(toSearchText(candidate)));
+    input.setAttribute('aria-busy', 'true');
+
+    try {
+      let visible;
+      if (!config.enabled) {
+        const plainQuery = query.toLocaleLowerCase();
+        visible = candidates.filter((_candidate, index) => !plainQuery || searchable[index].toLocaleLowerCase().includes(plainQuery));
+      } else {
+        visible = [];
+        for (const batch of regexFilterBatches(searchable)) {
+          const result = await bridge.regex.evaluate({
+            operation: 'filter',
+            pattern: config.pattern,
+            flags: config.flags,
+            candidates: batch.candidates
+          });
+          if (searchGenerations.get(input) !== generation) return null;
+          if (!Array.isArray(result?.matches) || result.matches.length !== batch.indexes.length) throw new Error('Regex worker returned an invalid filter result.');
+          result.matches.forEach((matched, index) => { if (matched) visible.push(candidates[batch.indexes[index]]); });
+        }
+      }
+      if (searchGenerations.get(input) !== generation) return null;
+      input.removeAttribute('aria-invalid');
+      input.setCustomValidity?.('');
+      input.removeAttribute('title');
+      return visible;
+    } catch (error) {
+      if (searchGenerations.get(input) !== generation) return null;
+      const message = error?.message || 'Regex evaluation could not finish.';
+      input.setAttribute('aria-invalid', 'true');
+      input.setCustomValidity?.(message);
+      input.title = message;
+      return [];
+    } finally {
+      if (searchGenerations.get(input) === generation) input.removeAttribute('aria-busy');
+    }
   }
 
   function openRegexBuilder(trigger) {
@@ -798,7 +876,7 @@
     $('#popover-pattern').value = current.pattern;
     $('#popover-flags').value = current.flags;
     $('#popover-enabled').checked = current.enabled;
-    validatePopoverRegex();
+    void validatePopoverRegex();
     const rect = trigger.getBoundingClientRect();
     popover.hidden = false;
     const width = Math.min(420, window.innerWidth - 24);
@@ -808,22 +886,37 @@
   }
 
   function closeRegexPopover({ restoreFocus = true } = {}) {
+    regexValidationGeneration += 1;
     $('#regex-popover').hidden = true;
     const opener = regexPopoverOpener;
     regexPopoverOpener = null;
     if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
   }
 
-  function validatePopoverRegex() {
+  async function validatePopoverRegex() {
+    const generation = ++regexValidationGeneration;
     const status = $('#popover-validation');
     if (!$('#popover-enabled').checked) { status.textContent = 'Plain-text search is active.'; status.className = ''; return true; }
     const pattern = $('#popover-pattern').value;
-    if (pattern.length > 500) { status.textContent = 'Pattern exceeds the 500-character bound.'; status.className = 'error'; return false; }
-    try { new RegExp(pattern, $('#popover-flags').value); status.textContent = 'Pattern is valid for the JavaScript RegExp engine.'; status.className = 'success'; return true; } catch (error) { status.textContent = error.message; status.className = 'error'; return false; }
+    if (utf8ByteLength(pattern) > REGEX_LIMITS.patternBytes) { status.textContent = `Pattern exceeds the ${REGEX_LIMITS.patternBytes}-byte UTF-8 bound.`; status.className = 'error'; return false; }
+    status.textContent = 'Validating in an isolated worker.';
+    status.className = '';
+    try {
+      await bridge.regex.evaluate({ operation: 'validate', pattern, flags: $('#popover-flags').value });
+      if (generation !== regexValidationGeneration) return false;
+      status.textContent = 'Pattern is valid for the JavaScript RegExp engine.';
+      status.className = 'success';
+      return true;
+    } catch (error) {
+      if (generation !== regexValidationGeneration) return false;
+      status.textContent = error?.message || 'Pattern validation could not finish.';
+      status.className = 'error';
+      return false;
+    }
   }
 
-  function applyRegexPopover() {
-    if (!validatePopoverRegex()) return;
+  async function applyRegexPopover() {
+    if (!await validatePopoverRegex()) return;
     const input = $('#regex-popover')._targetInput;
     if (!input) return;
     regexState.set(input, { enabled: $('#popover-enabled').checked, pattern: $('#popover-pattern').value, flags: $('#popover-flags').value });
@@ -831,21 +924,25 @@
     closeRegexPopover();
   }
 
-  function runRegexWorkbench() {
+  async function runRegexWorkbench() {
+    const generation = ++regexWorkbenchGeneration;
     const pattern = $('#regex-pattern').value;
     const flags = $('#regex-flags').value;
     const sample = $('#regex-sample').value;
-    if (pattern.length > 500 || sample.length > 50000) return notify('Regex bounds exceeded', 'Pattern is limited to 500 characters and sample text to 50,000 characters.', 'error');
-    const started = performance.now();
+    const replacement = $('#regex-replacement').value;
+    if (
+      utf8ByteLength(pattern) > REGEX_LIMITS.patternBytes ||
+      utf8ByteLength(sample) > REGEX_LIMITS.sampleBytes ||
+      utf8ByteLength(replacement) > REGEX_LIMITS.replacementBytes
+    ) {
+      $('#run-regex').removeAttribute('aria-busy');
+      return notify('Regex bounds exceeded', `Pattern is limited to ${REGEX_LIMITS.patternBytes} UTF-8 bytes, sample text to ${REGEX_LIMITS.sampleBytes} UTF-8 bytes, and replacement text to ${REGEX_LIMITS.replacementBytes} UTF-8 bytes.`, 'error');
+    }
+    $('#run-regex').setAttribute('aria-busy', 'true');
     try {
-      const expression = new RegExp(pattern, flags);
-      const matches = [];
-      if (expression.global) {
-        for (const match of sample.matchAll(expression)) { matches.push(match); if (matches.length >= 500) break; }
-      } else {
-        const match = expression.exec(sample); if (match) matches.push(match);
-      }
-      const elapsed = performance.now() - started;
+      const result = await bridge.regex.evaluate({ operation: 'workbench', pattern, flags, sample, replacement });
+      if (generation !== regexWorkbenchGeneration) return;
+      const matches = result.matches || [];
       const explanation = [];
       if (pattern.includes('(?<')) explanation.push('Named capture group detected.');
       if (/\(\?<?[=!]/.test(pattern)) explanation.push('Lookaround detected.');
@@ -853,23 +950,29 @@
       if (/\[[^\]]+\]/.test(pattern)) explanation.push('Character class detected.');
       if (/\\[1-9]|\\k</.test(pattern)) explanation.push('Backreference detected.');
       if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) explanation.push('Potential nested-quantifier backtracking risk. Keep adversarial input bounded.');
-      explanation.push(`Completed in ${elapsed.toFixed(3)} ms with ${matches.length} match${matches.length === 1 ? '' : 'es'}.`);
+      explanation.push(`Completed in ${Number(result.elapsedMs || 0).toFixed(3)} ms with ${matches.length} match${matches.length === 1 ? '' : 'es'}.`);
+      if (result.truncated) explanation.push(`Results were capped at ${REGEX_LIMITS.results} matches.`);
+      if (result.replacementPreview?.truncated) explanation.push('The replacement preview reached its bounded output limit.');
       $('#regex-explanation').replaceChildren(...explanation.map((line) => { const p = document.createElement('p'); p.textContent = line; return p; }));
       const matchContainer = $('#regex-matches'); matchContainer.replaceChildren();
       matches.forEach((match, index) => {
         const block = document.createElement('div');
-        const head = document.createElement('strong'); head.textContent = `#${index + 1} at ${match.index}: ${match[0] || '(zero-width)'}`; block.append(head);
-        match.forEach((capture, captureIndex) => { const span = document.createElement('span'); span.className = 'capture-pill'; span.textContent = `$${captureIndex}: ${capture ?? 'unmatched'}`; block.append(span); });
+        const head = document.createElement('strong'); head.textContent = `#${index + 1} at ${match.index}: ${match.value || '(zero-width)'}`; block.append(head);
+        [{ label: '$0', value: match.value }, ...(match.captures || []).map((value, captureIndex) => ({ label: `$${captureIndex + 1}`, value }))].forEach((capture) => { const span = document.createElement('span'); span.className = 'capture-pill'; span.textContent = `${capture.label}: ${capture.value ?? 'unmatched'}`; block.append(span); });
         Object.entries(match.groups || {}).forEach(([name, value]) => { const span = document.createElement('span'); span.className = 'capture-pill'; span.textContent = `${name}: ${value ?? 'unmatched'}`; block.append(span); });
         matchContainer.append(block);
       });
       if (!matches.length) matchContainer.textContent = 'No matches.';
-      $('#regex-preview').textContent = sample.replace(expression, $('#regex-replacement').value);
+      $('#regex-preview').textContent = result.replacementPreview?.text ?? sample;
       const capabilities = [
-        ['Named and numbered captures', 'Supported'], ['Lookahead and lookbehind', 'Supported by the running engine'], ['Unicode sets and properties', 'Supported where the engine accepts the v or u flags'], ['Atomic groups', 'Unsupported in this engine'], ['Conditionals and subroutines', 'Unsupported in this engine'], ['Possessive quantifiers', 'Unsupported in this engine'], ['Bounded execution', `Pattern 500 chars, sample 50,000 chars, results 500`]
+        ['Named and numbered captures', 'Supported'], ['Lookahead and lookbehind', 'Supported by the running engine'], ['Unicode sets and properties', 'Supported where the engine accepts the v or u flags'], ['Atomic groups', 'Unsupported in this engine'], ['Conditionals and subroutines', 'Unsupported in this engine'], ['Possessive quantifiers', 'Unsupported in this engine'], ['Bounded execution', `Pattern ${REGEX_LIMITS.patternBytes} UTF-8 bytes, sample ${REGEX_LIMITS.sampleBytes} UTF-8 bytes, results ${REGEX_LIMITS.results}, hard deadline ${REGEX_LIMITS.deadlineMs} ms`]
       ];
       const cap = $('#regex-capabilities'); cap.replaceChildren(); capabilities.forEach(([name, status]) => { const row = document.createElement('div'); row.className = 'capability-row'; const a = document.createElement('span'); a.textContent = name; const b = document.createElement('strong'); b.textContent = status; row.append(a, b); cap.append(row); });
-    } catch (error) { handleError(error, 'Regex is invalid'); }
+    } catch (error) {
+      if (generation === regexWorkbenchGeneration) handleError(error, 'Regex is invalid');
+    } finally {
+      if (generation === regexWorkbenchGeneration) $('#run-regex').removeAttribute('aria-busy');
+    }
   }
 
   function renderConverter() {
@@ -879,9 +982,11 @@
       const heading = document.createElement('h4'); heading.textContent = category.category; card.append(heading);
       const search = document.createElement('label'); search.className = 'search-field compact'; search.innerHTML = '<span class="visually-hidden">Search adapters</span><input type="search" placeholder="Search formats"><button type="button" class="regex-trigger" aria-label="Open regex builder for adapter search">.*</button>'; card.append(search);
       const list = document.createElement('div');
-      const render = () => {
+      const render = async () => {
+        const visible = await filterBySearch($('input', search), category.adapters, (adapter) => `${adapter.label} ${adapter.reason}`);
+        if (visible === null) return;
         list.replaceChildren();
-        category.adapters.filter((adapter) => matchesSearch($('input', search), `${adapter.label} ${adapter.reason}`)).forEach((adapter) => {
+        visible.forEach((adapter) => {
           const label = document.createElement('label'); label.className = `adapter ${adapter.enabled ? '' : 'unavailable'}`;
           const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'converter-adapter'; radio.value = adapter.id; radio.disabled = !adapter.enabled; radio.checked = adapter.id === selectedConverter;
           radio.addEventListener('change', () => { selectedConverter = adapter.id; $('#run-conversion').disabled = !converterSource; });
@@ -889,7 +994,7 @@
         });
         if (!list.childElementCount) list.textContent = 'No matching adapters in this category.';
       };
-      $('input', search).addEventListener('input', render); render(); card.append(list); container.append(card);
+      $('input', search).addEventListener('input', () => { void render(); }); void render(); card.append(list); container.append(card);
     });
     bindNewRegexTriggers(container);
   }
@@ -910,13 +1015,16 @@
     } catch (error) { list.innerHTML = '<div class="empty-state">Credential vault unavailable.</div>'; handleError(error, 'Authenticator unavailable'); }
   }
 
-  function renderDocs() {
-    const list = $('#docs-list'); list.replaceChildren();
-    docs.filter((article) => matchesSearch($('#docs-search'), `${article.title} ${article.body.replace(/<[^>]+>/g, ' ')}`)).forEach((article) => {
+  async function renderDocs() {
+    const list = $('#docs-list');
+    const visible = await filterBySearch($('#docs-search'), docs, (article) => `${article.title} ${article.body.replace(/<[^>]+>/g, ' ')}`);
+    if (visible === null) return;
+    list.replaceChildren();
+    visible.forEach((article) => {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = article.title; button.addEventListener('click', () => openDoc(article.id)); list.append(button);
     });
     if (!list.childElementCount) list.innerHTML = '<div class="empty-state">No guide article matches.</div>';
-    renderChangelog();
+    void renderChangelog();
   }
 
   function openDoc(id) {
@@ -927,10 +1035,14 @@
     $$('[data-external-url]', $('#docs-content')).forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); bridge.external.openUrl(link.dataset.externalUrl).catch((error) => handleError(error, 'Link could not open')); }));
   }
 
-  function renderChangelog() {
-    const list = $('#changelog-list'); list.replaceChildren();
+  async function renderChangelog() {
+    const list = $('#changelog-list');
     const from = $('#changelog-date').value;
-    changelog.filter((entry) => (!from || entry.date >= from) && matchesSearch($('#changelog-search'), `${entry.version} ${entry.date} ${entry.changes.join(' ')}`)).forEach((entry) => {
+    const dated = changelog.filter((entry) => !from || entry.date >= from);
+    const visible = await filterBySearch($('#changelog-search'), dated, (entry) => `${entry.version} ${entry.date} ${entry.changes.join(' ')}`);
+    if (visible === null) return;
+    list.replaceChildren();
+    visible.forEach((entry) => {
       const row = document.createElement('article'); row.className = 'changelog-row';
       const heading = document.createElement('strong'); heading.textContent = `Version ${entry.version} · ${entry.date}`;
       const listElement = document.createElement('ul'); entry.changes.forEach((change) => { const item = document.createElement('li'); item.textContent = change; listElement.append(item); });
@@ -940,23 +1052,32 @@
   }
 
   async function renderHistory() {
-    const list = $('#history-list'); list.replaceChildren();
+    const renderGeneration = ++historyRenderGeneration;
+    const list = $('#history-list');
+    const search = $('#history-search');
     if (!historyCredential) {
+      invalidateSearch(search);
       $('#history-status').textContent = 'History is locked. Enter its separate password to continue.';
       list.innerHTML = '<div class="empty-state">Unlock local history to browse revisions.</div>';
       return;
     }
     try {
       const action = $('#history-action').value;
-      const filters = { credential: historyCredential, limit: 500, from: $('#history-date-from').value || null, to: $('#history-date-to').value || null, actions: action ? [action] : [], query: $('#history-search').value };
+      const filters = { credential: historyCredential, limit: 500, from: $('#history-date-from').value || null, to: $('#history-date-to').value || null, actions: action ? [action] : [] };
       const allHistoryItems = await bridge.history.list({ credential: historyCredential, limit: 500 });
-      historyItems = !filters.from && !filters.to && !filters.actions.length && !filters.query ? allHistoryItems : await bridge.history.list(filters);
+      if (renderGeneration !== historyRenderGeneration) return;
+      const filteredHistoryItems = !filters.from && !filters.to && !filters.actions.length ? allHistoryItems : await bridge.history.list(filters);
+      if (renderGeneration !== historyRenderGeneration) return;
+      const visible = await filterBySearch(search, filteredHistoryItems, (item) => `${item.label || ''} ${item.subject || ''} ${item.action || ''} ${item.date || ''} ${item.commit || ''}`);
+      if (visible === null || renderGeneration !== historyRenderGeneration) return;
+      historyItems = visible;
       const actionSelect = $('#history-action');
       const selectedAction = actionSelect.value;
       const actionCounts = allHistoryItems.reduce((counts, item) => counts.set(item.action, (counts.get(item.action) || 0) + 1), new Map());
       const actions = [...actionCounts.keys()].filter(Boolean).sort();
       actionSelect.replaceChildren(new Option(`Every action (${allHistoryItems.length})`, ''), ...actions.map((value) => new Option(`${value} (${actionCounts.get(value)})`, value)));
       actionSelect.value = actions.includes(selectedAction) ? selectedAction : '';
+      list.replaceChildren();
       historyItems.forEach((item) => {
         const row = document.createElement('article'); row.className = `history-row${selectedHistoryCommit === item.commit ? ' selected' : ''}`;
         const select = document.createElement('input'); select.type = 'radio'; select.name = 'history-revision'; select.value = item.commit; select.checked = selectedHistoryCommit === item.commit; select.setAttribute('aria-label', `Select history revision ${item.subject}`); select.addEventListener('change', () => { selectedHistoryCommit = item.commit; renderHistory(); });
@@ -969,6 +1090,7 @@
       $('#history-status').textContent = `${historyItems.length} redacted revision${historyItems.length === 1 ? '' : 's'} visible. Restores append a new revision.`;
       if (!historyItems.length) list.innerHTML = '<div class="empty-state">No revisions match the active filters.</div>';
     } catch (error) {
+      if (renderGeneration !== historyRenderGeneration) return;
       historyCredential = '';
       list.innerHTML = '<div class="empty-state">Local history could not be read with that credential.</div>';
       $('#history-status').textContent = 'History remains locked.';
@@ -977,17 +1099,19 @@
   }
 
   function visibleNotifications() {
-    const search = $('#notification-search');
-    return state.notifications.filter((notice) => !search || matchesSearch($('#notification-search'), `${notice.title} ${notice.body} ${notice.kind} ${notice.timestamp}`));
+    return visibleNotificationItems;
   }
 
   function selectedNotificationIds() {
     return [...selectedNotifications];
   }
 
-  function renderNotifications() {
-    const list = $('#notification-list'); if (!list || !state) return; list.replaceChildren();
-    const visible = visibleNotifications();
+  async function renderNotifications() {
+    const list = $('#notification-list'); if (!list || !state) return null;
+    const visible = await filterBySearch($('#notification-search'), state.notifications, (notice) => `${notice.title} ${notice.body} ${notice.kind} ${notice.timestamp}`);
+    if (visible === null) return null;
+    visibleNotificationItems = visible;
+    list.replaceChildren();
     for (const notice of visible) {
       const row = document.createElement('article'); row.className = `notice-row${selectedNotifications.has(notice.id) ? ' selected' : ''}`;
       const select = document.createElement('input'); select.type = 'checkbox'; select.checked = selectedNotifications.has(notice.id); select.setAttribute('aria-label', `Select notification ${notice.title}`); select.addEventListener('change', () => { if (select.checked) selectedNotifications.add(notice.id); else selectedNotifications.delete(notice.id); renderNotifications(); });
@@ -1001,22 +1125,26 @@
     if (!visible.length) list.innerHTML = '<div class="empty-state">No notifications match the active search.</div>';
     const selectedVisible = visible.filter((notice) => selectedNotifications.has(notice.id)).length;
     $('#notification-selection-status').textContent = `${selectedVisible} selected in this view. ${visible.length} visible.`;
+    return visible;
   }
 
   function visibleSupportTickets() {
-    const status = $('#support-status-filter')?.value || '';
-    return state.supportTickets.filter((ticket) => (!status || ticket.status === status) && matchesSearch($('#support-search'), `${ticket.id} ${ticket.category} ${ticket.severity} ${ticket.description} ${ticket.status}`));
+    return visibleSupportTicketItems;
   }
 
   function selectedSupportTicketIds() {
     return [...selectedSupportTickets];
   }
 
-  function renderSupportTickets() {
+  async function renderSupportTickets() {
     const list = $('#support-list');
-    if (!list || !state) return;
+    if (!list || !state) return null;
+    const statusFilter = $('#support-status-filter')?.value || '';
+    const statusCandidates = state.supportTickets.filter((ticket) => !statusFilter || ticket.status === statusFilter);
+    const visible = await filterBySearch($('#support-search'), statusCandidates, (ticket) => `${ticket.id} ${ticket.category} ${ticket.severity} ${ticket.description} ${ticket.status}`);
+    if (visible === null) return null;
+    visibleSupportTicketItems = visible;
     list.replaceChildren();
-    const visible = visibleSupportTickets();
     for (const ticket of visible) {
       const row = document.createElement('article');
       row.className = `support-row${selectedSupportTickets.has(ticket.id) ? ' selected' : ''}`;
@@ -1030,6 +1158,7 @@
     }
     if (!visible.length) list.innerHTML = '<div class="empty-state">No local tickets match the active filters.</div>';
     $('#support-selection-status').textContent = `${visible.filter((ticket) => selectedSupportTickets.has(ticket.id)).length} selected in this view. ${visible.length} visible.`;
+    return visible;
   }
 
   function advanceSupportStatus(ids) {
@@ -1200,14 +1329,23 @@
     const sync = state.settings.sync; sync.mode = $('#sync-mode').value; sync.profileId = $('#server-profile-id').value; sync.serverUrl = $('#server-url').value; sync.ssh.host = $('#ssh-host').value; sync.ssh.port = Number($('#ssh-port').value); sync.ssh.username = $('#ssh-username').value; sync.ssh.remoteApiPort = Number($('#ssh-remote-port').value); sync.ssh.localForwardPort = Number($('#ssh-local-port').value); sync.ssh.keyFile = $('#ssh-key-file').value;
   }
 
-  async function serviceRequest(endpoint, method = 'GET', body) {
+  function serviceSyncSettings() {
     syncFromForm();
+    return {
+      mode: state.settings.sync.mode,
+      serverUrl: state.settings.sync.serverUrl,
+      ssh: {
+        host: state.settings.sync.ssh.host,
+        port: state.settings.sync.ssh.port,
+        remoteApiPort: state.settings.sync.ssh.remoteApiPort,
+        localForwardPort: state.settings.sync.ssh.localForwardPort
+      }
+    };
+  }
+
+  async function serviceRequest(endpoint, method = 'GET', body) {
     return bridge.server.request({
-      sync: {
-        mode: state.settings.sync.mode,
-        serverUrl: state.settings.sync.serverUrl,
-        ssh: { localForwardPort: state.settings.sync.ssh.localForwardPort }
-      },
+      sync: serviceSyncSettings(),
       endpoint,
       method,
       body,
@@ -1245,7 +1383,7 @@
   }
 
   function renderEverything() {
-    applySettings(); displayProvenance(); renderStageDots(); renderGallery(); renderDashboard(); renderHaircuts(); renderConverter(); renderSettingsForm(); renderSyncForm(); renderDocs(); renderNotifications(); renderSupportTickets(); renderAttentionAccommodations(); clearHaircutForm(); populateVoices(); renderLocks(); applyCommandRegistry();
+    applySettings(); displayProvenance(); renderStageDots(); renderGallery(); renderDashboard(); void renderHaircuts(); renderConverter(); renderSettingsForm(); renderSyncForm(); void renderDocs(); void renderNotifications(); void renderSupportTickets(); renderAttentionAccommodations(); clearHaircutForm(); populateVoices(); renderLocks(); applyCommandRegistry();
   }
 
   function bindNewRegexTriggers(root = document) {
@@ -1257,7 +1395,14 @@
     $('#open-palette').addEventListener('click', () => COMMAND_REGISTRY['open-palette'].run()); $('#open-notifications').addEventListener('click', () => COMMAND_REGISTRY['open-notifications'].run());
     $$('.tab').forEach((tab) => { tab.addEventListener('click', () => switchTab(tab.dataset.tab)); tab.addEventListener('keydown', handleTabRovingKey); });
     $$('.group-header').forEach((button) => button.addEventListener('click', () => button.setAttribute('aria-expanded', button.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')));
-    $('#tab-search').addEventListener('input', () => $$('.tab').forEach((tab) => { tab.hidden = !matchesSearch($('#tab-search'), tab.textContent); }));
+    $('#tab-search').addEventListener('input', async () => {
+      const input = $('#tab-search');
+      const tabs = $$('.tab');
+      const visible = await filterBySearch(input, tabs, (tab) => tab.textContent);
+      if (visible === null) return;
+      const visibleTabs = new Set(visible);
+      tabs.forEach((tab) => { tab.hidden = !visibleTabs.has(tab); });
+    });
     $('#tab-master-search').addEventListener('click', () => openPalette('Open'));
     $('#tab-group-search').addEventListener('click', () => openPalette('Group'));
     $('#quick-haircut').addEventListener('click', () => { switchTab('haircuts'); clearHaircutForm(); $('#haircut-date').focus(); });
@@ -1270,19 +1415,26 @@
     $('#cancel-haircut-edit').addEventListener('click', clearHaircutForm); $('#haircut-search').addEventListener('input', renderHaircuts);
     $('#select-all-haircuts').addEventListener('click', () => $$('.haircut-select').forEach((input) => { input.checked = true; })); $('#delete-selected-haircuts').addEventListener('click', () => requestDeleteHaircuts(selectedHaircutIds()));
     $$('[data-export]').forEach((button) => button.addEventListener('click', async () => { const format = button.dataset.export; try { const data = format === 'json' ? `${JSON.stringify({ schemaVersion: 2, unit: 'cm', profile: state.profile, manualBaseline: state.manualBaseline, haircuts: state.haircuts, omitted: ['credentials', 'personal vocabulary', 'custom logo source'] }, null, 2)}\n` : format === 'csv' ? Hair.haircutToCsv(state.haircuts) : Hair.haircutToMarkdown(state.haircuts); await bridge.files.export({ suggestedName: `haircuts.${format === 'markdown' ? 'md' : format}`, content: data }); notify('Export ready', `${format.toUpperCase()} export completed. Credentials and personal vocabulary were omitted.`, 'success'); } catch (error) { handleError(error, 'Export failed'); } }));
-    $('#run-regex').addEventListener('click', runRegexWorkbench); $('#export-regex').addEventListener('click', () => bridge.files.export({ suggestedName: 'regex-snippet.json', content: `${JSON.stringify({ engine: 'ECMAScript RegExp', pattern: $('#regex-pattern').value, flags: $('#regex-flags').value, replacement: $('#regex-replacement').value, sample: $('#regex-sample').value }, null, 2)}\n` }).catch((error) => handleError(error, 'Regex export failed')));
+    $('#run-regex').addEventListener('click', () => { void runRegexWorkbench(); }); $('#export-regex').addEventListener('click', () => bridge.files.export({ suggestedName: 'regex-snippet.json', content: `${JSON.stringify({ engine: 'ECMAScript RegExp', pattern: $('#regex-pattern').value, flags: $('#regex-flags').value, replacement: $('#regex-replacement').value, sample: $('#regex-sample').value }, null, 2)}\n` }).catch((error) => handleError(error, 'Regex export failed')));
     $('#choose-converter-source').addEventListener('click', async () => { try { converterSource = await bridge.files.chooseConverterSource(); if (converterSource.canceled) { converterSource = null; return; } $('#converter-source-state').textContent = `${converterSource.name} · ${converterSource.bytes} bytes`; $('#run-conversion').disabled = false; } catch (error) { handleError(error, 'Source selection failed'); } });
     $('#run-conversion').addEventListener('click', async () => { try { const result = await bridge.files.convert({ handle: converterSource.handle, adapter: selectedConverter }); if (!result.canceled) notify('Conversion completed', `${result.name}, ${result.bytes} bytes, passed post-write validation.`, 'success'); } catch (error) { handleError(error, 'Conversion failed'); } });
     $('#generate-auth-secret').addEventListener('click', async () => { try { $('#auth-secret').value = await bridge.authenticator.createSecret(); } catch (error) { handleError(error, 'Secret generation unavailable'); } });
     $('#auth-form').addEventListener('submit', async (event) => { event.preventDefault(); try { await bridge.authenticator.add({ issuer: $('#auth-issuer').value, account: $('#auth-account').value, secret: $('#auth-secret').value, algorithm: $('#auth-algorithm').value, digits: Number($('#auth-digits').value), period: 30 }); event.currentTarget.reset(); await renderAuthenticators(); notify('Authenticator entry added', 'Pairing data was stored through operating-system protection.', 'success'); } catch (error) { handleError(error, 'Authenticator entry is invalid'); } });
-    $('#server-test').addEventListener('click', async () => { try { const key = $('#server-api-key').value; if (key) { await bridge.secrets.setApiKey(key); $('#server-api-key').value = ''; } const result = await serviceRequest('/health'); $('#server-state').textContent = `Healthy ${result.version || ''}`; $('#server-state').className = 'state-chip success'; notify('Service connected', 'The configured hair length service answered its health endpoint.', 'success'); } catch (error) { $('#server-state').textContent = 'Connection failed'; $('#server-state').className = 'state-chip error'; handleError(error, 'Service connection failed'); } });
+    $('#server-test').addEventListener('click', async () => { try { const key = $('#server-api-key').value; if (key) { await bridge.secrets.setApiKey(serviceSyncSettings(), key); $('#server-api-key').value = ''; } const result = await serviceRequest('/health'); $('#server-state').textContent = `Healthy ${result.version || ''}`; $('#server-state').className = 'state-chip success'; notify('Service connected', 'The configured hair length service answered its health endpoint. Credentials remain bound to this exact service destination and were not sent to the public health probe.', 'success'); } catch (error) { $('#server-state').textContent = 'Connection failed'; $('#server-state').className = 'state-chip error'; handleError(error, 'Service connection failed'); } });
     $('#server-push').addEventListener('click', async () => { try { const id = $('#server-profile-id').value; await serviceRequest(`/api/profiles/${id}`, 'PUT', { profile: state.profile }); const remote = await serviceRequest(`/api/profiles/${id}`); for (const operation of Hair.planHaircutSync(state.haircuts, remote.haircuts || [])) { const endpoint = operation.method === 'PUT' ? `/api/profiles/${id}/haircuts/${operation.haircut.id}` : `/api/profiles/${id}/haircuts`; await serviceRequest(endpoint, operation.method, operation.haircut); } syncFromForm(); await saveNow('Service connection settings changed'); notify('Service sync sent', 'Local profile and haircut records were sent to the configured service.', 'success'); } catch (error) { handleError(error, 'Service sync failed'); } });
     $('#server-pull').addEventListener('click', async () => { try { const result = await serviceRequest(`/api/profiles/${$('#server-profile-id').value}`); if (!result) throw new Error('No profile exists under that ID.'); const candidate = Hair.preparePulledSnapshot(result); state = { ...state, ...candidate }; await saveNow('Fetched profile from service'); renderDashboard(); renderHaircuts(); notify('Service data fetched', 'The validated local profile now matches the configured service record.', 'success'); } catch (error) { handleError(error, 'Service fetch failed'); } });
     $('#choose-ssh-key').addEventListener('click', async () => { const file = await bridge.files.chooseKey(); if (file) $('#ssh-key-file').value = file; }); $('#ssh-start').addEventListener('click', async () => { try { syncFromForm(); const result = await bridge.ssh.start(state.settings.sync.ssh); $('#ssh-state').textContent = result.status; scheduleSave('SSH connection settings changed'); } catch (error) { handleError(error, 'SSH tunnel failed'); } }); $('#ssh-stop').addEventListener('click', () => bridge.ssh.stop().catch((error) => handleError(error, 'SSH tunnel stop failed')));
     bridge.ssh.onState((value) => { $('#ssh-state').textContent = value.status; $('#ssh-state').className = `state-chip ${value.status === 'connected' ? 'success' : value.status === 'error' ? 'error' : ''}`; });
     bridge.history.onError((value) => notify('Local history degraded', `${value.message} The primary state save remains valid.`, 'warning', false));
     $('#ollama-check').addEventListener('click', checkOllama); $('#ollama-refresh').addEventListener('click', () => refreshOllama().catch((error) => handleError(error, 'Model refresh failed'))); $('#ollama-chat-model').addEventListener('change', () => { $('#ollama-chat').disabled = !$('#ollama-chat-model').value; }); $('#ollama-chat').addEventListener('click', async () => { try { const result = await bridge.ollama.request({ endpoint: '/api/chat', method: 'POST', body: { model: $('#ollama-chat-model').value, stream: false, messages: [{ role: 'user', content: $('#ollama-prompt').value }], options: { temperature: 0.7 } }, timeoutMs: 120000 }); $('#ollama-response').textContent = result.message?.content || 'No response content.'; } catch (error) { handleError(error, 'Local chat failed'); } });
-    $('#settings-search').addEventListener('input', () => $$('.settings-card').forEach((card) => card.classList.toggle('filtered-out', !matchesSearch($('#settings-search'), `${card.textContent} ${card.dataset.settingsKeywords}`))));
+    $('#settings-search').addEventListener('input', async () => {
+      const input = $('#settings-search');
+      const cards = $$('.settings-card');
+      const visible = await filterBySearch(input, cards, (card) => `${card.textContent} ${card.dataset.settingsKeywords}`);
+      if (visible === null) return;
+      const visibleCards = new Set(visible);
+      cards.forEach((card) => card.classList.toggle('filtered-out', !visibleCards.has(card)));
+    });
     $('#setting-language').addEventListener('change', () => { state.settings.language = $('#setting-language').value; applySettings(); scheduleSave('Language mode changed'); }); $('#funny-en').addEventListener('input', () => { state.settings.funnyEnglish = Number($('#funny-en').value); $('#funny-en-value').value = state.settings.funnyEnglish; scheduleSave('English funny level changed'); }); $('#funny-yue').addEventListener('input', () => { state.settings.funnyCantonese = Number($('#funny-yue').value); $('#funny-yue-value').value = state.settings.funnyCantonese; scheduleSave('Cantonese funny level changed'); }); $('#setting-emoji').addEventListener('change', () => { state.settings.showDialogEmoji = $('#setting-emoji').checked; $$('dialog').forEach(syncDialogEmoji); scheduleSave('Dialog emoji setting changed'); });
     $('#school-enabled').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); applySettings(); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode could not change'); } }); $('#school-name').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode name could not change'); } }); bridge.school.onChanged((record) => { schoolRecord = record; updateSchoolUi(); applySettings(); });
     ['setting-theme', 'setting-density', 'setting-accent', 'setting-tab-dock', 'rainbow-speed'].forEach((id) => $(`#${id}`).addEventListener('input', () => { const map = { 'setting-theme': 'theme', 'setting-density': 'density', 'setting-accent': 'accent', 'setting-tab-dock': 'tabDock', 'rainbow-speed': 'rainbowSpeedLevel' }; state.settings[map[id]] = id === 'rainbow-speed' ? Number($(`#${id}`).value) : $(`#${id}`).value; applySettings(); scheduleSave(`${map[id]} setting changed`); }));
@@ -1318,14 +1470,14 @@
     $('#add-schedule').addEventListener('click', () => { state.schedules.push({ id: `schedule-${Date.now()}`, label: $('#schedule-label').value.trim() || 'Every-day theme rule', enabled: true, weekdays: [0,1,2,3,4,5,6], startTime: $('#schedule-start').value, endTime: $('#schedule-end').value, theme: state.settings.theme, language: state.settings.language }); renderSchedules(); scheduleSave('Scheduled settings rule added'); });
     $('#narrator-enabled').addEventListener('change', () => { state.settings.narrator.enabled = $('#narrator-enabled').checked; scheduleSave('Narrator enabled setting changed'); }); $('#narrator-language').addEventListener('change', () => { state.settings.narrator.language = $('#narrator-language').value; scheduleSave('Narrator language changed'); }); $('#narrator-en-voice').addEventListener('change', () => { state.settings.narrator.englishVoiceId = $('#narrator-en-voice').value; scheduleSave('English narrator voice changed'); }); $('#narrator-yue-voice').addEventListener('change', () => { state.settings.narrator.cantoneseVoiceId = $('#narrator-yue-voice').value; scheduleSave('Cantonese narrator voice changed'); }); $('#narrator-rate').addEventListener('input', () => { state.settings.narrator.rate = Number($('#narrator-rate').value); $('#narrator-rate-value').value = state.settings.narrator.rate; scheduleSave('Narrator rate changed'); }); $('#narrator-pitch').addEventListener('input', () => { state.settings.narrator.pitch = Number($('#narrator-pitch').value); $('#narrator-pitch-value').value = state.settings.narrator.pitch; scheduleSave('Narrator pitch changed'); }); $('#narrator-test').addEventListener('click', () => narrate('Estimated hair length updated. This is an estimate, not a promise.', 'test'));
     speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
-    $('#docs-search').addEventListener('input', renderDocs); $('#changelog-search').addEventListener('input', renderChangelog); $('#changelog-date').addEventListener('change', renderChangelog); $('#refresh-history').addEventListener('click', renderHistory); $('#open-app-data').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
-    $('#palette-search').addEventListener('input', renderPalette);
-    $('#notification-search').addEventListener('input', renderNotifications);
-    $('#select-all-notices').addEventListener('click', () => { visibleNotifications().forEach((notice) => selectedNotifications.add(notice.id)); renderNotifications(); });
-    $('#invert-notices').addEventListener('click', () => { visibleNotifications().forEach((notice) => { if (selectedNotifications.has(notice.id)) selectedNotifications.delete(notice.id); else selectedNotifications.add(notice.id); }); renderNotifications(); });
+    $('#docs-search').addEventListener('input', () => { void renderDocs(); }); $('#changelog-search').addEventListener('input', () => { void renderChangelog(); }); $('#changelog-date').addEventListener('change', () => { void renderChangelog(); }); $('#refresh-history').addEventListener('click', () => { void renderHistory(); }); $('#open-app-data').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
+    $('#palette-search').addEventListener('input', () => { void renderPalette(); });
+    $('#notification-search').addEventListener('input', () => { void renderNotifications(); });
+    $('#select-all-notices').addEventListener('click', async () => { if (!await renderNotifications()) return; visibleNotifications().forEach((notice) => selectedNotifications.add(notice.id)); void renderNotifications(); });
+    $('#invert-notices').addEventListener('click', async () => { if (!await renderNotifications()) return; visibleNotifications().forEach((notice) => { if (selectedNotifications.has(notice.id)) selectedNotifications.delete(notice.id); else selectedNotifications.add(notice.id); }); void renderNotifications(); });
     $('#dismiss-selected-notices').addEventListener('click', () => { const ids = selectedNotificationIds(); state.notifications.forEach((notice) => { if (ids.includes(notice.id)) notice.dismissed = true; }); selectedNotifications.clear(); renderNotifications(); scheduleSave('Notification history bulk dismissed'); });
     $('#delete-selected-notices').addEventListener('click', () => { const ids = selectedNotificationIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one notification first.', 'warning'); openSuperConfirm(`Delete ${ids.length} notification record${ids.length === 1 ? '' : 's'}`, 'This removes the selected records from local notification history.', async () => { state.notifications = state.notifications.filter((notice) => !ids.includes(notice.id)); selectedNotifications.clear(); await saveNow('Notification history records deleted'); renderNotifications(); }); });
-    $('#export-notices').addEventListener('click', () => bridge.files.export({ suggestedName: 'notification-history.json', content: `${JSON.stringify({ schemaVersion: 1, notifications: visibleNotifications(), omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Notification export failed')));
+    $('#export-notices').addEventListener('click', async () => { if (!await renderNotifications()) return; bridge.files.export({ suggestedName: 'notification-history.json', content: `${JSON.stringify({ schemaVersion: 1, notifications: visibleNotifications(), omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Notification export failed')); });
     $$('dialog').forEach((dialog) => { dialog.addEventListener('close', () => restoreDialogFocus(dialog)); dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeManagedDialog(dialog); }); syncDialogEmoji(dialog); });
     $$('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => closeManagedDialog($(`#${button.dataset.closeDialog}`))));
     $('#history-set-credential').addEventListener('click', async () => {
@@ -1347,7 +1499,7 @@
         await renderHistory();
       } catch (error) { historyCredential = ''; handleError(error, 'History remains locked'); }
     });
-    ['history-search', 'history-date-from', 'history-date-to', 'history-action'].forEach((id) => $(`#${id}`).addEventListener(id === 'history-search' ? 'input' : 'change', () => renderHistory()));
+    ['history-search', 'history-date-from', 'history-date-to', 'history-action'].forEach((id) => $(`#${id}`).addEventListener(id === 'history-search' ? 'input' : 'change', () => { void renderHistory(); }));
     $('#history-diff').addEventListener('click', async () => {
       const index = historyItems.findIndex((item) => item.commit === selectedHistoryCommit);
       if (index < 0 || index + 1 >= historyItems.length) return notify('Two revisions are needed', 'Select a revision that has an older visible neighbor.', 'warning');
@@ -1378,11 +1530,11 @@
       } catch (error) { handleError(error, 'History export failed'); }
     });
     $('#close-regex-popover').addEventListener('click', () => closeRegexPopover()); $('#popover-pattern').addEventListener('input', validatePopoverRegex); $('#popover-flags').addEventListener('input', validatePopoverRegex); $('#popover-enabled').addEventListener('change', validatePopoverRegex); $('#apply-regex-popover').addEventListener('click', applyRegexPopover); $('#open-full-regex').addEventListener('click', () => { closeRegexPopover({ restoreFocus: false }); switchTab('tools'); $('#regex-pattern').focus(); });
-    $('#appearance-search').addEventListener('input', () => $$('.property-grid label').forEach((row) => { row.hidden = !matchesSearch($('#appearance-search'), row.textContent); })); $('#apply-appearance').addEventListener('click', applyAppearance); $('#reset-appearance').addEventListener('click', () => { if (!appearanceTarget) return; delete state.appearance[appearanceTarget.dataset.elementId]; appearanceTarget.removeAttribute('style'); appearanceTarget.dataset.customRainbow = 'false'; scheduleSave(`Appearance reset for ${appearanceTarget.dataset.elementId}`); });
+    $('#appearance-search').addEventListener('input', async () => { const input = $('#appearance-search'); const rows = $$('.property-grid label'); const visible = await filterBySearch(input, rows, (row) => row.textContent); if (visible === null) return; const visibleRows = new Set(visible); rows.forEach((row) => { row.hidden = !visibleRows.has(row); }); }); $('#apply-appearance').addEventListener('click', applyAppearance); $('#reset-appearance').addEventListener('click', () => { if (!appearanceTarget) return; delete state.appearance[appearanceTarget.dataset.elementId]; appearanceTarget.removeAttribute('style'); appearanceTarget.dataset.customRainbow = 'false'; scheduleSave(`Appearance reset for ${appearanceTarget.dataset.elementId}`); });
     $('#lock-policy').addEventListener('change', updateLockRows); $('#generate-lock-totp').addEventListener('click', async () => { $('#lock-totp').value = await bridge.authenticator.createSecret(); }); $$('#lock-keypad button').forEach((button) => button.addEventListener('click', () => { const input = $('#lock-pin'); if (button.dataset.key === 'clear') input.value = ''; else if (button.dataset.key === 'backspace') input.value = input.value.slice(0, -1); else if (input.value.length < 12) input.value += button.textContent; }));
     $('#lock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!lockTarget) return; try { await bridge.locks.set({ elementId: lockTarget.dataset.elementId, label: lockTarget.getAttribute('aria-label') || lockTarget.textContent.trim().slice(0, 120) || lockTarget.tagName, policy: $('#lock-policy').value, pin: $('#lock-pin').value, password: $('#lock-password').value, totpSecret: $('#lock-totp').value }); closeManagedDialog($('#lock-dialog')); event.currentTarget.reset(); await renderLocks(); notify('Element locked', 'The element is disabled until its own factors verify. This is for fun, not security.', 'success'); } catch (error) { handleError(error, 'Lock could not be created'); } }); $('#remove-current-lock').addEventListener('click', async () => { if (!lockTarget) return; await bridge.locks.remove(lockTarget.dataset.elementId); unlockedForSession.delete(lockTarget.dataset.elementId); closeManagedDialog($('#lock-dialog')); await renderLocks(); notify('Lock removed', 'The element is available again.', 'success'); });
     $('#unlock-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!unlockTarget) return; try { const result = await bridge.locks.verify({ elementId: unlockTarget.dataset.elementId, pin: $('#unlock-pin').value, password: $('#unlock-password').value, totpCode: $('#unlock-totp').value }); if (!result.ok) { $('#unlock-state').textContent = result.retryAfterMs ? `Values did not match. Try again in ${Math.ceil(result.retryAfterMs / 1000)} seconds, or delete the local application-data folder to reset.` : `Values did not match. ${result.remainingBeforeDelay} attempts remain before a 30-second delay.`; return; } unlockedForSession.add(unlockTarget.dataset.elementId); closeManagedDialog($('#unlock-dialog')); await renderLocks(); notify('Element unlocked', 'This element is unlocked until the application closes.', 'success'); } catch (error) { handleError(error, 'Unlock failed'); } });
-    const openSupportTickets = (opener) => { renderSupportTickets(); openManagedDialog($('#support-dialog'), { opener, focus: $('#support-category') }); };
+    const openSupportTickets = (opener) => { void renderSupportTickets(); openManagedDialog($('#support-dialog'), { opener, focus: $('#support-category') }); };
     $('#open-support').addEventListener('click', () => { const opener = dialogOpeners.get($('#unlock-dialog')); closeManagedDialog($('#unlock-dialog')); openSupportTickets(opener); });
     $('#open-support-from-settings').addEventListener('click', (event) => openSupportTickets(event.currentTarget));
     $('#open-support-from-help').addEventListener('click', (event) => openSupportTickets(event.currentTarget));
@@ -1397,11 +1549,11 @@
       $('p', $('#support-result')).textContent = 'First response: the local data folder contains the lock record. Open it, close the application, and delete the folder yourself to reset every local lock.';
       event.currentTarget.reset(); renderSupportTickets();
     });
-    $('#support-search').addEventListener('input', renderSupportTickets); $('#support-status-filter').addEventListener('change', renderSupportTickets);
-    $('#select-all-support').addEventListener('click', () => { visibleSupportTickets().forEach((ticket) => selectedSupportTickets.add(ticket.id)); renderSupportTickets(); });
-    $('#invert-support').addEventListener('click', () => { visibleSupportTickets().forEach((ticket) => { if (selectedSupportTickets.has(ticket.id)) selectedSupportTickets.delete(ticket.id); else selectedSupportTickets.add(ticket.id); }); renderSupportTickets(); });
+    $('#support-search').addEventListener('input', () => { void renderSupportTickets(); }); $('#support-status-filter').addEventListener('change', () => { void renderSupportTickets(); });
+    $('#select-all-support').addEventListener('click', async () => { if (!await renderSupportTickets()) return; visibleSupportTickets().forEach((ticket) => selectedSupportTickets.add(ticket.id)); void renderSupportTickets(); });
+    $('#invert-support').addEventListener('click', async () => { if (!await renderSupportTickets()) return; visibleSupportTickets().forEach((ticket) => { if (selectedSupportTickets.has(ticket.id)) selectedSupportTickets.delete(ticket.id); else selectedSupportTickets.add(ticket.id); }); void renderSupportTickets(); });
     $('#advance-support').addEventListener('click', () => { const ids = selectedSupportTicketIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one local ticket first.', 'warning'); advanceSupportStatus(ids); selectedSupportTickets.clear(); });
-    $('#export-support').addEventListener('click', () => bridge.files.export({ suggestedName: 'local-support-tickets.json', content: `${JSON.stringify({ schemaVersion: 1, tickets: visibleSupportTickets(), networkSent: false, omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Support ticket export failed')));
+    $('#export-support').addEventListener('click', async () => { if (!await renderSupportTickets()) return; bridge.files.export({ suggestedName: 'local-support-tickets.json', content: `${JSON.stringify({ schemaVersion: 1, tickets: visibleSupportTickets(), networkSent: false, omitted: ['credentials', 'personal vocabulary'] }, null, 2)}\n` }).catch((error) => handleError(error, 'Support ticket export failed')); });
     $('#delete-support').addEventListener('click', () => { const ids = selectedSupportTicketIds(); if (!ids.length) return notify('Nothing selected', 'Select at least one local ticket first.', 'warning'); openSuperConfirm(`Delete ${ids.length} local support ticket${ids.length === 1 ? '' : 's'}`, 'This removes the selected fictional local desk records.', async () => { state.supportTickets = state.supportTickets.filter((ticket) => !ids.includes(ticket.id)); selectedSupportTickets.clear(); await saveNow('Local support tickets deleted'); renderSupportTickets(); }); });
     $('#support-open-folder').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
     [$('#confirm-key-one'), $('#confirm-key-two')].forEach((key) => key.addEventListener('click', () => { const armed = !key.classList.contains('armed'); key.classList.toggle('armed', armed); key.setAttribute('aria-pressed', armed ? 'true' : 'false'); updateConfirmState(); }));
@@ -1426,9 +1578,9 @@
         handleError(error, 'Destructive action failed');
       }
     });
-    $('#check-updates').addEventListener('click', () => bridge.updates.check(state.settings.updateFeedUrl).catch((error) => handleError(error, 'Update check failed'))); $('#restart-update').addEventListener('click', bridge.updates.restart); bridge.updates.onState(updateUpdateUi);
+    $('#check-updates').addEventListener('click', () => bridge.updates.check().catch((error) => handleError(error, 'Update check failed'))); $('#restart-update').addEventListener('click', bridge.updates.restart); bridge.updates.onState(updateUpdateUi);
     $('#open-status-hub').addEventListener('click', async () => { const url = $('#status-hub-url').value; if (!url) return notify('No status URL configured', 'Enter an HTTPS address first.', 'warning'); state.settings.statusHubUrl = url; scheduleSave('Status Hub URL changed'); try { await bridge.external.openUrl(url); } catch (error) { handleError(error, 'Status URL could not open'); } });
-    $('#context-search').addEventListener('input', () => $$('[data-context-action]').forEach((item) => { item.hidden = !matchesSearch($('#context-search'), item.textContent); })); $$('[data-context-action]').forEach((item) => item.addEventListener('click', async () => { const target = activeContextTarget; closeContextMenu({ restoreFocus: false }); if (!target) return; const command = COMMAND_REGISTRY[item.dataset.commandId]; if (command) command.run(target); if (item.dataset.contextAction === 'copy-label') { await navigator.clipboard.writeText(target.textContent.trim()); target.focus?.({ preventScroll: true }); } }));
+    $('#context-search').addEventListener('input', async () => { const input = $('#context-search'); const items = $$('[data-context-action]'); const visible = await filterBySearch(input, items, (item) => item.textContent); if (visible === null) return; const visibleItems = new Set(visible); items.forEach((item) => { item.hidden = !visibleItems.has(item); }); }); $$('[data-context-action]').forEach((item) => item.addEventListener('click', async () => { const target = activeContextTarget; closeContextMenu({ restoreFocus: false }); if (!target) return; const command = COMMAND_REGISTRY[item.dataset.commandId]; if (command) command.run(target); if (item.dataset.contextAction === 'copy-label') { await navigator.clipboard.writeText(target.textContent.trim()); target.focus?.({ preventScroll: true }); } }));
     document.addEventListener('contextmenu', (event) => { const target = event.target.closest('[data-element-id]'); if (!target || target.closest('.context-menu')) return; event.preventDefault(); showContextMenu(target, event.clientX, event.clientY); });
     document.addEventListener('keydown', (event) => {
       const target = document.activeElement.closest?.('[data-element-id]') || document.activeElement;
@@ -1445,10 +1597,11 @@
   }
 
   function showContextMenu(target, x, y) {
-    activeContextTarget = target; contextMenuOpener = target; const menu = $('#context-menu'); $('#context-search').value = ''; $$('[data-context-action]').forEach((item) => { item.hidden = false; }); menu.hidden = false; const width = menu.offsetWidth; const height = menu.offsetHeight; menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, x))}px`; menu.style.top = `${Math.max(72, Math.min(window.innerHeight - height - 8, y))}px`; $('#context-search').focus();
+    activeContextTarget = target; contextMenuOpener = target; const menu = $('#context-menu'); const search = $('#context-search'); search.value = ''; $$('[data-context-action]').forEach((item) => { item.hidden = false; }); menu.hidden = false; const width = menu.offsetWidth; const height = menu.offsetHeight; menu.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, x))}px`; menu.style.top = `${Math.max(72, Math.min(window.innerHeight - height - 8, y))}px`; search.focus(); search.dispatchEvent(new Event('input'));
   }
 
   function closeContextMenu({ restoreFocus = true } = {}) {
+    invalidateSearch($('#context-search'));
     $('#context-menu').hidden = true;
     activeContextTarget = null;
     const opener = contextMenuOpener;

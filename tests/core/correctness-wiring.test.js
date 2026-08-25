@@ -13,8 +13,9 @@ async function source(relativePath) {
 
 test('main process resolves service requests from complete sync mode and live tunnel state', async () => {
   const main = await source('app/main.js');
-  assert.match(main, /^const \{ buildSshArguments, resolveServiceBaseUrl \} = require\('\.\/core\/ssh'\);$/m);
-  assert.match(main, /^  const base = resolveServiceBaseUrl\(request\.sync, sshState\);$/m);
+  assert.match(main, /^const \{ buildSshArguments \} = require\('\.\/core\/ssh'\);$/m);
+  assert.match(main, /^  const policy = resolveServiceSecurityContext\(request\.sync, sshState\);$/m);
+  assert.match(main, /^  const url = new URL\(endpoint, policy\.baseUrl\);$/m);
   assert.doesNotMatch(main, /^  const base = validatedServerUrl\(request\.serverUrl\);$/m);
 });
 
@@ -30,11 +31,15 @@ test('renderer validates a complete pull before assigning and sends bounded sync
   assert.doesNotMatch(pullHandler, /state\.profile\s*=\s*result\.profile/);
   assert.doesNotMatch(pullHandler, /state\.haircuts\s*=\s*result\.haircuts/);
 
-  const requestStart = renderer.indexOf('async function serviceRequest');
+  const requestStart = renderer.indexOf('function serviceSyncSettings');
   const requestEnd = renderer.indexOf('async function checkOllama', requestStart);
   const requestHandler = renderer.slice(requestStart, requestEnd);
-  assert.match(requestHandler, /sync:\s*\{\s*mode:/);
-  assert.match(requestHandler, /ssh:\s*\{ localForwardPort:/);
+  assert.match(requestHandler, /mode: state\.settings\.sync\.mode/);
+  assert.match(requestHandler, /serverUrl: state\.settings\.sync\.serverUrl/);
+  assert.match(requestHandler, /ssh:\s*\{\s*host: state\.settings\.sync\.ssh\.host/);
+  assert.match(requestHandler, /remoteApiPort: state\.settings\.sync\.ssh\.remoteApiPort/);
+  assert.match(requestHandler, /localForwardPort: state\.settings\.sync\.ssh\.localForwardPort/);
+  assert.match(requestHandler, /sync: serviceSyncSettings\(\)/);
   assert.doesNotMatch(requestHandler, /bridge\.server\.request\(\{ serverUrl:/);
 });
 

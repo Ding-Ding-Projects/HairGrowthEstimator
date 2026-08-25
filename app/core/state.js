@@ -66,7 +66,6 @@ function createDefaultState(todayIso) {
           keyFile: ''
         }
       },
-      updateFeedUrl: 'https://github.com/Ding-Ding-Projects/HairGrowthEstimator/releases/latest/download/',
       statusHubUrl: '',
       logo: {
         preset: 'growth-arc',
@@ -172,7 +171,6 @@ function validateState(input, todayIso) {
           keyFile: boundedString(ssh.keyFile, 2048)
         }
       },
-      updateFeedUrl: boundedString(settings.updateFeedUrl, 2048, defaults.settings.updateFeedUrl),
       statusHubUrl: boundedString(settings.statusHubUrl, 2048),
       logo: {
         preset: ['growth-arc', 'strand', 'minimal'].includes(logo.preset) ? logo.preset : 'growth-arc',
