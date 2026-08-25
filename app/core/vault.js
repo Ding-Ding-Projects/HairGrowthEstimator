@@ -44,17 +44,21 @@ class LocalVault {
 
   async read() {
     this.ensureAvailable();
-    const empty = { schemaVersion: 2, apiKeys: {}, locks: {}, authenticators: {}, historyAccess: null };
+    const empty = { schemaVersion: 3, apiKeys: {}, externalSettingTokens: {}, locks: {}, authenticators: {}, historyAccess: null };
     try {
       const encrypted = await fs.readFile(this.filePath);
       const parsed = JSON.parse(this.safeStorage.decryptString(encrypted));
-      if (![1, 2].includes(parsed?.schemaVersion)) return empty;
-      const apiKeys = parsed.schemaVersion === 2 && parsed.apiKeys && typeof parsed.apiKeys === 'object' && !Array.isArray(parsed.apiKeys)
+      if (![1, 2, 3].includes(parsed?.schemaVersion)) return empty;
+      const apiKeys = parsed.schemaVersion >= 2 && parsed.apiKeys && typeof parsed.apiKeys === 'object' && !Array.isArray(parsed.apiKeys)
         ? Object.fromEntries(Object.entries(parsed.apiKeys).filter(([scope, value]) => isCredentialScope(scope) && isApiKey(value)))
         : {};
+      const externalSettingTokens = parsed.schemaVersion >= 3 && parsed.externalSettingTokens && typeof parsed.externalSettingTokens === 'object' && !Array.isArray(parsed.externalSettingTokens)
+        ? Object.fromEntries(Object.entries(parsed.externalSettingTokens).filter(([scope, value]) => isCredentialScope(scope) && typeof value === 'string' && value.length >= 16 && value.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(value)))
+        : {};
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         apiKeys,
+        externalSettingTokens,
         locks: parsed.locks && typeof parsed.locks === 'object' ? parsed.locks : {},
         authenticators: parsed.authenticators && typeof parsed.authenticators === 'object' ? parsed.authenticators : {},
         historyAccess: parsed.historyAccess && typeof parsed.historyAccess === 'object' ? parsed.historyAccess : null
@@ -103,6 +107,29 @@ class LocalVault {
 
   async hasApiKeyForScope(scope) {
     return Boolean(await this.apiKeyForScope(scope));
+  }
+
+  async setExternalSettingToken(scope, value) {
+    const credentialScope = validateCredentialScope(scope);
+    const token = String(value || '');
+    if (token && (token.length < 16 || token.length > 2048)) throw new RangeError('External settings access token must contain 16 to 2048 characters.');
+    if (token && /[\u0000-\u001f\u007f]/.test(token)) throw new TypeError('External settings access token must not contain control characters.');
+    await this.transact((vault) => {
+      vault.schemaVersion = 3;
+      vault.externalSettingTokens ||= {};
+      if (token) vault.externalSettingTokens[credentialScope] = token;
+      else delete vault.externalSettingTokens[credentialScope];
+    });
+    return { stored: Boolean(token), scope: credentialScope };
+  }
+
+  async externalSettingToken(scope) {
+    const credentialScope = validateCredentialScope(scope);
+    return (await this.read()).externalSettingTokens[credentialScope] || '';
+  }
+
+  async hasExternalSettingToken(scope) {
+    return Boolean(await this.externalSettingToken(scope));
   }
 
   async setHistoryPassword(value) {

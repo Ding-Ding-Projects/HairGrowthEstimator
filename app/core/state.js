@@ -1,6 +1,7 @@
 'use strict';
 
 const HairMath = require('../shared/hair');
+const ScheduledSettings = require('./scheduled-settings');
 
 const LANGUAGE_MODES = new Set(['en', 'yue', 'bilingual']);
 const THEMES = new Set(['dark', 'light', 'contrast']);
@@ -40,7 +41,9 @@ function createDefaultState(todayIso) {
         englishVoiceId: 'auto',
         cantoneseVoiceId: 'auto',
         rate: 1,
-        pitch: 1
+        pitch: 1,
+        yieldToAssistiveTechnology: true,
+        assistiveTechnologyActive: false
       },
       adhd: {
         focus: false,
@@ -73,7 +76,8 @@ function createDefaultState(todayIso) {
         fit: 'contain',
         background: '#063f36'
       },
-      rainbowSpeedLevel: 3
+      rainbowSpeedLevel: 3,
+      schoolPreferenceSnapshot: null
     },
     schedules: [],
     tabs: {
@@ -86,6 +90,7 @@ function createDefaultState(todayIso) {
     supportTickets: [],
     converterHistory: [],
     vocabulary: { loaded: false, cacheVersion: null },
+    startup: { firstRunCompleted: false },
     updatedAt: new Date().toISOString()
   };
 }
@@ -101,6 +106,31 @@ function boundedLevel(value, fallback = 5) {
 
 function boundedArray(value, max) {
   return Array.isArray(value) ? value.slice(0, max) : [];
+}
+
+function normalizePersistedSchedule(item, index) {
+  if (item?.source) return ScheduledSettings.normalizeScheduleRule(item);
+  const weekdays = [...new Set(boundedArray(item?.weekdays, 7)
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))]
+    .sort((left, right) => left - right);
+  const settings = {};
+  if (THEMES.has(item?.theme)) settings.theme = item.theme;
+  if (LANGUAGE_MODES.has(item?.language)) settings.language = item.language;
+  if (!Object.keys(settings).length) throw new TypeError('Legacy schedule must contain a supported setting.');
+  return ScheduledSettings.normalizeScheduleRule({
+    id: boundedString(item?.id, 64, `legacy-schedule-${index + 1}`),
+    label: boundedString(item?.label, 120, 'Scheduled settings'),
+    enabled: item?.enabled !== false,
+    priority: 0,
+    startDate: null,
+    endDate: null,
+    startTime: /^\d{2}:\d{2}$/.test(item?.startTime) ? item.startTime : '09:00',
+    endTime: /^\d{2}:\d{2}$/.test(item?.endTime) ? item.endTime : '17:00',
+    dayMode: weekdays.length === 7 ? 'every-day' : 'weekdays',
+    weekdays: weekdays.length === 7 ? [] : weekdays,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    source: { type: 'local', settings }
+  });
 }
 
 function validateState(input, todayIso) {
@@ -140,8 +170,10 @@ function validateState(input, todayIso) {
         language: ['en', 'yue', 'both'].includes(narrator.language) ? narrator.language : 'en',
         englishVoiceId: boundedString(narrator.englishVoiceId, 256, 'auto'),
         cantoneseVoiceId: boundedString(narrator.cantoneseVoiceId, 256, 'auto'),
-        rate: Math.max(0.5, Math.min(2, Number(narrator.rate) || 1)),
-        pitch: Math.max(0, Math.min(2, Number(narrator.pitch) || 1))
+        rate: Math.max(0.1, Math.min(10, Number(narrator.rate) || 1)),
+        pitch: Math.max(0, Math.min(2, Number(narrator.pitch) || 1)),
+        yieldToAssistiveTechnology: true,
+        assistiveTechnologyActive: Boolean(narrator.assistiveTechnologyActive)
       },
       adhd: {
         focus: Boolean(adhd.focus),
@@ -178,18 +210,16 @@ function validateState(input, todayIso) {
         fit: ['contain', 'cover', 'fill'].includes(logo.fit) ? logo.fit : 'contain',
         background: /^#[0-9a-fA-F]{6}$/.test(logo.background) ? logo.background : '#063f36'
       },
-      rainbowSpeedLevel: boundedLevel(settings.rainbowSpeedLevel, 3)
+      rainbowSpeedLevel: boundedLevel(settings.rainbowSpeedLevel, 3),
+      schoolPreferenceSnapshot: settings.schoolPreferenceSnapshot && typeof settings.schoolPreferenceSnapshot === 'object'
+        ? {
+            language: LANGUAGE_MODES.has(settings.schoolPreferenceSnapshot.language) ? settings.schoolPreferenceSnapshot.language : defaults.settings.language,
+            funnyEnglish: boundedLevel(settings.schoolPreferenceSnapshot.funnyEnglish),
+            funnyCantonese: boundedLevel(settings.schoolPreferenceSnapshot.funnyCantonese)
+          }
+        : null
     },
-    schedules: boundedArray(input.schedules, 128).map((item) => ({
-      id: boundedString(item?.id, 64, `schedule-${Date.now()}`),
-      label: boundedString(item?.label, 120, 'Scheduled settings'),
-      enabled: item?.enabled !== false,
-      weekdays: boundedArray(item?.weekdays, 7).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
-      startTime: /^\d{2}:\d{2}$/.test(item?.startTime) ? item.startTime : '09:00',
-      endTime: /^\d{2}:\d{2}$/.test(item?.endTime) ? item.endTime : '17:00',
-      theme: THEMES.has(item?.theme) ? item.theme : null,
-      language: LANGUAGE_MODES.has(item?.language) ? item.language : null
-    })),
+    schedules: boundedArray(input.schedules, 128).map(normalizePersistedSchedule),
     tabs: {
       order: boundedArray(input.tabs?.order, 64).map((value) => boundedString(value, 64)).filter(Boolean),
       pinned: boundedArray(input.tabs?.pinned, 64).map((value) => boundedString(value, 64)).filter(Boolean),
@@ -220,6 +250,7 @@ function validateState(input, todayIso) {
     })),
     converterHistory: boundedArray(input.converterHistory, 500),
     vocabulary: { loaded: Boolean(input.vocabulary?.loaded), cacheVersion: Number(input.vocabulary?.cacheVersion) || null },
+    startup: { firstRunCompleted: Boolean(input.startup?.firstRunCompleted) },
     updatedAt: typeof input.updatedAt === 'string' && !Number.isNaN(Date.parse(input.updatedAt))
       ? new Date(input.updatedAt).toISOString()
       : defaults.updatedAt

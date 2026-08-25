@@ -38,6 +38,15 @@
     <span id="provenance-state" class="state-chip pending">Checking</span>
   </section>
 
+  <aside id="startup-surprise" class="startup-surprise" role="status" aria-live="polite" hidden data-school-feature="dim-sum">
+    <img id="startup-surprise-image" alt="Classic Har Gow, shrimp dumpling" width="96" height="96">
+    <div>
+      <strong id="startup-surprise-name">Classic Har Gow · 蝦餃</strong>
+      <p id="startup-surprise-copy">A small startup surprise from the public dim-sum catalog.</p>
+    </div>
+    <button type="button" class="icon-button" id="dismiss-startup-surprise" aria-label="Dismiss startup surprise">×</button>
+  </aside>
+
   <div class="app-shell">
     <nav id="tab-strip" class="tab-strip" role="tablist" aria-label="Application tabs" aria-orientation="vertical" data-element-id="main-tab-strip">
       <div class="tab-search-wrap">
@@ -72,6 +81,12 @@
     </nav>
 
     <main id="main-content" class="main-content">
+      <section id="time-awareness-banner" class="attention-banner time-awareness" aria-labelledby="time-awareness-title" hidden>
+        <div>
+          <strong id="time-awareness-title">Time awareness</strong>
+          <p><span id="time-awareness-session">Session open for 0 minutes.</span> <span id="time-awareness-change">Last meaningful change was 0 minutes ago.</span></p>
+        </div>
+      </section>
       <section id="one-thing-banner" class="attention-banner" aria-labelledby="one-thing-title" hidden>
         <div><strong id="one-thing-title">One thing at a time</strong><p id="one-thing-current"></p></div>
         <button type="button" class="tonal-button" id="complete-next-action">Mark current action complete</button>
@@ -262,28 +277,39 @@
         <div class="settings-grid">
           <article class="surface settings-card" data-settings-keywords="language funny emoji bilingual Cantonese">
             <h3>Language and voice</h3>
-            <label><span>Language mode</span><select id="setting-language"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="bilingual">Bilingual</option></select></label>
-            <label><span>English funny level <output id="funny-en-value">5</output></span><input id="funny-en" type="range" min="1" max="5" step="1"></label>
-            <label><span>Cantonese funny level <output id="funny-yue-value">5</output></span><input id="funny-yue" type="range" min="1" max="5" step="1"></label>
+            <div data-school-feature="language"><label><span>Language mode</span><select id="setting-language"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="bilingual">Bilingual</option></select></label></div>
+            <div data-school-feature="funny">
+              <label><span>English funny level <output id="funny-en-value">5</output></span><input id="funny-en" type="range" min="1" max="5" step="1"></label>
+              <label><span>Cantonese funny level <output id="funny-yue-value">5</output></span><input id="funny-yue" type="range" min="1" max="5" step="1"></label>
+            </div>
             <label class="switch-row"><input id="setting-emoji" type="checkbox"><span>Show emojis in dialogs and message boxes</span></label>
-            <p>Both funny levels default to 5 and style every message, including errors and warnings, without changing facts.</p>
+            <p data-school-feature="funny">Both funny levels default to 5 and style every message, including errors and warnings, without changing facts.</p>
           </article>
 
-          <article class="surface settings-card" data-settings-keywords="School mode shared rename unlock">
-            <h3 id="school-heading">School mode</h3>
-            <label class="switch-row"><input id="school-enabled" type="checkbox"><span id="school-toggle-label">Enable School mode</span></label>
+          <article class="surface settings-card" data-settings-keywords="shared mode rename unlock">
+            <h3 id="school-heading">Shared mode</h3>
+            <label class="switch-row"><input id="school-enabled" type="checkbox"><span id="school-toggle-label">Enable shared mode</span></label>
             <label><span>Shared display name</span><input id="school-name" maxlength="80"></label>
-            <p id="school-status">Reading the shared record…</p>
+            <label><span>Shared unlock method</span><select id="school-credential-kind"><option value="pin">PIN</option><option value="password">Password</option><option value="passkey" disabled>Passkey, unavailable in this build</option></select></label>
+            <label><span>Shared unlock value</span><input id="school-credential" type="password" autocomplete="new-password"></label>
+            <div class="form-actions"><button type="button" class="filled-button" id="school-save">Enable or update shared mode</button><button type="button" class="tonal-button" id="school-unlock">Unlock and turn off</button></div>
+            <p class="plain-disclosure">This is an interface lock, not a security boundary. Delete the shared local record to reset it intentionally.</p>
+            <p id="school-status" aria-live="polite">Reading the shared record…</p>
           </article>
 
           <article class="surface settings-card" data-settings-keywords="narrator voice speech rate pitch">
             <h3>Spoken narrator</h3>
             <label class="switch-row"><input id="narrator-enabled" type="checkbox"><span>Enable narrator</span></label>
-            <label><span>Narrated language</span><select id="narrator-language"><option value="en">English</option><option value="yue">Cantonese</option><option value="both">Both, serialized</option></select></label>
+            <label><span>Narrated language</span><select id="narrator-language"><option value="en">English</option><option value="yue" data-school-feature="language.cantonese">Cantonese</option><option value="both" data-school-feature="language.bilingual">Both, serialized</option></select></label>
             <label><span>English installed voice</span><select id="narrator-en-voice"><option value="auto">Choose automatically</option></select></label>
-            <label><span>Cantonese installed voice</span><select id="narrator-yue-voice"><option value="auto">Choose automatically</option></select></label>
-            <label><span>Rate <output id="narrator-rate-value">1</output></span><input id="narrator-rate" type="range" min="0.5" max="2" step="0.1"></label>
+            <p id="narrator-en-status" aria-live="polite">Installed English voices have not been enumerated yet.</p>
+            <div data-school-feature="language.cantonese"><label><span>Cantonese installed voice</span><select id="narrator-yue-voice"><option value="auto">Choose automatically</option></select></label>
+            <p id="narrator-yue-status" aria-live="polite">Installed Cantonese voices have not been enumerated yet.</p></div>
+            <label><span>Rate <output id="narrator-rate-value">1</output></span><input id="narrator-rate" type="range" min="0.1" max="10" step="0.1"></label>
             <label><span>Pitch <output id="narrator-pitch-value">1</output></span><input id="narrator-pitch" type="range" min="0" max="2" step="0.1"></label>
+            <label class="switch-row"><input id="narrator-yield-assistive" type="checkbox" checked disabled><span>Narrator always pauses while assistive technology is active</span></label>
+            <label class="switch-row"><input id="narrator-assistive-active" type="checkbox"><span>Assistive technology is active now</span></label>
+            <p id="narrator-assistive-status" aria-live="polite">Reading operating-system accessibility support.</p>
             <button type="button" class="tonal-button" id="narrator-test">Speak a test event</button>
           </article>
 
@@ -333,10 +359,34 @@
           <article class="surface settings-card" data-settings-keywords="schedule date time weekdays theme language timezone">
             <h3>Scheduled settings</h3>
             <label><span>Rule label</span><input id="schedule-label" maxlength="120"></label>
+            <label class="switch-row"><input id="schedule-enabled" type="checkbox" checked><span>Rule enabled</span></label>
+            <label><span>Priority</span><input id="schedule-priority" type="number" min="-1000" max="1000" value="0"></label>
+            <label><span>Start date, optional</span><input id="schedule-start-date" type="date"></label>
+            <label><span>End date, optional</span><input id="schedule-end-date" type="date"></label>
             <label><span>Start time</span><input id="schedule-start" type="time" value="09:00"></label>
             <label><span>End time</span><input id="schedule-end" type="time" value="17:00"></label>
-            <button type="button" class="tonal-button" id="add-schedule">Add every-day theme rule</button>
-            <p id="schedule-list">No scheduled rules. Times use the computer's local timezone and follow daylight-saving changes.</p>
+            <label><span>Timezone</span><input id="schedule-timezone" maxlength="80" readonly></label>
+            <label class="switch-row"><input id="schedule-every-day" type="checkbox" checked><span>Every day</span></label>
+            <fieldset class="weekday-grid"><legend>Selected weekdays</legend>
+              <label><input type="checkbox" data-schedule-weekday="0"><span>Sunday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="1"><span>Monday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="2"><span>Tuesday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="3"><span>Wednesday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="4"><span>Thursday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="5"><span>Friday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="6"><span>Saturday</span></label>
+            </fieldset>
+            <label><span>Setting</span><select id="schedule-setting"><option value="theme">Theme</option><option value="language" data-school-feature="language">Language</option><option value="density">Density</option><option value="accent">Accent</option><option value="tabDock">Tab dock</option><option value="displayName">Display name</option><option value="funnyEnglish" data-school-feature="funny.english">English funny level</option><option value="funnyCantonese" data-school-feature="funny.cantonese">Cantonese funny level</option><option value="showDialogEmoji">Show dialog emojis</option><option value="reducedMotion">Reduced motion</option><option value="rainbowSpeedLevel">Rainbow speed level</option></select></label>
+            <label><span>Scheduled value</span><input id="schedule-value" maxlength="160" value="dark"></label>
+            <label><span>Value source</span><select id="schedule-source"><option value="local">Local value</option><option value="api">Validated HTTPS API</option><option value="home-assistant">Home Assistant boolean entity</option></select></label>
+            <label class="wide"><span>API URL</span><input id="schedule-api-url" type="url" placeholder="https://example.invalid/settings"></label>
+            <label class="wide"><span>Home Assistant base URL</span><input id="schedule-ha-url" type="url" placeholder="https://home-assistant.example"></label>
+            <label><span>Home Assistant entity</span><input id="schedule-ha-entity" maxlength="128" placeholder="input_boolean.example"></label>
+            <label><span>Home Assistant access token</span><input id="schedule-ha-token" type="password" autocomplete="new-password"></label>
+            <div class="form-actions"><button type="button" class="filled-button" id="add-schedule">Add scheduled rule</button><button type="button" class="tonal-button" id="schedule-delete">Delete selected rule</button><button type="button" class="tonal-button" id="schedule-save-ha-token">Store Home Assistant token</button></div>
+            <p id="schedule-status" aria-live="polite">No schedule evaluation has run yet.</p>
+            <div id="schedule-list">No scheduled rules. Times use the computer's local timezone and follow daylight-saving changes.</div>
+            <p>API sources must return <code>{"schemaVersion":1,"settings":{...}}</code>. Home Assistant sources activate the configured local values only while the selected boolean entity is on. Failures retain the unchanged base settings.</p>
           </article>
         </div>
       </section>
@@ -379,7 +429,7 @@
           <article class="surface"><h3>Running build</h3><dl id="status-provenance" class="fact-list"></dl></article>
           <article class="surface"><h3>Automatic updates</h3><p id="update-message">No update check has run.</p><div class="form-actions"><button type="button" class="filled-button" id="check-updates">Check for updates</button><button type="button" class="tonal-button" id="restart-update" disabled>Restart to install update</button></div><p class="plain-disclosure">The update source is fixed by the installed application and cannot be selected by page content. Squirrel.Windows packages are unsigned and may trigger an unknown-publisher or SmartScreen warning.</p></article>
           <article class="surface"><h3>Status Hub</h3><label><span>Optional HTTPS status URL</span><input id="status-hub-url" type="url" placeholder="https://status.example/"></label><button type="button" class="tonal-button" id="open-status-hub">Open configured status</button><p>No built-in private infrastructure address is shipped.</p></article>
-          <article class="surface"><h3>Privacy posture</h3><ul><li>Hair data stays local unless direct service sync is selected.</li><li>Credentials use operating-system protection.</li><li>Personal vocabulary and custom logos are local-only.</li><li>No analytics or third-party runtime assets.</li></ul></article>
+          <article class="surface"><h3>Privacy posture</h3><ul><li>Hair data stays local unless direct service sync is selected.</li><li>Credentials use operating-system protection.</li><li data-school-feature="personal-vocabulary">Personal vocabulary and custom logos are local-only.</li><li>No analytics or third-party runtime assets.</li></ul></article>
         </div>
       </section>
     </main>

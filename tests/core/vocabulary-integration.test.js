@@ -60,8 +60,11 @@ test('vocabulary status is localized, privacy safe, live, and searchable', () =>
 test('School mode suppresses and later restores vocabulary behavior completely', () => {
   assert.match(renderer, /^\s*function vocabularyEnabledForSurface\(\)/m);
   assert.match(renderer, /return !schoolRecord\?\.enabled && vocabularyCache\.status === 'loaded'/);
-  assert.match(renderer, /paletteEntries\(\)[\s\S]*filter\(\(entry\) => !schoolRecord\?\.enabled \|\| entry\.feature !== 'vocabulary'\)/);
+  assert.match(renderer, /id: 'vocabulary-choose'[\s\S]{0,200}featureId: 'personal-vocabulary'/);
+  assert.match(renderer, /function paletteEntries\(\)[\s\S]*return filterSchoolRestrictedContent\(\[/);
+  assert.match(renderer, /bridge\.school\.isFeatureSuppressed\(item\?\.featureId \|\| '', true\)/);
   assert.match(renderer, /applyOwnedVocabularyBoundaries\(\)/);
   assert.match(html, /data-school-feature="vocabulary"/);
+  assert.match(html, /data-school-feature="personal-vocabulary"/);
   assert.doesNotMatch(renderer, /if \(schoolRecord\?\.enabled\) \{\s*state\.settings\.language = 'en'/);
 });

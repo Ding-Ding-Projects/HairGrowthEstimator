@@ -3,6 +3,10 @@
 
   const bridge = window.hairGrowth;
   const Hair = window.HairMath;
+  const presentation = bridge.presentation;
+  const narrator = bridge.narrator;
+  const schedules = bridge.schedules;
+  const attention = bridge.attention;
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const regexState = new WeakMap();
@@ -42,6 +46,10 @@
   let stateMutationSequence = 0;
   let narratorQueue = [];
   let narratorSpeaking = false;
+  let narratorCatalog = { phase: 'loading', generation: 0, stale: false, voices: [] };
+  let narratorSettleTimer = null;
+  let platformAccessibilityActive = false;
+  const narratorLastAcceptedAt = new Map();
   let sessionOpenedAt = Date.now();
   let vocabularyCache = { status: 'missing', schemaVersion: null, entries: Object.freeze({}) };
   let historyCredential = '';
@@ -53,6 +61,18 @@
   let regexValidationGeneration = 0;
   let regexWorkbenchGeneration = 0;
   let historyRenderGeneration = 0;
+  let scheduleGeneration = 0;
+  let scheduleRefreshTimer = null;
+  let selectedScheduleId = '';
+  let scheduleSourceResults = {};
+  let scheduledOverrides = {};
+  let lastSchoolEnabled = null;
+  let startupLaunchState = { decided: false };
+  let startupSurpriseTimer = null;
+  const localizedTextNodes = new WeakMap();
+  const localizedAttributes = new WeakMap();
+  const PRESENTATION_ATTRIBUTES = Object.freeze(['aria-label', 'aria-description', 'placeholder', 'title', 'alt']);
+  let presentationObserver = null;
 
   const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -94,11 +114,22 @@
     }
   };
 
+  const L02_ARTICLE_IDS = Object.freeze([
+    'language-presentation',
+    'shared-presentation',
+    'narrator',
+    'scheduled-presentation',
+    'attention-accommodations',
+    'startup-surprise',
+    'evidence-isolation'
+  ]);
+
   const docs = [
     {
       id: 'about',
       title: 'About this build',
-      body: `<h3>About Hair Growth Estimator 1.0.0</h3><p>Release code name: <strong>Classic Har Gow · 蝦餃</strong>, public catalog record <code>hk-dish-0001</code>. The photo remains in the public dim-sum catalog and is not copied into this application.</p><p><a href="#" data-external-url="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Open the public catalog photo</a>.</p><h4>Stable identity</h4><p>Changing the display name or logo changes presentation only. It never changes package identity, data location, executable name, installer identity, or update feed. The installed application owns one exact HTTPS update source. Page content cannot select a different feed, and restart is authorized only for the exact downloaded event that produced the current ready state.</p><h4>Suggested articles</h4><p>Hair growth estimation, Privacy and local credentials, Status and recovery.</p>`
+      body: `<h3>About Hair Growth Estimator 1.0.0</h3><p>Release code name: <strong>Classic Har Gow · 蝦餃</strong>, public catalog record <code>hk-dish-0001</code>. The photo remains in the public dim-sum catalog and is not copied into this application.</p><p><a href="#" data-external-url="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Open the public catalog photo</a>.</p><h4>Stable identity</h4><p>Changing the display name or logo changes presentation only. It never changes package identity, data location, executable name, installer identity, or update feed. The installed application owns one exact HTTPS update source. Page content cannot select a different feed, and restart is authorized only for the exact downloaded event that produced the current ready state.</p><h4>Suggested articles</h4><p>Hair growth estimation, Privacy and local credentials, Status and recovery.</p>`,
+      schoolBody: `<h3>About Hair Growth Estimator 1.0.0</h3><h4>Stable identity</h4><p>Changing the display name or logo changes presentation only. It never changes package identity, data location, executable name, installer identity, or update feed. The installed application owns one exact HTTPS update source. Page content cannot select a different feed, and restart is authorized only for the exact downloaded event that produced the current ready state.</p><h4>Suggested articles</h4><p>Hair growth estimation, Privacy and local credentials, Status and recovery.</p>`
     },
     {
       id: 'estimation',
@@ -123,7 +154,8 @@
     {
       id: 'privacy',
       title: 'Privacy and local credentials',
-      body: `<h3>Privacy and local credentials</h3><p>Hair records remain on this computer unless you explicitly use service sync. API keys, toy-lock credentials, and authenticator secrets use operating-system protection. Secrets are omitted from ordinary exports, local history, notifications, and logs.</p><h4>Personal vocabulary file</h4><p>The optional local JSON file uses one root object with <code>schemaVersion: 1</code> and an <code>entries</code> object. The complete UTF-8 payload is limited to 256 KiB, 4,096 entries, depth 2, keys from 1 through 160 Unicode code points, and string values through 1,000 Unicode code points. Malformed UTF-8, duplicate keys, unknown fields or versions, unsafe keys, and out-of-bound values are rejected before anything is applied.</p><p>Validation, replacement, and the private application-data cache remain local and make no network request. Every cache load is revalidated. A rejected replacement keeps the last valid cache, while an explicitly cleared cache is purged and immediately restores the original shipped wording. School mode suppresses the vocabulary controls and replacements without deleting the last valid private cache.</p><p>No private mapping, source filename, source path, entry count, or mapping value appears in source, status copy, logs, exports, notifications, or local history.</p><h4>Suggested articles</h4><p>Private synchronization, Toy locks, Local version history.</p>`
+      body: `<h3>Privacy and local credentials</h3><p>Hair records remain on this computer unless you explicitly use service sync. API keys, toy-lock credentials, and authenticator secrets use operating-system protection. Secrets are omitted from ordinary exports, local history, notifications, and logs.</p><h4>Personal vocabulary file</h4><p>The optional local JSON file uses one root object with <code>schemaVersion: 1</code> and an <code>entries</code> object. The complete UTF-8 payload is limited to 256 KiB, 4,096 entries, depth 2, keys from 1 through 160 Unicode code points, and string values through 1,000 Unicode code points. Malformed UTF-8, duplicate keys, unknown fields or versions, unsafe keys, and out-of-bound values are rejected before anything is applied.</p><p>Validation, replacement, and the private application-data cache remain local and make no network request. Every cache load is revalidated. A rejected replacement keeps the last valid cache, while an explicitly cleared cache is purged and immediately restores the original shipped wording. School mode suppresses the vocabulary controls and replacements without deleting the last valid private cache.</p><p>No private mapping, source filename, source path, entry count, or mapping value appears in source, status copy, logs, exports, notifications, or local history.</p><h4>Suggested articles</h4><p>Private synchronization, Toy locks, Local version history.</p>`,
+      schoolBody: `<h3>Privacy and local credentials</h3><p>Hair records remain on this computer unless you explicitly use service sync. API keys, toy-lock credentials, and authenticator secrets use operating-system protection. Secrets are omitted from ordinary exports, local history, notifications, and logs.</p><h4>Suggested articles</h4><p>Private synchronization, Toy locks, Local version history.</p>`
     },
     {
       id: 'tools',
@@ -134,15 +166,71 @@
       id: 'locks',
       title: 'Toy locks and local support tickets',
       body: `<h3>Toy locks</h3><p>Every element can receive its own PIN, password, TOTP, or ordered combination. The lock is an interface speed bump, not security or encryption. A locked wrapper refuses pointer and keyboard activation until its own credential set verifies.</p><p>The fictional Support Tickets desk sends nothing. Its resolution opens the application-data folder so you can delete the local record yourself.</p><h4>Suggested articles</h4><p>Privacy, Local history, Settings.</p>`
+    },
+    {
+      id: 'language-presentation',
+      featureId: 'language',
+      title: 'Language and funny levels',
+      titleYue: '語言同搞笑程度',
+      body: `<h3>Language and funny levels</h3><p>Choose English, playful Hong Kong-style Cantonese, or bilingual presentation. English and Cantonese each have an independent funny level from 1 through 5, defaulting to 5. The selected voice styles informational, success, progress, warning, error, destructive, security, accessibility, and notification messages without changing facts.</p><h4>Persistence and fallback</h4><p>Choices persist locally. Unknown provider-authored or technical text remains exact rather than being guessed. Bilingual presentation gives each language its own segment.</p><h4>Suggested articles</h4><p>Shared presentation mode, Narrator, Attention accommodations.</p>`,
+      bodyYue: `<h3>語言同搞笑程度</h3><p>你可以揀英文、香港粵語，或者雙語顯示。英文同粵語各自有 1 至 5 級搞笑程度，預設都係 5。資料、成功、進度、警告、錯誤、刪除、安全、無障礙同通知訊息都會跟住語氣設定，但事實唔會變形。</p><h4>保存同後備處理</h4><p>選擇會保存在本機。外來內容或者技術文字唔會亂估翻譯。雙語模式會分開顯示兩種語言。</p><h4>建議文章</h4><p>共用顯示模式、旁白、專注輔助。</p>`
+    },
+    {
+      id: 'shared-presentation',
+      title: 'Shared presentation mode',
+      titleYue: '共用顯示模式',
+      body: `<h3>Shared presentation mode</h3><p>This user-renamable record is shared live by local applications. Enabling it retains the prior language and funny-level choices, forces serious English presentation, and removes restricted controls and destinations from settings, searches, documentation, notifications, previews, and the command palette. Verified disable restores the retained choices.</p><h4>Unlock and recovery</h4><p>PIN and password unlocks use operating-system protection and one shared record. Passkey policy is represented by the core schema but is unavailable in this build, so the picker says so rather than pretending. This is an interface lock, not a security boundary.</p><h4>Suggested articles</h4><p>Language and funny levels, Privacy, Support Tickets.</p>`,
+      bodyYue: `<h3>共用顯示模式</h3><p>呢個可以改名嘅本機紀錄會即時同步畀其他本機應用。開啟時會保留之前嘅語言同搞笑程度，改用認真英文，並由設定、搜尋、文件、通知、預覽同指令面板移除受限制項目。驗證後關閉，就會還原之前選擇。</p><h4>解鎖同復原</h4><p>PIN 同密碼用作業系統保護，全部應用共用同一紀錄。核心資料格式已經識別 passkey，但呢個版本未提供，所以介面會誠實講明。呢個係介面鎖，唔係保安邊界。</p><h4>建議文章</h4><p>語言同搞笑程度、私隱、Support Tickets。</p>`
+    },
+    {
+      id: 'narrator',
+      title: 'Narrator voices and pacing',
+      titleYue: '旁白聲線同節奏',
+      body: `<h3>Narrator voices and pacing</h3><p>The narrator is off by default. English and Cantonese have separate installed-voice pickers keyed by stable voice identity, plus Choose automatically. Delayed voice discovery refreshes the list. A missing saved voice remains selected and reports the actual fallback.</p><p>Both mode speaks English then Cantonese through one serialized queue. Rate and pitch persist within platform bounds. Narration pauses while assistive technology is active and stays quiet in low-stimulation mode.</p><h4>Suggested articles</h4><p>Language and funny levels, Attention accommodations, Accessibility.</p>`,
+      bodyYue: `<h3>旁白聲線同節奏</h3><p>旁白預設關閉。英文同粵語各自有已安裝聲線選擇，使用穩定聲線識別，亦可以自動選擇。聲線遲啲先載入時，清單會再更新。已保存但未安裝嘅聲線會保留，並講清楚實際後備聲線。</p><p>雙語旁白會排隊先講英文，再講粵語。速度同音高會按平台範圍保存。輔助技術使用中或者低刺激模式開啟時，旁白會安靜落嚟。</p><h4>建議文章</h4><p>語言同搞笑程度、專注輔助、無障礙。</p>`
+    },
+    {
+      id: 'scheduled-presentation',
+      title: 'Scheduled presentation settings',
+      titleYue: '排程顯示設定',
+      body: `<h3>Scheduled presentation settings</h3><p>Rules use an explicit IANA timezone, optional inclusive date bounds, start and end times, every day or selected weekdays, and deterministic priority. Equal times cover the full local day. Cross-midnight windows belong to the day on which they start, and end times are exclusive.</p><p>Values may be local, supplied by a versioned bounded HTTPS API, or activated by a Home Assistant boolean entity. Exact loopback HTTP is the only HTTP exception. Redirects, embedded URL credentials, stale responses, oversized payloads, and unknown fields are refused. Home Assistant access values remain in operating-system protection.</p><h4>Suggested articles</h4><p>Appearance settings, Privacy, Status and recovery.</p>`,
+      bodyYue: `<h3>排程顯示設定</h3><p>規則會保存 IANA 時區、可選日期範圍、開始同結束時間、每日或者指定星期日子，同埋明確優先次序。相同開始結束時間代表全日。跨午夜時段屬於開始嗰日，而結束時間唔包括在內。</p><p>設定值可以來自本機、有限制同版本驗證嘅 HTTPS API，或者由 Home Assistant 布林實體開關。HTTP 只容許精確 loopback。重新導向、網址內憑證、過期回應、過大資料同未知欄位全部會拒絕。Home Assistant 存取值留喺作業系統保護入面。</p><h4>建議文章</h4><p>外觀設定、私隱、狀態同復原。</p>`
+    },
+    {
+      id: 'attention-accommodations',
+      title: 'Attention accommodations',
+      titleYue: '專注輔助',
+      body: `<h3>Attention accommodations</h3><p>Focus, Low stimulation, Time awareness, One thing at a time, and Momentum are independent and off by default. Focus dims rather than hides. Low stimulation quiets motion and nonessential transient notices. Time awareness reports exact elapsed minutes. One thing at a time keeps a user-chosen next action. Momentum offers a neutral reminder after 40 minutes and respects Not now for one hour.</p><p>These are interface accommodations, not diagnosis, assessment, advice, or a productivity score.</p><h4>Suggested articles</h4><p>Narrator, Language and funny levels, Accessibility.</p>`,
+      bodyYue: `<h3>專注輔助</h3><p>聚焦、低刺激、時間提示、一次一件事同動力提示可以分開開關，預設全部關閉。聚焦只會淡化，唔會收藏內容。低刺激會減少動態同非必要即時提示。時間提示會報告準確分鐘。一次一件事保存由你揀嘅下一步。動力提示會喺 40 分鐘冇變更後中性提示，而「遲啲先」會安靜一小時。</p><p>呢啲係介面輔助，唔係診斷、評估、建議或者生產力分數。</p><h4>建議文章</h4><p>旁白、語言同搞笑程度、無障礙。</p>`
+    },
+    {
+      id: 'startup-surprise',
+      featureId: 'dim-sum.surprise',
+      title: 'Startup surprise',
+      titleYue: '開機小驚喜',
+      body: `<h3>Startup surprise</h3><p>After first run, one fresh random draw per launch selects the nonblocking public-catalog card exactly 10 percent of the time. It never appears during an error, update, active task, shared restricted mode, or low-stimulation presentation. It does not take focus, has no sound, and dismisses itself after eight seconds.</p><p>The picture is fetched only from the published public catalog asset and cached in private application data after PNG signature and size validation. A missing offline cache produces no substitute image and no false success.</p><h4>Suggested articles</h4><p>About this build, Attention accommodations, Privacy.</p>`,
+      bodyYue: `<h3>開機小驚喜</h3><p>首次啟動之後，每次開啟只抽一次新亂數，精確有一成機會顯示唔阻住你嘅公開目錄卡片。錯誤、更新、工作進行中、共用限制模式或者低刺激顯示期間都唔會出現。佢唔搶焦點、冇聲，八秒後自己收工。</p><p>圖片只會由已發布嘅公開目錄資產取得，通過 PNG 簽章同大小驗證後先快取喺私人應用資料。離線又冇快取時，唔會整假圖，亦唔會扮成功。</p><h4>建議文章</h4><p>關於呢個版本、專注輔助、私隱。</p>`
+    },
+    {
+      id: 'evidence-isolation',
+      title: 'Evidence-only data isolation',
+      titleYue: '證據專用資料隔離',
+      body: `<h3>Evidence-only data isolation</h3><p>The capture harness starts the application with exactly three switches: <code>--evidence-mode</code>, <code>--evidence-app-data=&lt;absolute-empty-task-root&gt;</code>, and <code>--evidence-user-data=&lt;absolute-empty-task-root&gt;</code>. Each switch must appear exactly once. Both roots must be absolute, empty or missing, strict non-overlapping children beneath an exact <code>.hair-growth-evidence-task</code> path segment, and free of symbolic-link or reparse components.</p><p>The main process validates and activates both roots before application readiness or any ordinary data read. It writes <code>evidence-isolation.json</code> in the isolated user-data root and <code>evidence-app-data-active.json</code> in the isolated application-data root. Receipts contain schema version 1 and canonical path SHA-256 values only, never raw paths. Normal launches do not change either path and do not create a receipt.</p><h4>Failure modes</h4><p>A relative path, filesystem root, overlap, duplicate switch, unowned location, nonempty destination, or link component stops startup before user data can be read.</p><h4>Suggested articles</h4><p>Privacy and local credentials, Shared presentation mode, Status and recovery.</p>`,
+      bodyYue: `<h3>證據專用資料隔離</h3><p>擷取工具會用三個指定開關啟動應用：<code>--evidence-mode</code>、<code>--evidence-app-data=&lt;absolute-empty-task-root&gt;</code> 同 <code>--evidence-user-data=&lt;absolute-empty-task-root&gt;</code>。每個開關只可以出現一次。兩個根目錄一定要係絕對路徑、空白或者未建立、互不重疊，放喺精確 <code>.hair-growth-evidence-task</code> 路徑段之下，亦唔可以經過符號連結或者重解析點。</p><p>主程序會喺應用準備好或者讀取任何普通資料之前，驗證同啟用兩個根目錄。隔離嘅 user-data 根目錄會收到 <code>evidence-isolation.json</code>，隔離嘅 application-data 根目錄就會收到 <code>evidence-app-data-active.json</code>。收據只會包含格式版本 1 同標準化路徑 SHA-256，永遠唔會包含原始路徑。正常啟動唔會改動兩個位置，亦唔會產生收據。</p><h4>失敗處理</h4><p>相對路徑、檔案系統根目錄、重疊、重複開關、唔屬於今次工作嘅位置、非空白目的地或者連結元件，都會喺讀取用戶資料之前停止啟動。</p><h4>建議文章</h4><p>私隱同本機憑證、共用顯示模式、狀態同復原。</p>`
     }
   ];
+
+  const bundledArticleIds = new Set(docs.map((article) => article.id));
+  for (const articleId of L02_ARTICLE_IDS) {
+    if (!bundledArticleIds.has(articleId)) throw new Error(`Required bundled article is missing: ${articleId}`);
+  }
 
   const changelog = [
     {
       version: '1.0.0',
       date: '2026-08-24',
       commit: 'pending-release-commit',
-      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Service credentials bound to the exact direct or SSH destination and omitted from public probes', 'Direct HTTP limited to loopback while non-loopback direct service connections require HTTPS', 'Canonical main-process update feed with trusted-frame and exact ready-event restart authorization', 'Killable worker-based regex evaluation with hard deadlines for every search and workbench path', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', 'Strict local personal-vocabulary validation, cache recovery, clear, and School-mode suppression', 'Complete tab relationships, axis-aware roving focus, named dialogs, opener focus restoration, reduced-motion progression, and 44-pixel interaction targets', 'Protected searchable history, dismissible notification history, local Support Tickets management, and persisted attention accommodations', 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001']
+      changes: ['Initial hair growth estimator', 'Haircut reset journal', 'Centimetre and inch display', 'Local and private service modes', 'Eight-stage animated image reference', 'SSH service routing bound to the connected local forward', 'Service credentials bound to the exact direct or SSH destination and omitted from public probes', 'Direct HTTP limited to loopback while non-loopback direct service connections require HTTPS', 'Canonical main-process update feed with trusted-frame and exact ready-event restart authorization', 'Killable worker-based regex evaluation with hard deadlines for every search and workbench path', 'Validated service pulls that leave local state unchanged when rejected', 'Newest-haircut baseline reconciliation with a retained manual fallback', 'Serialized revisioned saves with explicit history degradation and orderly queue drain', { text: 'Strict local personal-vocabulary validation, cache recovery, clear, and restricted-mode suppression', featureId: 'personal-vocabulary' }, 'Complete tab relationships, axis-aware roving focus, named dialogs, opener focus restoration, reduced-motion progression, and 44-pixel interaction targets', 'Protected searchable history, dismissible notification history, local Support Tickets management, and persisted attention accommodations', 'Three language modes, independent funny levels, installed narrator voices, scheduled settings, and five attention accommodations', { text: 'Release code name Classic Har Gow · 蝦餃, catalog record hk-dish-0001', featureId: 'dim-sum.code-name' }]
     }
   ];
 
@@ -165,11 +253,141 @@
     return structuredClone(value);
   }
 
-  function text(key) {
-    const language = schoolRecord?.enabled ? 'en' : state.settings.language;
+  function effectiveSetting(key) {
+    return Object.prototype.hasOwnProperty.call(scheduledOverrides, key) ? scheduledOverrides[key] : state.settings[key];
+  }
+
+  function activeLanguage() {
+    return schoolRecord?.enabled ? 'en' : effectiveSetting('language');
+  }
+
+  function presentationOptions(category = 'informational', facts = {}, language = activeLanguage()) {
+    return {
+      language,
+      funnyEnglish: schoolRecord?.enabled ? 1 : effectiveSetting('funnyEnglish'),
+      funnyCantonese: schoolRecord?.enabled ? 1 : effectiveSetting('funnyCantonese'),
+      category,
+      facts
+    };
+  }
+
+  function text(key, category = 'informational', facts = {}) {
+    try {
+      const resolved = presentation.renderMessage(key, presentationOptions(category, facts));
+      const value = typeof resolved === 'string' ? resolved : resolved?.text;
+      if (typeof value === 'string' && value && value !== key) return value;
+    } catch {}
+    const language = activeLanguage();
     if (language === 'yue') return translations.yue[key] || translations.en[key] || key;
-    if (language === 'bilingual') return `${translations.en[key] || key} · ${translations.yue[key] || key}`;
+    if (language === 'bilingual') return `${translations.en[key] || key} · ${translations.yue[key] || translations.en[key] || key}`;
     return translations.en[key] || key;
+  }
+
+  function localizedLiteral(value, category = 'informational', facts = {}, language = activeLanguage()) {
+    const source = String(value ?? '');
+    try {
+      const corpusResult = presentation.resolveByEnglishSource(source, presentationOptions(category, facts, language));
+      if (!corpusResult.fallback) return corpusResult.preserve ? corpusResult.primary : corpusResult.text;
+    } catch {}
+    try {
+      const resolved = presentation.renderLiteral(source, presentationOptions(category, facts, language));
+      const value = typeof resolved === 'string' ? resolved : resolved?.text;
+      return typeof value === 'string' && value ? value : source;
+    } catch {
+      return source;
+    }
+  }
+
+  function categorizedMessage(value, category = 'informational', language = activeLanguage()) {
+    const source = String(value ?? '');
+    try {
+      const corpusResult = presentation.resolveByEnglishSource(source, presentationOptions(category, {}, language));
+      if (!corpusResult.fallback) return corpusResult.preserve ? corpusResult.primary : corpusResult.text;
+    } catch {}
+    try {
+      const resolved = presentation.renderCategoryMessage(category, source, presentationOptions(category, {}, language));
+      return typeof resolved?.text === 'string' && resolved.text ? resolved.text : source;
+    } catch {
+      return source;
+    }
+  }
+
+  function presentationExcluded(element) {
+    return !element || Boolean(element.closest('[data-provider-authored], [data-no-localize], [data-presentation-managed]'));
+  }
+
+  function localizePresentationTextNode(node) {
+    const parent = node.parentElement;
+    if (presentationExcluded(parent) || !node.nodeValue.trim()) return;
+    if (/^(SCRIPT|STYLE|NOSCRIPT|CODE|PRE|KBD)$/.test(parent.tagName)) return;
+    const current = node.nodeValue;
+    let record = localizedTextNodes.get(node);
+    if (!record || current !== record.rendered) {
+      record = {
+        source: parent.dataset.presentationSourceText || current.trim(),
+        leading: current.match(/^\s*/)?.[0] || '',
+        trailing: current.match(/\s*$/)?.[0] || '',
+        rendered: current
+      };
+    }
+    if (parent.hasAttribute('data-vocabulary-owned') && parent.childElementCount === 0) {
+      parent.dataset.presentationSourceText ||= record.source;
+    }
+    const localized = localizedLiteral(record.source, parent.dataset.messageCategory || 'informational');
+    const visible = parent.hasAttribute('data-vocabulary-owned') ? applyVocabularyCopy(localized, 'owned-visible') : localized;
+    if (parent.hasAttribute('data-vocabulary-owned')) parent.dataset.vocabularyBaseText = localized;
+    const rendered = `${record.leading}${visible}${record.trailing}`;
+    record.rendered = rendered;
+    localizedTextNodes.set(node, record);
+    if (current !== rendered) node.nodeValue = rendered;
+  }
+
+  function localizePresentationAttributes(element) {
+    if (presentationExcluded(element)) return;
+    let records = localizedAttributes.get(element);
+    if (!records) {
+      records = new Map();
+      localizedAttributes.set(element, records);
+    }
+    for (const name of PRESENTATION_ATTRIBUTES) {
+      if (!element.hasAttribute(name)) continue;
+      const current = element.getAttribute(name);
+      let record = records.get(name);
+      if (!record || current !== record.rendered) record = { source: current, rendered: current };
+      const localized = localizedLiteral(record.source, 'accessibility');
+      const rendered = element.hasAttribute('data-vocabulary-owned') ? applyVocabularyCopy(localized, 'owned-accessible') : localized;
+      record.rendered = rendered;
+      records.set(name, record);
+      if (current !== rendered) element.setAttribute(name, rendered);
+    }
+  }
+
+  function applyPresentationCorpus(root = document.body) {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) localizePresentationTextNode(root);
+    if (root.nodeType === Node.ELEMENT_NODE) localizePresentationAttributes(root);
+    const textWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (textWalker.nextNode()) localizePresentationTextNode(textWalker.currentNode);
+    const elementWalker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    while (elementWalker.nextNode()) localizePresentationAttributes(elementWalker.currentNode);
+  }
+
+  function startPresentationObserver() {
+    if (presentationObserver) return;
+    presentationObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'attributes') localizePresentationAttributes(record.target);
+        else if (record.type === 'characterData') localizePresentationTextNode(record.target);
+        else for (const node of record.addedNodes) applyPresentationCorpus(node);
+      }
+    });
+    presentationObserver.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: PRESENTATION_ATTRIBUTES
+    });
   }
 
   function vocabularyEnabledForSurface() {
@@ -191,29 +409,42 @@
 
   function setOwnedText(element, value) {
     if (!element || element.hasAttribute('data-vocabulary-preserve')) return;
-    element.dataset.vocabularyBaseText = String(value ?? '');
-    element.textContent = applyVocabularyCopy(element.dataset.vocabularyBaseText, 'owned-visible');
+    const source = String(value ?? '');
+    const localized = localizedLiteral(source, element.dataset.messageCategory || 'informational');
+    element.dataset.presentationSourceText = source;
+    element.dataset.vocabularyBaseText = localized;
+    element.textContent = applyVocabularyCopy(localized, 'owned-visible');
   }
 
   function setOwnedAttribute(element, name, value) {
     if (!element || element.hasAttribute('data-vocabulary-preserve')) return;
     const dataName = `vocabularyBase${name.replace(/(^|-)([a-z])/g, (_match, _separator, letter) => letter.toUpperCase())}`;
-    element.dataset[dataName] = String(value ?? '');
-    element.setAttribute(name, applyVocabularyCopy(element.dataset[dataName], 'owned-accessible'));
+    const source = String(value ?? '');
+    const localized = localizedLiteral(source, 'accessibility');
+    const rendered = applyVocabularyCopy(localized, 'owned-accessible');
+    element.dataset[dataName] = localized;
+    let records = localizedAttributes.get(element);
+    if (!records) {
+      records = new Map();
+      localizedAttributes.set(element, records);
+    }
+    records.set(name, { source, rendered });
+    element.setAttribute(name, rendered);
   }
 
   function applyOwnedVocabularyBoundaries() {
     $$('[data-vocabulary-owned]').forEach((element) => {
       if (element.closest('[data-vocabulary-preserve]')) return;
-      if (!element.dataset.vocabularyBaseText && element.childElementCount === 0) element.dataset.vocabularyBaseText = element.textContent;
-      if (element.dataset.vocabularyBaseText !== undefined && element.childElementCount === 0) {
-        element.textContent = applyVocabularyCopy(element.dataset.vocabularyBaseText, 'owned-visible');
+      if (element.childElementCount === 0) {
+        const source = element.dataset.presentationSourceText || element.dataset.vocabularyBaseText || element.textContent;
+        setOwnedText(element, source);
       }
       for (const name of ['aria-label', 'placeholder', 'title']) {
         if (!element.hasAttribute(name)) continue;
         const dataName = `vocabularyBase${name.replace(/(^|-)([a-z])/g, (_match, _separator, letter) => letter.toUpperCase())}`;
-        if (!element.dataset[dataName]) element.dataset[dataName] = element.getAttribute(name);
-        element.setAttribute(name, applyVocabularyCopy(element.dataset[dataName], 'owned-accessible'));
+        const record = localizedAttributes.get(element)?.get(name);
+        const source = record?.source || element.dataset[dataName] || element.getAttribute(name);
+        setOwnedAttribute(element, name, source);
       }
     });
   }
@@ -245,32 +476,42 @@
   }
 
   function notify(title, body, kind = 'info', persist = true) {
-    const item = { id: `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title, body, kind, timestamp: new Date().toISOString(), dismissed: false };
+    const category = kind === 'info' ? 'informational' : kind;
+    const renderedTitle = categorizedMessage(title, category);
+    const renderedBody = categorizedMessage(body, category);
+    const item = { id: `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: renderedTitle, body: renderedBody, kind, timestamp: new Date().toISOString(), dismissed: false };
     if (persist && state) {
       state.notifications.unshift(item);
       state.notifications = state.notifications.slice(0, 500);
       scheduleSave('Notification recorded');
+    }
+    if (state?.settings?.adhd?.lowStimulation && ['info', 'success'].includes(kind)) {
+      renderNotifications();
+      return;
     }
     const toast = document.createElement('div');
     toast.className = `toast ${kind}`;
     toast.dataset.noticeId = item.id;
     if (['error', 'warning'].includes(kind)) toast.setAttribute('role', 'alert');
     toast.innerHTML = `<strong></strong><span></span>`;
-    setOwnedText($('strong', toast), title);
-    setOwnedText($('span', toast), body);
+    setOwnedText($('strong', toast), renderedTitle);
+    setOwnedText($('span', toast), renderedBody);
     if (['error', 'warning'].includes(kind)) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'toast-dismiss';
       button.dataset.dismissNotice = item.id;
       setOwnedText(button, 'Dismiss notification');
-      setOwnedAttribute(button, 'aria-label', `Dismiss ${title}`);
+      setOwnedAttribute(button, 'aria-label', `${localizedLiteral('Dismiss notification', 'accessibility')} ${renderedTitle}`);
       button.addEventListener('click', () => dismissNotification(item.id));
       toast.append(button);
     }
     $('#toast-region').append(toast);
     if (!['error', 'warning'].includes(kind)) setTimeout(() => toast.remove(), 5200);
-    narrate(`${title}. ${body}`, kind);
+    narrate({
+      english: `${categorizedMessage(title, category, 'en')}. ${categorizedMessage(body, category, 'en')}`,
+      cantonese: `${categorizedMessage(title, category, 'yue')}. ${categorizedMessage(body, category, 'yue')}`
+    }, kind);
     renderNotifications();
   }
 
@@ -325,42 +566,97 @@
 
   function applyTranslations() {
     $$('[data-i18n]').forEach((element) => { setOwnedText(element, text(element.dataset.i18n)); });
-    document.documentElement.lang = schoolRecord?.enabled || state.settings.language === 'en' ? 'en' : state.settings.language === 'yue' ? 'yue-Hant-HK' : 'en';
+    const language = activeLanguage();
+    document.documentElement.lang = language === 'yue' ? 'yue-Hant-HK' : 'en';
+    applyPresentationCorpus(document.body);
   }
 
   function prefersReducedMotion() {
-    return Boolean(state?.settings.reducedMotion || reducedMotionQuery.matches);
+    return Boolean(effectiveSetting('reducedMotion') || reducedMotionQuery.matches);
+  }
+
+  function captureSchoolPreferences() {
+    if (!state?.settings || state.settings.schoolPreferenceSnapshot) return;
+    state.settings.schoolPreferenceSnapshot = bridge.school.capturePreferences(state.settings);
+  }
+
+  function restoreSchoolPreferences() {
+    if (!state?.settings?.schoolPreferenceSnapshot) return;
+    state.settings = bridge.school.restorePreferences(state.settings, state.settings.schoolPreferenceSnapshot);
+    state.settings.schoolPreferenceSnapshot = null;
+  }
+
+  function filterSchoolRestrictedContent(items) {
+    if (!schoolRecord?.enabled) return items;
+    return items.filter((item) => !bridge.school.isFeatureSuppressed(item?.featureId || '', true));
+  }
+
+  function schoolSafeElementText(element) {
+    if (!schoolRecord?.enabled) return `${element.textContent} ${element.dataset.settingsKeywords || ''}`;
+    const clone = element.cloneNode(true);
+    $$('[data-school-feature]', clone).forEach((node) => node.remove());
+    return `${clone.textContent} ${element.dataset.schoolSafeKeywords || ''}`;
+  }
+
+  function applySchoolSuppression() {
+    $$('[data-school-feature]').forEach((element) => {
+      const hidden = bridge.school.isFeatureSuppressed(element.dataset.schoolFeature, Boolean(schoolRecord?.enabled));
+      if (element.dataset.schoolOriginalHidden === undefined) element.dataset.schoolOriginalHidden = element.hidden ? 'true' : 'false';
+      if ('disabled' in element && element.dataset.schoolOriginalDisabled === undefined) element.dataset.schoolOriginalDisabled = element.disabled ? 'true' : 'false';
+      element.classList.toggle('school-hidden', hidden);
+      element.hidden = hidden ? true : element.dataset.schoolOriginalHidden === 'true';
+      element.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+      if ('disabled' in element) element.disabled = hidden ? true : element.dataset.schoolOriginalDisabled === 'true';
+    });
+    const languageCard = $('#setting-language')?.closest('.settings-card');
+    if (languageCard) languageCard.hidden = false;
+    const schoolCard = $('#school-enabled')?.closest('.settings-card');
+    if (schoolCard) schoolCard.dataset.settingsKeywords = `${schoolRecord?.displayName || 'Shared mode'} shared rename unlock`;
+    if (schoolRecord?.enabled) {
+      $('#startup-surprise').hidden = true;
+      if (startupSurpriseTimer) clearTimeout(startupSurpriseTimer);
+      startupSurpriseTimer = null;
+    }
+  }
+
+  async function applySchoolRecordTransition(record, { persist = true } = {}) {
+    const wasEnabled = lastSchoolEnabled ?? Boolean(schoolRecord?.enabled);
+    schoolRecord = record;
+    const isEnabled = Boolean(record?.enabled);
+    if (!wasEnabled && isEnabled) captureSchoolPreferences();
+    if (wasEnabled && !isEnabled) restoreSchoolPreferences();
+    lastSchoolEnabled = isEnabled;
+    updateSchoolUi();
+    applySettings();
+    renderSettingsForm();
+    void renderDocs();
+    void renderChangelog();
+    void renderPalette();
+    if (persist && wasEnabled !== isEnabled) await saveNow(isEnabled ? 'Shared presentation mode enabled' : 'Shared presentation mode disabled');
   }
 
   function applySettings() {
-    document.body.dataset.theme = state.settings.theme;
-    document.body.dataset.density = state.settings.density;
-    document.body.dataset.tabDock = state.settings.tabDock;
-    document.documentElement.style.setProperty('--accent', state.settings.accent);
+    document.body.dataset.theme = effectiveSetting('theme');
+    document.body.dataset.density = effectiveSetting('density');
+    document.body.dataset.tabDock = effectiveSetting('tabDock');
+    document.documentElement.style.setProperty('--accent', effectiveSetting('accent'));
     const rainbowDurations = [20, 13, 8, 5, 3];
-    document.documentElement.style.setProperty('--rainbow-duration', `${rainbowDurations[state.settings.rainbowSpeedLevel - 1]}s`);
-    document.body.classList.toggle('low-stimulation', state.settings.adhd.lowStimulation || prefersReducedMotion());
+    document.documentElement.style.setProperty('--rainbow-duration', `${rainbowDurations[Number(effectiveSetting('rainbowSpeedLevel')) - 1] || 8}s`);
+    document.body.classList.toggle('low-stimulation', state.settings.adhd.lowStimulation);
     document.body.classList.toggle('focus-mode', state.settings.adhd.focus);
     document.body.classList.toggle('school-active', Boolean(schoolRecord?.enabled));
     if (!growthAnimation) setOwnedText($('#play-growth'), prefersReducedMotion() ? 'Show next stage' : 'Play growth');
-    $('#app-name').textContent = state.settings.displayName;
-    bridge.window.setTitle(state.settings.displayName);
+    $('#app-name').textContent = effectiveSetting('displayName');
+    bridge.window.setTitle(effectiveSetting('displayName'));
     $('#app-logo').src = state.settings.logo.customDataUrl || '../../assets/app-icon-48.png';
     $('#app-logo').style.objectFit = state.settings.logo.fit;
     $('#app-logo').style.background = state.settings.logo.background;
     const tabStrip = $('#tab-strip');
-    tabStrip.setAttribute('aria-orientation', ['left', 'right'].includes(state.settings.tabDock) ? 'vertical' : 'horizontal');
+    tabStrip.setAttribute('aria-orientation', ['left', 'right'].includes(effectiveSetting('tabDock')) ? 'vertical' : 'horizontal');
     applyTranslations();
+    $$('dialog').forEach(syncDialogEmoji);
     applySavedAppearances();
-    if (schoolRecord?.enabled) {
-      $$('[data-settings-keywords]').forEach((card) => {
-        const words = card.dataset.settingsKeywords.toLowerCase();
-        card.hidden = /language|funny|cantonese|vocabulary|dim.sum/.test(words);
-      });
-    } else {
-      $$('[data-settings-keywords]').forEach((card) => { card.hidden = false; });
-    }
-    $$('[data-school-feature="vocabulary"]').forEach((element) => { element.hidden = Boolean(schoolRecord?.enabled); });
+    applySchoolSuppression();
     applyOwnedVocabularyBoundaries();
     renderVocabularyStatus();
     renderAttentionAccommodations();
@@ -379,7 +675,7 @@
     }
     const symbols = { 'command-palette': '⌕', 'notification-dialog': '◉', 'appearance-dialog': '🎨', 'lock-dialog': '🔒', 'unlock-dialog': '🔓', 'support-dialog': '🎫', 'super-confirm-dialog': '⚠' };
     emoji.textContent = symbols[dialog.id] || '•';
-    dialog.classList.toggle('show-dialog-emoji', Boolean(state?.settings.showDialogEmoji));
+    dialog.classList.toggle('show-dialog-emoji', Boolean(effectiveSetting('showDialogEmoji')));
   }
 
   function openManagedDialog(dialog, options = {}) {
@@ -744,21 +1040,24 @@
     const destinations = $$('.tab').map((tab) => ({ id: `go-${tab.dataset.tab}`, label: `Open ${$('span', tab).textContent}`, kind: 'Destination', action: () => switchTab(tab.dataset.tab) }));
     const settings = [
       { id: 'theme', label: 'Theme', kind: 'Setting', control: 'theme' },
-      { id: 'language', label: 'Language mode', kind: 'Setting', control: 'language' },
-      { id: 'funny-en', label: 'English funny level', kind: 'Setting', control: 'funny-en' },
-      { id: 'funny-yue', label: 'Cantonese funny level', kind: 'Setting', control: 'funny-yue' },
+      { id: 'language', label: 'Language mode', kind: 'Setting', control: 'language', featureId: 'language' },
+      { id: 'funny-en', label: 'English funny level', kind: 'Setting', control: 'funny-en', featureId: 'funny.english' },
+      { id: 'funny-yue', label: 'Cantonese funny level', kind: 'Setting', control: 'funny-yue', featureId: 'funny.cantonese' },
       { id: 'tab-dock', label: 'Tab dock', kind: 'Setting', control: 'tab-dock' },
-      { id: 'vocabulary-choose', label: 'Choose or replace personal vocabulary JSON', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#choose-vocabulary') },
-      { id: 'vocabulary-status', label: 'Personal vocabulary status', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#vocabulary-state') },
-      { id: 'vocabulary-clear', label: 'Clear personal vocabulary cache', kind: 'Setting', feature: 'vocabulary', action: () => teleportToElement('settings', '#clear-vocabulary') },
+      { id: 'vocabulary-choose', label: 'Choose or replace personal vocabulary JSON', kind: 'Setting', featureId: 'personal-vocabulary', action: () => teleportToElement('settings', '#choose-vocabulary') },
+      { id: 'vocabulary-status', label: 'Personal vocabulary status', kind: 'Setting', featureId: 'personal-vocabulary.status', action: () => teleportToElement('settings', '#vocabulary-state') },
+      { id: 'vocabulary-clear', label: 'Clear personal vocabulary cache', kind: 'Setting', featureId: 'personal-vocabulary.clear', action: () => teleportToElement('settings', '#clear-vocabulary') },
       { id: 'support-tickets', label: 'Open local Support Tickets', kind: 'Destination', action: () => openManagedDialog($('#support-dialog')) },
       { id: 'notification-history', label: 'Open notification history', kind: 'Destination', action: () => openManagedDialog($('#notification-dialog')) },
       { id: 'history-manager', label: 'Protected local version history', kind: 'Destination', action: () => teleportToElement('docs', '#history-manager-title') },
       { id: 'one-thing', label: 'One thing at a time current action', kind: 'Setting', action: () => teleportToElement('settings', '#adhd-next-action') },
       { id: 'momentum', label: 'Momentum accommodation', kind: 'Setting', action: () => teleportToElement('settings', '[data-adhd="momentum"]') }
     ];
-    return [...destinations, ...settings, ...docs.map((article) => ({ id: `docs-${article.id}`, label: article.title, kind: 'Offline article', action: () => openDoc(article.id) }))]
-      .filter((entry) => !schoolRecord?.enabled || entry.feature !== 'vocabulary');
+    return filterSchoolRestrictedContent([
+      ...destinations,
+      ...settings,
+      ...docs.map((article) => ({ id: `docs-${article.id}`, label: articleTitle(article), kind: 'Offline article', featureId: article.featureId, action: () => openDoc(article.id) }))
+    ]);
   }
 
   async function renderPalette() {
@@ -1015,13 +1314,39 @@
     } catch (error) { list.innerHTML = '<div class="empty-state">Credential vault unavailable.</div>'; handleError(error, 'Authenticator unavailable'); }
   }
 
+  function articleTitle(article) {
+    try {
+      const resolved = presentation.resolveArticle(article.id, presentationOptions(), { schoolMode: Boolean(schoolRecord?.enabled) });
+      return resolved.secondary ? `${resolved.primary.title} · ${resolved.secondary.title}` : resolved.primary.title;
+    } catch {}
+    const language = activeLanguage();
+    if (language === 'yue') return article.titleYue || article.title;
+    if (language === 'bilingual' && article.titleYue) return `${article.title} · ${article.titleYue}`;
+    return article.title;
+  }
+
+  function articleBody(article) {
+    try {
+      const resolved = presentation.resolveArticle(article.id, presentationOptions(), { schoolMode: Boolean(schoolRecord?.enabled) });
+      return resolved.secondary
+        ? `${resolved.primary.bodyHtml}<hr aria-hidden="true">${resolved.secondary.bodyHtml}`
+        : resolved.primary.bodyHtml;
+    } catch {}
+    if (schoolRecord?.enabled) return article.schoolBody || article.body;
+    const language = activeLanguage();
+    if (language === 'yue') return article.bodyYue || article.body;
+    if (language === 'bilingual' && article.bodyYue) return `${article.body}<hr aria-hidden="true">${article.bodyYue}`;
+    return article.body;
+  }
+
   async function renderDocs() {
     const list = $('#docs-list');
-    const visible = await filterBySearch($('#docs-search'), docs, (article) => `${article.title} ${article.body.replace(/<[^>]+>/g, ' ')}`);
+    const available = filterSchoolRestrictedContent(docs);
+    const visible = await filterBySearch($('#docs-search'), available, (article) => `${articleTitle(article)} ${articleBody(article).replace(/<[^>]+>/g, ' ')}`);
     if (visible === null) return;
     list.replaceChildren();
     visible.forEach((article) => {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = article.title; button.addEventListener('click', () => openDoc(article.id)); list.append(button);
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = articleTitle(article); button.addEventListener('click', () => openDoc(article.id)); list.append(button);
     });
     if (!list.childElementCount) list.innerHTML = '<div class="empty-state">No guide article matches.</div>';
     void renderChangelog();
@@ -1029,9 +1354,10 @@
 
   function openDoc(id) {
     switchTab('docs');
-    const article = docs.find((item) => item.id === id);
+    const article = filterSchoolRestrictedContent(docs).find((item) => item.id === id);
     if (!article) return;
-    $('#docs-content').innerHTML = article.body;
+    $('#docs-content').dataset.presentationManaged = '';
+    $('#docs-content').innerHTML = articleBody(article);
     $$('[data-external-url]', $('#docs-content')).forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); bridge.external.openUrl(link.dataset.externalUrl).catch((error) => handleError(error, 'Link could not open')); }));
   }
 
@@ -1039,13 +1365,14 @@
     const list = $('#changelog-list');
     const from = $('#changelog-date').value;
     const dated = changelog.filter((entry) => !from || entry.date >= from);
-    const visible = await filterBySearch($('#changelog-search'), dated, (entry) => `${entry.version} ${entry.date} ${entry.changes.join(' ')}`);
+    const changeText = (change) => typeof change === 'string' ? change : change.text;
+    const visible = await filterBySearch($('#changelog-search'), dated, (entry) => `${entry.version} ${entry.date} ${filterSchoolRestrictedContent(entry.changes.map((change) => typeof change === 'string' ? { text: change } : change)).map(changeText).join(' ')}`);
     if (visible === null) return;
     list.replaceChildren();
     visible.forEach((entry) => {
       const row = document.createElement('article'); row.className = 'changelog-row';
       const heading = document.createElement('strong'); heading.textContent = `Version ${entry.version} · ${entry.date}`;
-      const listElement = document.createElement('ul'); entry.changes.forEach((change) => { const item = document.createElement('li'); item.textContent = change; listElement.append(item); });
+      const listElement = document.createElement('ul'); filterSchoolRestrictedContent(entry.changes.map((change) => typeof change === 'string' ? { text: change } : change)).forEach((change) => { const item = document.createElement('li'); item.textContent = changeText(change); listElement.append(item); });
       const commit = document.createElement('small'); commit.textContent = `Commit: ${entry.commit}`; row.append(heading, listElement, commit); list.append(row);
     });
     if (!list.childElementCount) list.innerHTML = '<div class="empty-state">No released changes match the active filters.</div>';
@@ -1183,18 +1510,244 @@
   function renderAttentionAccommodations() {
     if (!state?.settings?.adhd) return;
     const settings = state.settings.adhd;
-    const currentAction = settings.nextAction.trim();
-    $('#one-thing-banner').hidden = !(settings.oneThing && currentAction);
-    $('#one-thing-current').textContent = currentAction || 'No current action is set.';
-    const momentum = evaluateMomentumPrompt();
-    $('#momentum-banner').hidden = !momentum.visible;
-    $('#momentum-message').textContent = momentum.visible ? `Nothing has changed here for ${momentum.minutes} minutes.` : '';
+    const view = attention.deriveAttentionView(settings, {
+      now: Date.now(),
+      sessionStartedAt: sessionOpenedAt,
+      systemReducedMotion: prefersReducedMotion(),
+      activeRegionId: document.activeElement?.closest?.('[data-element-id]')?.dataset.elementId || null
+    });
+    const sessionMinutes = Math.floor(view.timeAwareness.sessionElapsedSeconds / 60);
+    const changeMinutes = Math.floor(view.timeAwareness.sinceMeaningfulChangeSeconds / 60);
+    $('#time-awareness-banner').hidden = !view.timeAwareness.enabled;
+    $('#time-awareness-session').textContent = localizedLiteral(`Session open for ${sessionMinutes} minutes.`, 'informational');
+    $('#time-awareness-change').textContent = localizedLiteral(`Last meaningful change was ${changeMinutes} minutes ago.`, 'informational');
+    $('#one-thing-banner').hidden = !(view.oneThing.enabled && view.oneThing.hasNextAction);
+    $('#one-thing-current').textContent = view.oneThing.nextAction || localizedLiteral('No current action is set.', 'informational');
+    $('#momentum-banner').hidden = !view.momentum.promptDue;
+    $('#momentum-message').textContent = view.momentum.promptDue ? localizedLiteral(`Nothing has changed here for ${Math.floor(view.momentum.idleElapsedSeconds / 60)} minutes.`, 'informational') : '';
+  }
+
+  function secureStartupDraw() {
+    const sample = new Uint32Array(1);
+    crypto.getRandomValues(sample);
+    return sample[0] / 0x100000000;
+  }
+
+  async function showStartupSurprise(updateState = { status: 'idle' }) {
+    const firstRun = !state.startup.firstRunCompleted;
+    const decision = bridge.delight.shouldShow({
+      launchState: startupLaunchState,
+      draw: secureStartupDraw(),
+      exclusions: {
+        firstRun,
+        schoolMode: Boolean(schoolRecord?.enabled),
+        errorActive: updateState?.status === 'error',
+        updateActive: ['checking', 'available', 'ready'].includes(updateState?.status),
+        midTask: false
+      }
+    });
+    startupLaunchState = decision.launchState;
+    if (firstRun) {
+      state.startup.firstRunCompleted = true;
+      await saveNow('First-run startup surprise exclusion completed');
+    }
+    const surface = $('#startup-surprise');
+    surface.hidden = true;
+    if (!decision.selected || state.settings.adhd.lowStimulation || schoolRecord?.enabled) return decision;
+    try {
+      const [photo, record] = await Promise.all([bridge.delight.photo(), Promise.resolve(bridge.delight.record())]);
+      if (schoolRecord?.enabled || state.settings.adhd.lowStimulation) return decision;
+      const language = activeLanguage();
+      $('#startup-surprise-image').src = photo.dataUrl;
+      $('#startup-surprise-image').alt = language === 'yue' ? record.alt.zhHant : language === 'bilingual' ? `${record.alt.en} · ${record.alt.zhHant}` : record.alt.en;
+      $('#startup-surprise-name').textContent = language === 'yue' ? record.name.zhHant : language === 'bilingual' ? `${record.name.en} · ${record.name.zhHant}` : record.name.en;
+      $('#startup-surprise-copy').textContent = localizedLiteral('A small startup surprise from the public dim-sum catalog.', 'informational');
+      surface.hidden = false;
+      if (startupSurpriseTimer) clearTimeout(startupSurpriseTimer);
+      startupSurpriseTimer = setTimeout(() => { surface.hidden = true; startupSurpriseTimer = null; }, 8000);
+    } catch {
+      surface.hidden = true;
+    }
+    return decision;
+  }
+
+  function parseScheduledValue(setting, rawValue) {
+    const value = String(rawValue ?? '').trim();
+    if (['funnyEnglish', 'funnyCantonese', 'fontWeight', 'rainbowSpeedLevel'].includes(setting)) return Number(value);
+    if (setting === 'fontScale') return Number(value);
+    if (['showDialogEmoji', 'reducedMotion'].includes(setting)) {
+      if (!['true', 'false'].includes(value.toLowerCase())) throw new TypeError('Boolean scheduled values must be true or false.');
+      return value.toLowerCase() === 'true';
+    }
+    return value;
+  }
+
+  function scheduleSettingsFromForm() {
+    const setting = $('#schedule-setting').value;
+    return { [setting]: parseScheduledValue(setting, $('#schedule-value').value) };
+  }
+
+  function scheduleRuleFromForm(id = selectedScheduleId || `schedule-${Date.now()}`) {
+    const sourceType = $('#schedule-source').value;
+    const commonBounds = { timeoutMs: 8000, refreshIntervalMs: 60000, maxResponseBytes: 65536, redirectPolicy: 'error' };
+    let source;
+    if (sourceType === 'local') source = { type: 'local', settings: scheduleSettingsFromForm() };
+    else if (sourceType === 'api') source = { type: 'api', url: $('#schedule-api-url').value, ...commonBounds };
+    else source = {
+      type: 'home-assistant',
+      baseUrl: $('#schedule-ha-url').value,
+      entityId: $('#schedule-ha-entity').value,
+      credentialRef: 'home-assistant-primary',
+      settings: scheduleSettingsFromForm(),
+      ...commonBounds
+    };
+    const everyDay = $('#schedule-every-day').checked;
+    return schedules.normalizeRule({
+      id,
+      label: $('#schedule-label').value.trim() || 'Scheduled presentation rule',
+      enabled: $('#schedule-enabled').checked,
+      priority: Number($('#schedule-priority').value),
+      startDate: $('#schedule-start-date').value || null,
+      endDate: $('#schedule-end-date').value || null,
+      startTime: $('#schedule-start').value,
+      endTime: $('#schedule-end').value,
+      dayMode: everyDay ? 'every-day' : 'weekdays',
+      weekdays: everyDay ? [] : $$('[data-schedule-weekday]:checked').map((input) => Number(input.dataset.scheduleWeekday)),
+      timezone: $('#schedule-timezone').value,
+      source
+    });
+  }
+
+  function scheduledSettingEntry(rule) {
+    if (rule.source.type === 'api') return null;
+    return Object.entries(rule.source.settings)[0] || null;
+  }
+
+  function fillScheduleForm(rule) {
+    selectedScheduleId = rule.id;
+    $('#schedule-label').value = rule.label;
+    $('#schedule-enabled').checked = rule.enabled;
+    $('#schedule-priority').value = rule.priority;
+    $('#schedule-start-date').value = rule.startDate || '';
+    $('#schedule-end-date').value = rule.endDate || '';
+    $('#schedule-start').value = rule.startTime;
+    $('#schedule-end').value = rule.endTime;
+    $('#schedule-timezone').value = rule.timezone;
+    $('#schedule-every-day').checked = rule.dayMode === 'every-day';
+    $$('[data-schedule-weekday]').forEach((input) => { input.checked = rule.weekdays.includes(Number(input.dataset.scheduleWeekday)); });
+    $('#schedule-source').value = rule.source.type;
+    $('#schedule-api-url').value = rule.source.type === 'api' ? rule.source.url : '';
+    $('#schedule-ha-url').value = rule.source.type === 'home-assistant' ? rule.source.baseUrl : '';
+    $('#schedule-ha-entity').value = rule.source.type === 'home-assistant' ? rule.source.entityId : '';
+    const settingEntry = scheduledSettingEntry(rule);
+    if (settingEntry) {
+      $('#schedule-setting').value = settingEntry[0];
+      $('#schedule-value').value = String(settingEntry[1]);
+    }
+    updateScheduleSourceFields();
+    renderSchedules();
+  }
+
+  function resetScheduleForm() {
+    selectedScheduleId = '';
+    $('#schedule-label').value = '';
+    $('#schedule-enabled').checked = true;
+    $('#schedule-priority').value = 0;
+    $('#schedule-start-date').value = '';
+    $('#schedule-end-date').value = '';
+    $('#schedule-start').value = '09:00';
+    $('#schedule-end').value = '17:00';
+    $('#schedule-timezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    $('#schedule-every-day').checked = true;
+    $$('[data-schedule-weekday]').forEach((input) => { input.checked = false; });
+    $('#schedule-source').value = 'local';
+    $('#schedule-api-url').value = '';
+    $('#schedule-ha-url').value = '';
+    $('#schedule-ha-entity').value = '';
+    $('#schedule-ha-token').value = '';
+    updateScheduleSourceFields();
+    renderSchedules();
+  }
+
+  function updateScheduleSourceFields() {
+    const sourceType = $('#schedule-source').value;
+    $('#schedule-api-url').closest('label').hidden = sourceType !== 'api';
+    for (const id of ['schedule-ha-url', 'schedule-ha-entity', 'schedule-ha-token']) $(`#${id}`).closest('label').hidden = sourceType !== 'home-assistant';
+    $('#schedule-save-ha-token').hidden = sourceType !== 'home-assistant';
+    const localValue = sourceType !== 'api';
+    $('#schedule-setting').closest('label').hidden = !localValue;
+    $('#schedule-value').closest('label').hidden = !localValue;
+    $$('[data-schedule-weekday]').forEach((input) => { input.disabled = $('#schedule-every-day').checked; });
   }
 
   function renderSchedules() {
-    $('#schedule-list').textContent = state.schedules.length
-      ? state.schedules.map((rule) => `${rule.label}: ${rule.startTime} to ${rule.endTime}, ${rule.enabled ? 'enabled' : 'disabled'}`).join(' · ')
-      : `No scheduled rules. Times use ${Intl.DateTimeFormat().resolvedOptions().timeZone} and follow daylight-saving changes.`;
+    const list = $('#schedule-list');
+    list.replaceChildren();
+    for (const rule of state.schedules) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `schedule-row tonal-button${rule.id === selectedScheduleId ? ' selected' : ''}`;
+      button.setAttribute('aria-pressed', rule.id === selectedScheduleId ? 'true' : 'false');
+      const sourceLabel = rule.source.type === 'home-assistant' ? 'Home Assistant' : rule.source.type === 'api' ? 'API' : 'local';
+      button.textContent = `${rule.label}: ${rule.startTime} to ${rule.endTime} in ${rule.timezone}, ${rule.enabled ? 'enabled' : 'disabled'}, ${sourceLabel}`;
+      button.addEventListener('click', () => fillScheduleForm(rule));
+      list.append(button);
+    }
+    if (!state.schedules.length) list.textContent = `No scheduled rules. Times use ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'} and follow daylight-saving changes.`;
+    $('#schedule-delete').disabled = !selectedScheduleId;
+    $('#add-schedule').textContent = selectedScheduleId ? 'Update selected rule' : 'Add scheduled rule';
+  }
+
+  async function evaluateAndApplySchedules() {
+    const generation = ++scheduleGeneration;
+    const now = new Date().toISOString();
+    const winningRules = schedules.chooseWinningRules(state.schedules, now);
+    const nextResults = { ...scheduleSourceResults };
+    const errors = [];
+    for (const rule of winningRules) {
+      try {
+        const candidate = rule.source.type === 'local'
+          ? schedules.validateSourceResult(rule, null, { generation, receivedAt: new Date().toISOString() })
+          : await schedules.resolve({ rule, generation });
+        if (generation !== scheduleGeneration) return;
+        if (candidate.sourceScope !== schedules.canonicalSourceScope(rule)) throw new Error('The scheduled source changed before its response arrived.');
+        nextResults[rule.id] = candidate;
+      } catch (error) {
+        errors.push(`${rule.label}: ${error?.message || String(error)}`);
+      }
+    }
+    if (generation !== scheduleGeneration) return;
+    scheduleSourceResults = nextResults;
+    const resolved = schedules.resolveDocument({ schemaVersion: 1, rules: state.schedules }, now, {}, scheduleSourceResults);
+    scheduledOverrides = { ...resolved.settings };
+    applySettings();
+    $('#schedule-status').textContent = errors.length
+      ? `${resolved.appliedRuleIds.length} rule${resolved.appliedRuleIds.length === 1 ? '' : 's'} applied. ${errors.length} source${errors.length === 1 ? '' : 's'} could not refresh, so the last valid or base values remain. ${errors.join(' ')}`
+      : `${resolved.appliedRuleIds.length} of ${resolved.matchedRuleIds.length} matching rule${resolved.matchedRuleIds.length === 1 ? '' : 's'} applied at ${new Date().toLocaleTimeString()} in their configured timezones.`;
+  }
+
+  function nextScheduleRefreshDelay() {
+    const externalIntervals = state.schedules
+      .filter((rule) => rule.enabled && rule.source.type !== 'local')
+      .map((rule) => rule.source.refreshIntervalMs);
+    return Math.min(60000, ...externalIntervals);
+  }
+
+  function queueScheduleRefresh() {
+    if (scheduleRefreshTimer) clearTimeout(scheduleRefreshTimer);
+    scheduleRefreshTimer = setTimeout(() => {
+      evaluateAndApplySchedules()
+        .catch((error) => handleError(error, 'Scheduled settings refresh failed'))
+        .finally(queueScheduleRefresh);
+    }, nextScheduleRefreshDelay());
+  }
+
+  async function evaluateAndQueueSchedules() {
+    try {
+      await evaluateAndApplySchedules();
+    } finally {
+      queueScheduleRefresh();
+    }
   }
 
   function renderSettingsForm() {
@@ -1213,12 +1766,16 @@
     $('#logo-background').value = state.settings.logo.background;
     $('#logo-state').textContent = state.settings.logo.customDataUrl ? 'A validated local custom image is active.' : 'No custom logo selected.';
     $('#narrator-enabled').checked = state.settings.narrator.enabled;
-    $('#narrator-language').value = state.settings.narrator.language;
+    $('#narrator-language').value = schoolRecord?.enabled ? 'en' : state.settings.narrator.language;
     $('#narrator-rate').value = state.settings.narrator.rate; $('#narrator-rate-value').value = state.settings.narrator.rate;
     $('#narrator-pitch').value = state.settings.narrator.pitch; $('#narrator-pitch-value').value = state.settings.narrator.pitch;
+    $('#narrator-yield-assistive').checked = true;
+    $('#narrator-assistive-active').checked = state.settings.narrator.assistiveTechnologyActive;
     $$('[data-adhd]').forEach((input) => { input.checked = state.settings.adhd[input.dataset.adhd]; });
     $('#adhd-next-action').value = state.settings.adhd.nextAction;
     $('#status-hub-url').value = state.settings.statusHubUrl;
+    if (!selectedScheduleId) $('#schedule-timezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    updateScheduleSourceFields();
     renderSchedules();
   }
 
@@ -1365,21 +1922,100 @@
     if (!models.length) container.innerHTML = '<div class="empty-state">The local service is healthy but no models are installed.</div>'; $('#ollama-chat').disabled = !select.value;
   }
 
-  function populateVoices() {
-    const voices = speechSynthesis.getVoices();
-    const en = $('#narrator-en-voice'); const yue = $('#narrator-yue-voice'); const enCurrent = state.settings.narrator.englishVoiceId; const yueCurrent = state.settings.narrator.cantoneseVoiceId; en.innerHTML = '<option value="auto">Choose automatically</option>'; yue.innerHTML = '<option value="auto">Choose automatically</option>';
-    voices.forEach((voice) => { const stableId = voice.voiceURI; if (/^en[-_]/i.test(voice.lang)) { const option = document.createElement('option'); option.value = stableId; option.textContent = `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · network'}`; en.append(option); } if (/^(yue|zh[-_](HK|Hant))/i.test(voice.lang)) { const option = document.createElement('option'); option.value = stableId; option.textContent = `${voice.name} · ${voice.lang}${voice.localService ? '' : ' · network'}`; yue.append(option); } });
-    en.value = [...en.options].some((option) => option.value === enCurrent) ? enCurrent : 'auto'; yue.value = [...yue.options].some((option) => option.value === yueCurrent) ? yueCurrent : 'auto';
+  function voiceStatusCopy(status, language) {
+    const languageLabel = language === 'en' ? 'English' : 'Cantonese';
+    if (status.state === 'loading') return `${languageLabel} installed voices are still loading.`;
+    if (status.state === 'no-language-voice') return `No installed voice on this computer can read ${languageLabel}.`;
+    if (status.state === 'uninstalled') return `The chosen ${languageLabel} voice is not installed on this computer. The saved choice is kept, and ${status.effectiveVoiceName || 'an automatic voice'} is the current fallback.`;
+    if (status.state === 'network-backed') return `${status.effectiveVoiceName} is effective for ${languageLabel}. It is network-backed and may be silent offline.`;
+    return `${status.effectiveVoiceName || 'The automatic installed voice'} is effective for ${languageLabel}.`;
   }
 
-  function narrate(content, category = 'info') {
+  function populateVoices({ settled = false } = {}) {
+    const en = $('#narrator-en-voice');
+    const yue = $('#narrator-yue-voice');
+    if (!('speechSynthesis' in window)) {
+      en.replaceChildren(new Option('Choose automatically', 'auto'));
+      yue.replaceChildren(new Option('Choose automatically', 'auto'));
+      $('#narrator-en-status').textContent = localizedLiteral('Speech synthesis is unavailable on this computer.', 'accessibility');
+      $('#narrator-yue-status').textContent = localizedLiteral('Speech synthesis is unavailable on this computer.', 'accessibility');
+      return;
+    }
+    const rawVoices = speechSynthesis.getVoices().map((voice) => ({
+      voiceURI: voice.voiceURI,
+      name: voice.name,
+      lang: voice.lang,
+      localService: voice.localService,
+      default: voice.default
+    }));
+    narratorCatalog = narrator.reconcileVoices(narratorCatalog, rawVoices, { settled });
+    const controls = [
+      { language: 'en', element: en, selected: state.settings.narrator.englishVoiceId, status: $('#narrator-en-status') },
+      { language: 'yue', element: yue, selected: state.settings.narrator.cantoneseVoiceId, status: $('#narrator-yue-status') }
+    ];
+    for (const control of controls) {
+      control.element.replaceChildren(new Option(localizedLiteral('Choose automatically', 'accessibility'), 'auto'));
+      for (const voice of narrator.voiceOptions(narratorCatalog, control.language)) {
+        const suffix = voice.localService ? '' : ` · ${localizedLiteral('network-backed', 'informational')}`;
+        control.element.append(new Option(`${voice.name} · ${voice.lang}${suffix}`, voice.id));
+      }
+      if (control.selected !== 'auto' && ![...control.element.options].some((option) => option.value === control.selected)) {
+        control.element.append(new Option(`${localizedLiteral('Not installed', 'warning')} · ${control.selected}`, control.selected));
+      }
+      control.element.value = control.selected;
+      const effective = narrator.resolveVoice(narratorCatalog, control.language, control.selected);
+      control.status.textContent = localizedLiteral(voiceStatusCopy(effective, control.language), effective.state === 'uninstalled' || effective.state === 'no-language-voice' ? 'warning' : 'informational');
+    }
+    if (!settled && narratorCatalog.phase === 'loading') {
+      if (narratorSettleTimer) clearTimeout(narratorSettleTimer);
+      narratorSettleTimer = setTimeout(() => populateVoices({ settled: true }), 1500);
+    }
+  }
+
+  function narrate(content, category = 'information') {
     if (!state?.settings.narrator.enabled || !('speechSynthesis' in window)) return;
-    narratorQueue = narratorQueue.filter((item) => item.category !== category); narratorQueue.push({ content, category }); drainNarrator();
+    const request = typeof content === 'string'
+      ? { english: content, cantonese: localizedLiteral(content, category, {}, 'yue'), category, supersessionKey: category }
+      : { ...content, category, supersessionKey: content.supersessionKey || category };
+    const now = Date.now();
+    if (category !== 'error' && now - (narratorLastAcceptedAt.get(category) || 0) < 5000) return;
+    const narratorSettings = schoolRecord?.enabled ? { ...state.settings.narrator, language: 'en' } : state.settings.narrator;
+    const plan = narrator.planUtterances(request, narratorSettings, narratorCatalog, {
+      assistiveTechnologyActive: platformAccessibilityActive || state.settings.narrator.assistiveTechnologyActive,
+      reducedSound: state.settings.adhd.lowStimulation
+    });
+    if (!plan.utterances.length) return;
+    narratorLastAcceptedAt.set(category, now);
+    narratorQueue = narratorQueue.filter((item) => item.supersessionKey !== request.supersessionKey);
+    narratorQueue.push(...plan.utterances);
+    drainNarrator();
   }
 
   function drainNarrator() {
-    if (narratorSpeaking || !narratorQueue.length) return; const item = narratorQueue.shift(); narratorSpeaking = true; const settings = state.settings.narrator; const languages = settings.language === 'both' ? ['en', 'yue'] : [settings.language]; let index = 0;
-    const speakNext = () => { if (index >= languages.length) { narratorSpeaking = false; drainNarrator(); return; } const language = languages[index++]; const utterance = new SpeechSynthesisUtterance(item.content); utterance.lang = language === 'yue' ? 'yue-HK' : 'en-CA'; utterance.rate = settings.rate; utterance.pitch = settings.pitch; const id = language === 'yue' ? settings.cantoneseVoiceId : settings.englishVoiceId; if (id !== 'auto') utterance.voice = speechSynthesis.getVoices().find((voice) => voice.voiceURI === id) || null; utterance.onend = speakNext; utterance.onerror = speakNext; speechSynthesis.speak(utterance); }; speakNext();
+    if (narratorSpeaking || !narratorQueue.length || !('speechSynthesis' in window)) return;
+    const item = narratorQueue.shift();
+    narratorSpeaking = true;
+    const utterance = new SpeechSynthesisUtterance(item.text);
+    utterance.lang = item.languageTag;
+    utterance.rate = item.rate;
+    utterance.pitch = item.pitch;
+    utterance.voice = speechSynthesis.getVoices().find((voice) => voice.voiceURI === item.voiceId) || null;
+    const finish = () => { narratorSpeaking = false; drainNarrator(); };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    speechSynthesis.speak(utterance);
+  }
+
+  function applyAccessibilitySupportState(active) {
+    platformAccessibilityActive = active === true;
+    $('#narrator-assistive-status').textContent = platformAccessibilityActive
+      ? localizedLiteral('Operating-system accessibility support is active. Narration is paused.', 'accessibility')
+      : localizedLiteral('Operating-system accessibility support is not currently active.', 'accessibility');
+    if (platformAccessibilityActive) {
+      window.speechSynthesis?.cancel();
+      narratorQueue = [];
+      narratorSpeaking = false;
+    }
   }
 
   function renderEverything() {
@@ -1430,13 +2066,43 @@
     $('#settings-search').addEventListener('input', async () => {
       const input = $('#settings-search');
       const cards = $$('.settings-card');
-      const visible = await filterBySearch(input, cards, (card) => `${card.textContent} ${card.dataset.settingsKeywords}`);
+      const visible = await filterBySearch(input, cards, schoolSafeElementText);
       if (visible === null) return;
       const visibleCards = new Set(visible);
       cards.forEach((card) => card.classList.toggle('filtered-out', !visibleCards.has(card)));
     });
     $('#setting-language').addEventListener('change', () => { state.settings.language = $('#setting-language').value; applySettings(); scheduleSave('Language mode changed'); }); $('#funny-en').addEventListener('input', () => { state.settings.funnyEnglish = Number($('#funny-en').value); $('#funny-en-value').value = state.settings.funnyEnglish; scheduleSave('English funny level changed'); }); $('#funny-yue').addEventListener('input', () => { state.settings.funnyCantonese = Number($('#funny-yue').value); $('#funny-yue-value').value = state.settings.funnyCantonese; scheduleSave('Cantonese funny level changed'); }); $('#setting-emoji').addEventListener('change', () => { state.settings.showDialogEmoji = $('#setting-emoji').checked; $$('dialog').forEach(syncDialogEmoji); scheduleSave('Dialog emoji setting changed'); });
-    $('#school-enabled').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); applySettings(); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode could not change'); } }); $('#school-name').addEventListener('change', async () => { try { schoolRecord = await bridge.school.write({ enabled: $('#school-enabled').checked, displayName: $('#school-name').value }); updateSchoolUi(); } catch (error) { handleError(error, 'Shared mode name could not change'); } }); bridge.school.onChanged((record) => { schoolRecord = record; updateSchoolUi(); applySettings(); });
+    $('#school-enabled').addEventListener('change', () => {
+      $('#school-enabled').checked = Boolean(schoolRecord?.enabled);
+      $('#school-credential').focus();
+      $('#school-status').textContent = schoolRecord?.enabled
+        ? `Enter the shared unlock value, then use Disable ${schoolRecord.displayName}.`
+        : `Enter and confirm an unlock value, then use Save and enable ${schoolRecord?.displayName || 'this shared mode'}.`;
+    });
+    $('#school-save').addEventListener('click', async () => {
+      try {
+        const record = await bridge.school.configure({
+          displayName: $('#school-name').value,
+          credentialKind: $('#school-credential-kind').value,
+          credential: $('#school-credential').value
+        });
+        $('#school-credential').value = '';
+        await applySchoolRecordTransition(record);
+      } catch (error) { handleError(error, 'Shared mode could not be configured'); }
+    });
+    $('#school-unlock').addEventListener('click', async () => {
+      try {
+        const record = await bridge.school.disable({ credential: $('#school-credential').value });
+        $('#school-credential').value = '';
+        if (!record.unlocked) {
+          const delay = record.retryAfterMs ? ` Try again in ${Math.ceil(record.retryAfterMs / 1000)} seconds.` : ` ${record.remainingBeforeDelay} attempts remain before a short delay.`;
+          $('#school-status').textContent = `The shared unlock value did not match.${delay}`;
+          return;
+        }
+        await applySchoolRecordTransition(record);
+      } catch (error) { handleError(error, 'Shared mode could not be disabled'); }
+    });
+    bridge.school.onChanged((record) => { applySchoolRecordTransition(record).catch((error) => handleError(error, 'Shared mode change could not be applied')); });
     ['setting-theme', 'setting-density', 'setting-accent', 'setting-tab-dock', 'rainbow-speed'].forEach((id) => $(`#${id}`).addEventListener('input', () => { const map = { 'setting-theme': 'theme', 'setting-density': 'density', 'setting-accent': 'accent', 'setting-tab-dock': 'tabDock', 'rainbow-speed': 'rainbowSpeedLevel' }; state.settings[map[id]] = id === 'rainbow-speed' ? Number($(`#${id}`).value) : $(`#${id}`).value; applySettings(); scheduleSave(`${map[id]} setting changed`); }));
     $('#setting-display-name').addEventListener('change', () => { state.settings.displayName = $('#setting-display-name').value.trim() || 'Hair Growth Estimator'; applySettings(); scheduleSave('Display name changed'); }); $('#logo-preset').addEventListener('change', () => { state.settings.logo.preset = $('#logo-preset').value; scheduleSave('Logo preset changed'); }); $('#logo-fit').addEventListener('change', () => { state.settings.logo.fit = $('#logo-fit').value; applySettings(); scheduleSave('Logo fit changed'); }); $('#logo-background').addEventListener('input', () => { state.settings.logo.background = $('#logo-background').value; applySettings(); scheduleSave('Logo background changed'); });
     $('#choose-custom-logo').addEventListener('click', async () => { try { const result = await bridge.files.chooseLogo(); if (result.canceled) return; state.settings.logo.customDataUrl = result.dataUrl; applySettings(); renderSettingsForm(); scheduleSave('Custom logo changed'); notify('Custom logo applied', `${result.name}, ${result.bytes} bytes, passed byte-signature validation.`, 'success'); } catch (error) { handleError(error, 'Custom logo rejected'); } }); $('#clear-custom-logo').addEventListener('click', () => { state.settings.logo.customDataUrl = ''; applySettings(); renderSettingsForm(); scheduleSave('Custom logo reset'); });
@@ -1467,9 +2133,43 @@
     $$('[data-adhd]').forEach((input) => input.addEventListener('change', () => { state.settings.adhd[input.dataset.adhd] = input.checked; applySettings(); renderAttentionAccommodations(); scheduleSave(`${input.dataset.adhd} accommodation changed`); })); $('#adhd-next-action').addEventListener('change', () => { state.settings.adhd.nextAction = $('#adhd-next-action').value; state.settings.adhd.momentumDismissedUntil = null; renderAttentionAccommodations(); scheduleSave('Current next action changed'); });
     $('#complete-next-action').addEventListener('click', () => { state.settings.adhd.nextAction = ''; $('#adhd-next-action').value = ''; renderAttentionAccommodations(); scheduleSave('Current next action completed'); });
     $('#momentum-not-now').addEventListener('click', () => { state.settings.adhd.momentumDismissedUntil = new Date(Date.now() + 60 * 60000).toISOString(); renderAttentionAccommodations(); scheduleSave('Momentum prompt dismissed for 60 minutes'); });
-    $('#add-schedule').addEventListener('click', () => { state.schedules.push({ id: `schedule-${Date.now()}`, label: $('#schedule-label').value.trim() || 'Every-day theme rule', enabled: true, weekdays: [0,1,2,3,4,5,6], startTime: $('#schedule-start').value, endTime: $('#schedule-end').value, theme: state.settings.theme, language: state.settings.language }); renderSchedules(); scheduleSave('Scheduled settings rule added'); });
-    $('#narrator-enabled').addEventListener('change', () => { state.settings.narrator.enabled = $('#narrator-enabled').checked; scheduleSave('Narrator enabled setting changed'); }); $('#narrator-language').addEventListener('change', () => { state.settings.narrator.language = $('#narrator-language').value; scheduleSave('Narrator language changed'); }); $('#narrator-en-voice').addEventListener('change', () => { state.settings.narrator.englishVoiceId = $('#narrator-en-voice').value; scheduleSave('English narrator voice changed'); }); $('#narrator-yue-voice').addEventListener('change', () => { state.settings.narrator.cantoneseVoiceId = $('#narrator-yue-voice').value; scheduleSave('Cantonese narrator voice changed'); }); $('#narrator-rate').addEventListener('input', () => { state.settings.narrator.rate = Number($('#narrator-rate').value); $('#narrator-rate-value').value = state.settings.narrator.rate; scheduleSave('Narrator rate changed'); }); $('#narrator-pitch').addEventListener('input', () => { state.settings.narrator.pitch = Number($('#narrator-pitch').value); $('#narrator-pitch-value').value = state.settings.narrator.pitch; scheduleSave('Narrator pitch changed'); }); $('#narrator-test').addEventListener('click', () => narrate('Estimated hair length updated. This is an estimate, not a promise.', 'test'));
-    speechSynthesis.addEventListener?.('voiceschanged', populateVoices);
+    $('#dismiss-startup-surprise').addEventListener('click', () => { $('#startup-surprise').hidden = true; if (startupSurpriseTimer) clearTimeout(startupSurpriseTimer); startupSurpriseTimer = null; });
+    $('#add-schedule').addEventListener('click', async () => {
+      try {
+        const rule = scheduleRuleFromForm();
+        const index = state.schedules.findIndex((item) => item.id === rule.id);
+        if (index >= 0) state.schedules[index] = rule;
+        else state.schedules.push(rule);
+        selectedScheduleId = rule.id;
+        delete scheduleSourceResults[rule.id];
+        renderSchedules();
+        await saveNow(index >= 0 ? 'Scheduled settings rule updated' : 'Scheduled settings rule added');
+        await evaluateAndQueueSchedules();
+      } catch (error) { handleError(error, 'Scheduled rule is invalid'); }
+    });
+    $('#schedule-delete').addEventListener('click', () => {
+      const rule = state.schedules.find((item) => item.id === selectedScheduleId);
+      if (!rule) return;
+      openSuperConfirm(`Delete scheduled rule ${rule.label}`, 'This removes the selected local schedule record. Base settings remain unchanged.', async () => {
+        state.schedules = state.schedules.filter((item) => item.id !== rule.id);
+        delete scheduleSourceResults[rule.id];
+        resetScheduleForm();
+        await saveNow('Scheduled settings rule deleted');
+        await evaluateAndQueueSchedules();
+      });
+    });
+    $('#schedule-source').addEventListener('change', updateScheduleSourceFields);
+    $('#schedule-every-day').addEventListener('change', updateScheduleSourceFields);
+    $('#schedule-save-ha-token').addEventListener('click', async () => {
+      try {
+        const rule = scheduleRuleFromForm();
+        const result = await bridge.schedules.setHomeAssistantToken({ rule, token: $('#schedule-ha-token').value });
+        $('#schedule-ha-token').value = '';
+        $('#schedule-status').textContent = result.stored ? 'The access token is stored for this exact Home Assistant rule source.' : 'The access token was cleared for this exact Home Assistant rule source.';
+      } catch (error) { handleError(error, 'Home Assistant access token was not stored'); }
+    });
+    $('#narrator-enabled').addEventListener('change', () => { state.settings.narrator.enabled = $('#narrator-enabled').checked; scheduleSave('Narrator enabled setting changed'); }); $('#narrator-language').addEventListener('change', () => { state.settings.narrator.language = $('#narrator-language').value; scheduleSave('Narrator language changed'); }); $('#narrator-en-voice').addEventListener('change', () => { state.settings.narrator.englishVoiceId = $('#narrator-en-voice').value; populateVoices({ settled: true }); scheduleSave('English narrator voice changed'); }); $('#narrator-yue-voice').addEventListener('change', () => { state.settings.narrator.cantoneseVoiceId = $('#narrator-yue-voice').value; populateVoices({ settled: true }); scheduleSave('Cantonese narrator voice changed'); }); $('#narrator-rate').addEventListener('input', () => { state.settings.narrator.rate = Number($('#narrator-rate').value); $('#narrator-rate-value').value = state.settings.narrator.rate; scheduleSave('Narrator rate changed'); }); $('#narrator-pitch').addEventListener('input', () => { state.settings.narrator.pitch = Number($('#narrator-pitch').value); $('#narrator-pitch-value').value = state.settings.narrator.pitch; scheduleSave('Narrator pitch changed'); }); $('#narrator-assistive-active').addEventListener('change', () => { state.settings.narrator.assistiveTechnologyActive = $('#narrator-assistive-active').checked; if (state.settings.narrator.assistiveTechnologyActive) { window.speechSynthesis?.cancel(); narratorQueue = []; narratorSpeaking = false; } scheduleSave('Assistive technology narrator coexistence changed'); }); $('#narrator-test').addEventListener('click', () => narrate({ english: 'Estimated hair length updated. This is an estimate, not a promise.', cantonese: '頭髮長度估算已更新。呢個係估算，唔係保證。', supersessionKey: 'narrator-test' }, 'test'));
+    window.speechSynthesis?.addEventListener?.('voiceschanged', () => populateVoices({ settled: true }));
     $('#docs-search').addEventListener('input', () => { void renderDocs(); }); $('#changelog-search').addEventListener('input', () => { void renderChangelog(); }); $('#changelog-date').addEventListener('change', () => { void renderChangelog(); }); $('#refresh-history').addEventListener('click', () => { void renderHistory(); }); $('#open-app-data').addEventListener('click', () => bridge.files.showAppData().catch((error) => handleError(error, 'Folder could not open')));
     $('#palette-search').addEventListener('input', () => { void renderPalette(); });
     $('#notification-search').addEventListener('input', () => { void renderNotifications(); });
@@ -1610,7 +2310,19 @@
   }
 
   function updateSchoolUi() {
-    $('#school-enabled').checked = Boolean(schoolRecord?.enabled); $('#school-name').value = schoolRecord?.displayName || 'School mode'; $('#school-heading').textContent = schoolRecord?.displayName || 'School mode'; $('#school-toggle-label').textContent = `Enable ${schoolRecord?.displayName || 'School mode'}`; $('#school-status').textContent = schoolRecord?.status === 'available' ? `Shared record available. Last change: ${schoolRecord.updatedAt ? new Date(schoolRecord.updatedAt).toLocaleString() : 'not yet changed'}.` : 'The shared record is unavailable. The control cannot honestly report a shared change.';
+    const displayName = schoolRecord?.displayName || 'Shared mode';
+    $('#school-enabled').checked = Boolean(schoolRecord?.enabled);
+    $('#school-name').value = displayName;
+    $('#school-heading').textContent = displayName;
+    $('#school-toggle-label').textContent = `${displayName} is ${schoolRecord?.enabled ? 'enabled' : 'disabled'}`;
+    if (schoolRecord?.credentialKind && ['pin', 'password'].includes(schoolRecord.credentialKind)) $('#school-credential-kind').value = schoolRecord.credentialKind;
+    $('#school-credential-kind').disabled = Boolean(schoolRecord?.credentialConfigured);
+    $('#school-save').textContent = schoolRecord?.enabled ? `Save ${displayName} settings` : `Save and enable ${displayName}`;
+    $('#school-unlock').textContent = `Disable ${displayName}`;
+    $('#school-unlock').disabled = !schoolRecord?.enabled || schoolRecord?.status !== 'available';
+    $('#school-status').textContent = schoolRecord?.status === 'available'
+      ? `Shared record available. ${displayName} is ${schoolRecord.enabled ? 'enabled' : 'disabled'}. Last change: ${schoolRecord.updatedAt ? new Date(schoolRecord.updatedAt).toLocaleString() : 'not yet changed'}.`
+      : `The shared record is ${schoolRecord?.status || 'unavailable'}. The control cannot honestly report a shared change.`;
   }
 
   function updateUpdateUi(value) {
@@ -1619,11 +2331,24 @@
 
   async function initialize() {
     try {
-      [state, provenance, schoolRecord] = await Promise.all([bridge.state.read(), bridge.provenance.read(), bridge.school.read()]);
+      [state, provenance, schoolRecord, platformAccessibilityActive] = await Promise.all([
+        bridge.state.read(),
+        bridge.provenance.read(),
+        bridge.school.read(),
+        bridge.accessibility.status()
+      ]);
+      lastSchoolEnabled = Boolean(schoolRecord?.enabled);
+      if (lastSchoolEnabled && !state.settings.schoolPreferenceSnapshot) {
+        captureSchoolPreferences();
+        await saveNow('Shared presentation preferences retained');
+      }
       await loadVocabularyCache();
-      ensureElementIds(); bindEvents(); renderEverything(); updateSchoolUi(); renderHistory(); renderAuthenticators();
+      ensureElementIds(); bindEvents(); renderEverything(); startPresentationObserver(); updateSchoolUi(); renderHistory(); renderAuthenticators();
+      applyAccessibilitySupportState(platformAccessibilityActive);
+      bridge.accessibility.onChanged(applyAccessibilitySupportState);
       const update = await bridge.updates.state(); updateUpdateUi(update);
-      setInterval(() => { if (state.settings.adhd.timeAwareness) $('#metric-current-date').textContent = `${new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(new Date())} · session open ${Math.floor((Date.now() - sessionOpenedAt) / 60000)} minutes`; }, 30000);
+      void evaluateAndQueueSchedules().catch((error) => handleError(error, 'Scheduled settings evaluation failed'));
+      void showStartupSurprise(update).catch(() => {});
       setInterval(renderAuthenticators, 10000);
       setInterval(renderAttentionAccommodations, 30000);
       reducedMotionQuery.addEventListener?.('change', () => { if (prefersReducedMotion() && growthAnimation) { clearInterval(growthAnimation); growthAnimation = null; setOwnedText($('#play-growth'), 'Show next stage'); } applySettings(); });

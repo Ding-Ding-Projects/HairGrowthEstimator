@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, autoUpdater } = require('electron');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
@@ -20,6 +21,11 @@ const { StateStore, drainStateAndHistory } = require('./core/state-store');
 const { LocalVault } = require('./core/vault');
 const { LocalHistory } = require('./core/history');
 const { evaluateRegex: evaluateRegexInWorker } = require('./core/regex-worker');
+const EvidencePaths = require('./core/evidence-paths');
+const { hashSecret, verifySecret } = require('./core/credentials');
+const SchoolMode = require('./core/school-mode');
+const ScheduledSettings = require('./core/scheduled-settings');
+const { DIM_SUM_RECORD } = require('./core/delight-attention');
 const {
   CANONICAL_UPDATE_FEED_URL,
   UpdateRestartAuthorization,
@@ -35,6 +41,30 @@ const MAX_CONVERTER_SOURCE_BYTES = 10 * 1024 * 1024;
 const CONVERTER_HANDLES = new Map();
 const OLLAMA_ENDPOINTS = new Set(['/api/version', '/api/tags', '/api/ps', '/api/show', '/api/pull', '/api/chat', '/api/generate', '/api/copy', '/api/delete']);
 
+function initializeEvidencePathIsolation() {
+  const validation = EvidencePaths.validateEvidencePathArguments(process.argv);
+  if (!validation.active) return Object.freeze({ active: false });
+  fsSync.mkdirSync(validation.paths.appData, { recursive: true, mode: 0o700 });
+  fsSync.mkdirSync(validation.paths.userData, { recursive: true, mode: 0o700 });
+  const activatedValidation = EvidencePaths.validateEvidencePathArguments(process.argv);
+  app.setPath('appData', activatedValidation.paths.appData);
+  app.setPath('userData', activatedValidation.paths.userData);
+  const receipt = EvidencePaths.createEvidenceIsolationReceipt(activatedValidation);
+  fsSync.writeFileSync(
+    path.join(validation.paths.userData, 'evidence-isolation.json'),
+    `${JSON.stringify(receipt, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 }
+  );
+  fsSync.writeFileSync(
+    path.join(validation.paths.appData, 'evidence-app-data-active.json'),
+    `${JSON.stringify({ schemaVersion: 1, appDataPathSha256: receipt.appDataPathSha256 }, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 }
+  );
+  return Object.freeze({ active: true });
+}
+
+initializeEvidencePathIsolation();
+
 let mainWindow = null;
 let sshProcess = null;
 let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
@@ -45,6 +75,7 @@ const updateAuthorization = new UpdateRestartAuthorization();
 let activeUpdateCheck = null;
 let lastSchoolRecord = '';
 let schoolPoll = null;
+let schoolUnlockFailures = { failures: 0, retryAt: 0 };
 let shutdownStarted = false;
 let shutdownReady = false;
 
@@ -64,40 +95,155 @@ function sharedSchoolPath() {
   return path.join(app.getPath('appData'), 'Ding Ding Projects', 'shared-school-mode.json');
 }
 
+function sharedSchoolCredentialPath() {
+  return path.join(app.getPath('appData'), 'Ding Ding Projects', 'shared-school-mode-credential.bin');
+}
+
+function dimSumPhotoCachePath() {
+  return userDataPath('public-dim-sum-cache', DIM_SUM_RECORD.photoFileName);
+}
+
 function defaultSchoolRecord() {
-  return { schemaVersion: 1, enabled: false, displayName: 'School mode', updatedAt: null };
+  return SchoolMode.createDefaultSchoolRecord();
+}
+
+async function readSharedSchoolCredential() {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system credential protection is unavailable.');
+  try {
+    const encrypted = await fs.readFile(sharedSchoolCredentialPath());
+    const value = JSON.parse(safeStorage.decryptString(encrypted));
+    if (value?.schemaVersion !== 1 || !['pin', 'password'].includes(value.kind) || !value.record || typeof value.record !== 'object') {
+      throw new Error('The shared mode credential record is invalid.');
+    }
+    return value;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    if (/credential record is invalid|credential protection is unavailable/.test(error.message)) throw error;
+    throw new Error('The shared mode credential record could not be read.');
+  }
+}
+
+async function writeSharedSchoolCredential(kind, credential) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system credential protection is unavailable.');
+  const record = {
+    schemaVersion: 1,
+    kind,
+    record: hashSecret(credential, kind),
+    updatedAt: new Date().toISOString()
+  };
+  const encrypted = safeStorage.encryptString(JSON.stringify(record));
+  await atomicWriteFile(sharedSchoolCredentialPath(), encrypted, { mode: 0o600, maxBytes: 16 * 1024 });
+  return record;
+}
+
+function publicSchoolRecord(record, credential, status = 'available') {
+  return {
+    ...record,
+    credentialConfigured: Boolean(credential && record.unlock?.credentialRef === 'vault:shared-school-primary'),
+    credentialKind: credential?.kind || null,
+    status
+  };
 }
 
 async function readSchoolRecord() {
   try {
     const raw = await fs.readFile(sharedSchoolPath(), 'utf8');
-    const value = JSON.parse(raw);
-    if (value?.schemaVersion !== 1 || typeof value.enabled !== 'boolean') return { ...defaultSchoolRecord(), status: 'invalid' };
-    return {
-      schemaVersion: 1,
-      enabled: value.enabled,
-      displayName: typeof value.displayName === 'string' && value.displayName.trim() ? value.displayName.trim().slice(0, 80) : 'School mode',
-      updatedAt: typeof value.updatedAt === 'string' && !Number.isNaN(Date.parse(value.updatedAt)) ? value.updatedAt : null,
-      status: 'available'
-    };
+    const value = SchoolMode.normalizeSchoolRecord(JSON.parse(raw));
+    const credential = await readSharedSchoolCredential();
+    return publicSchoolRecord(value, credential);
   } catch (error) {
-    if (error.code === 'ENOENT') return { ...defaultSchoolRecord(), status: 'available' };
-    return { ...defaultSchoolRecord(), status: 'unavailable' };
+    if (error.code === 'ENOENT') {
+      try { return publicSchoolRecord(defaultSchoolRecord(), await readSharedSchoolCredential()); } catch { return { ...defaultSchoolRecord(), status: 'unavailable' }; }
+    }
+    return { ...defaultSchoolRecord(), status: 'invalid', credentialConfigured: false, credentialKind: null };
   }
 }
 
-async function writeSchoolRecord(input) {
-  const current = await readSchoolRecord();
-  const next = {
-    schemaVersion: 1,
-    enabled: Boolean(input?.enabled),
-    displayName: typeof input?.displayName === 'string' && input.displayName.trim() ? input.displayName.trim().slice(0, 80) : current.displayName,
-    updatedAt: new Date().toISOString()
-  };
-  await atomicWriteJson(sharedSchoolPath(), next, { maxBytes: 16 * 1024 });
+async function publishSchoolRecord(next) {
   lastSchoolRecord = JSON.stringify(next);
-  mainWindow?.webContents.send('school:changed', { ...next, status: 'available' });
-  return { ...next, status: 'available' };
+  mainWindow?.webContents.send('school:changed', next);
+  return next;
+}
+
+async function persistSchoolRecord(record) {
+  const normalized = SchoolMode.normalizeSchoolRecord(record);
+  await atomicWriteJson(sharedSchoolPath(), normalized, { maxBytes: 16 * 1024 });
+  return normalized;
+}
+
+function nextSchoolTimestamp(current) {
+  const now = Date.now();
+  const previous = current?.updatedAt ? Date.parse(current.updatedAt) : 0;
+  return new Date(Math.max(now, Number.isFinite(previous) ? previous + 1 : now)).toISOString();
+}
+
+async function configureSchoolMode(input) {
+  const credential = String(input?.credential || '');
+  const requestedKind = ['pin', 'password'].includes(input?.credentialKind) ? input.credentialKind : 'password';
+  const requestedDisplayName = SchoolMode.normalizeSchoolDisplayName(input?.displayName);
+  const currentPublic = await readSchoolRecord();
+  const current = currentPublic.status === 'available'
+    ? SchoolMode.normalizeSchoolRecord({
+        schemaVersion: currentPublic.schemaVersion,
+        revision: currentPublic.revision,
+        enabled: currentPublic.enabled,
+        displayName: currentPublic.displayName,
+        unlock: currentPublic.unlock,
+        updatedAt: currentPublic.updatedAt
+      })
+    : defaultSchoolRecord();
+  const existing = await readSharedSchoolCredential();
+  let activeCredential = existing;
+  const credentialRef = 'vault:shared-school-primary';
+  const evidence = {};
+  if (existing) {
+    if (!verifySecret(credential, existing.record, existing.kind)) throw new Error('The shared unlock value did not match. No shared change was made.');
+    if (requestedKind !== existing.kind) throw new Error('Choose the configured shared unlock method before changing this mode.');
+    evidence.verifiedCredentialRef = credentialRef;
+  } else {
+    activeCredential = await writeSharedSchoolCredential(requestedKind, credential);
+    evidence.enrolledCredentialRef = credentialRef;
+  }
+  const unlock = { policy: activeCredential.kind, credentialRef };
+  if (!current.unlock || current.unlock.policy !== unlock.policy || current.unlock.credentialRef !== unlock.credentialRef) evidence.enrolledCredentialRef = credentialRef;
+  const next = await persistSchoolRecord(SchoolMode.transitionSchoolMode(current, {
+    enabled: true,
+    displayName: requestedDisplayName,
+    unlock,
+    updatedAt: nextSchoolTimestamp(current)
+  }, evidence));
+  schoolUnlockFailures = { failures: 0, retryAt: 0 };
+  return publishSchoolRecord(publicSchoolRecord(next, activeCredential));
+}
+
+async function disableSchoolMode(input) {
+  const now = Date.now();
+  if (schoolUnlockFailures.retryAt > now) {
+    return { ...(await readSchoolRecord()), unlocked: false, retryAfterMs: schoolUnlockFailures.retryAt - now };
+  }
+  const existing = await readSharedSchoolCredential();
+  if (!existing) throw new Error('No shared unlock credential is configured. Configure one before changing the shared mode.');
+  if (!verifySecret(String(input?.credential || ''), existing.record, existing.kind)) {
+    const failures = schoolUnlockFailures.failures + 1;
+    const retryAt = failures >= 5 ? now + 30000 : 0;
+    schoolUnlockFailures = { failures: retryAt ? 0 : failures, retryAt };
+    return { ...(await readSchoolRecord()), unlocked: false, retryAfterMs: retryAt ? 30000 : 0, remainingBeforeDelay: retryAt ? 0 : 5 - failures };
+  }
+  schoolUnlockFailures = { failures: 0, retryAt: 0 };
+  const currentPublic = await readSchoolRecord();
+  const current = SchoolMode.normalizeSchoolRecord({
+    schemaVersion: currentPublic.schemaVersion,
+    revision: currentPublic.revision,
+    enabled: currentPublic.enabled,
+    displayName: currentPublic.displayName,
+    unlock: currentPublic.unlock,
+    updatedAt: currentPublic.updatedAt
+  });
+  const next = await persistSchoolRecord(SchoolMode.transitionSchoolMode(current, {
+    enabled: false,
+    updatedAt: nextSchoolTimestamp(current)
+  }, { verifiedCredentialRef: current.unlock.credentialRef }));
+  return publishSchoolRecord({ ...publicSchoolRecord(next, existing), unlocked: true });
 }
 
 async function pollSchoolRecord() {
@@ -155,9 +301,13 @@ async function readProvenance() {
 async function boundedFetch(url, options = {}) {
   const controller = new AbortController();
   const timeoutMs = Math.max(1000, Math.min(120000, Number(options.timeoutMs) || 8000));
+  const maxResponseBytes = Math.max(256, Math.min(MAX_RESPONSE_BYTES, Number(options.maxResponseBytes) || MAX_RESPONSE_BYTES));
+  const fetchOptions = { ...options };
+  delete fetchOptions.timeoutMs;
+  delete fetchOptions.maxResponseBytes;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal, redirect: 'error' });
     const reader = response.body?.getReader();
     const chunks = [];
     let size = 0;
@@ -166,9 +316,9 @@ async function boundedFetch(url, options = {}) {
         const { done, value } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > MAX_RESPONSE_BYTES) {
+        if (size > maxResponseBytes) {
           await reader.cancel();
-          throw new RangeError('Response exceeds 512 KiB.');
+          throw new RangeError(`Response exceeds the ${maxResponseBytes}-byte limit.`);
         }
         chunks.push(Buffer.from(value));
       }
@@ -182,6 +332,93 @@ async function boundedFetch(url, options = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function validateDimSumPhoto(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) throw new RangeError('The public catalog photo is outside the supported size bound.');
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!bytes.subarray(0, 8).equals(pngSignature)) throw new TypeError('The public catalog photo is not a valid PNG payload.');
+  return bytes;
+}
+
+async function fetchBoundedBytes(url, { timeoutMs = 8000, maxBytes = 2 * 1024 * 1024 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1000, Math.min(30000, Number(timeoutMs) || 8000)));
+  try {
+    const response = await fetch(url, { method: 'GET', headers: { accept: 'image/png' }, redirect: 'error', signal: controller.signal });
+    if (!response.ok) throw new Error(`The public catalog returned HTTP ${response.status}.`);
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('The public catalog photo response had no body.');
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new RangeError(`The public catalog photo exceeds ${maxBytes} bytes.`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function dimSumPhotoDataUrl() {
+  let bytes;
+  try {
+    bytes = validateDimSumPhoto(await fs.readFile(dimSumPhotoCachePath()));
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof TypeError) && !(error instanceof RangeError)) throw error;
+    bytes = validateDimSumPhoto(await fetchBoundedBytes(DIM_SUM_RECORD.photoUrl));
+    await atomicWriteFile(dimSumPhotoCachePath(), bytes, { mode: 0o600, maxBytes: 2 * 1024 * 1024 });
+  }
+  return { dataUrl: `data:image/png;base64,${bytes.toString('base64')}`, alt: DIM_SUM_RECORD.alt, id: DIM_SUM_RECORD.id };
+}
+
+function normalizeScheduleRuleInput(input) {
+  return ScheduledSettings.normalizeScheduleRule(input?.rule || input);
+}
+
+async function resolveScheduledSource(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  const generation = Number(input?.generation);
+  const receivedAt = new Date().toISOString();
+  if (rule.source.type === 'local') {
+    return ScheduledSettings.validateSourceResult(rule, null, { generation, receivedAt });
+  }
+  const descriptor = ScheduledSettings.createExternalRequestDescriptor(rule);
+  const headers = { ...descriptor.headers };
+  if (rule.source.type === 'home-assistant') {
+    const scope = ScheduledSettings.canonicalSourceScope(rule);
+    const accessToken = await localVault.externalSettingToken(scope);
+    if (!accessToken) throw new Error('The Home Assistant access token is not stored for this exact rule source.');
+    headers.authorization = `Bearer ${accessToken}`;
+  }
+  const { response, body } = await boundedFetch(descriptor.url, {
+    method: descriptor.method,
+    headers,
+    credentials: 'omit',
+    timeoutMs: descriptor.timeoutMs,
+    maxResponseBytes: descriptor.maxResponseBytes
+  });
+  if (!response.ok) throw new Error(`The scheduled-settings source returned HTTP ${response.status}.`);
+  return ScheduledSettings.validateSourceResult(rule, body, { generation, receivedAt });
+}
+
+async function setHomeAssistantScheduleToken(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  if (rule.source.type !== 'home-assistant') throw new TypeError('A Home Assistant rule is required to store this access token.');
+  return localVault.setExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule), input?.token);
+}
+
+async function hasHomeAssistantScheduleToken(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  if (rule.source.type !== 'home-assistant') return false;
+  return localVault.hasExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule));
 }
 
 async function apiRequest(request) {
@@ -589,8 +826,14 @@ function registerIpc() {
   ipcMain.handle('provenance:read', readProvenance);
   ipcMain.handle('state:read', readState);
   ipcMain.handle('state:write', (_event, { state, event }) => writeState(state, event));
-  ipcMain.handle('school:read', readSchoolRecord);
-  ipcMain.handle('school:write', (_event, value) => writeSchoolRecord(value));
+  ipcMain.handle('school:read', (event) => { assertTrustedIpcSender(event); return readSchoolRecord(); });
+  ipcMain.handle('school:configure', (event, value) => { assertTrustedIpcSender(event); return configureSchoolMode(value); });
+  ipcMain.handle('school:disable', (event, value) => { assertTrustedIpcSender(event); return disableSchoolMode(value); });
+  ipcMain.handle('accessibility:status', (event) => { assertTrustedIpcSender(event); return Boolean(app.accessibilitySupportEnabled); });
+  ipcMain.handle('delight:photo', (event) => { assertTrustedIpcSender(event); return dimSumPhotoDataUrl(); });
+  ipcMain.handle('schedule:resolve', (event, value) => { assertTrustedIpcSender(event); return resolveScheduledSource(value); });
+  ipcMain.handle('schedule:setHomeAssistantToken', (event, value) => { assertTrustedIpcSender(event); return setHomeAssistantScheduleToken(value); });
+  ipcMain.handle('schedule:hasHomeAssistantToken', (event, value) => { assertTrustedIpcSender(event); return hasHomeAssistantScheduleToken(value); });
   ipcMain.handle('secret:setApiKey', (event, { sync, value }) => {
     assertTrustedIpcSender(event);
     const policy = resolveServiceSecurityContext(sync, sshState);
@@ -697,6 +940,9 @@ app.whenReady().then(async () => {
   });
   registerUpdaterEvents();
   registerIpc();
+  app.on('accessibility-support-changed', (_event, enabled) => {
+    mainWindow?.webContents.send('accessibility:changed', Boolean(enabled));
+  });
   createWindow();
   lastSchoolRecord = JSON.stringify(await readSchoolRecord());
   schoolPoll = setInterval(() => { pollSchoolRecord().catch(() => {}); }, 1500);

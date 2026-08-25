@@ -79,13 +79,13 @@ test('all renderer search regex and workbench evaluation crosses the killable wo
     ['haircuts', /filterBySearch\(\$\('#haircut-search'\), state\.haircuts/],
     ['command palette', /filterBySearch\(input, entries, \(entry\) =>/],
     ['converter adapters', /filterBySearch\(\$\('input', search\), category\.adapters/],
-    ['offline documentation', /filterBySearch\(\$\('#docs-search'\), docs/],
+    ['offline documentation', /const available = filterSchoolRestrictedContent\(docs\);[\s\S]{0,200}filterBySearch\(\$\('#docs-search'\), available/],
     ['changelog', /filterBySearch\(\$\('#changelog-search'\), dated/],
     ['local history', /filterBySearch\(search, filteredHistoryItems/],
     ['notifications', /filterBySearch\(\$\('#notification-search'\), state\.notifications/],
     ['support tickets', /filterBySearch\(\$\('#support-search'\), statusCandidates/],
     ['tab strip', /filterBySearch\(input, tabs, \(tab\) =>/],
-    ['settings', /filterBySearch\(input, cards, \(card\) =>/],
+    ['settings', /filterBySearch\(input, cards, schoolSafeElementText\)/],
     ['appearance properties', /filterBySearch\(input, rows, \(row\) =>/],
     ['context menu', /filterBySearch\(input, items, \(item\) =>/]
   ];

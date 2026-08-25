@@ -52,9 +52,35 @@ test('a legacy global API key is discarded instead of being sent to a new origin
 
   assert.equal(await vault.apiKeyForScope('https://first.example'), '');
   const value = await vault.read();
-  assert.equal(value.schemaVersion, 2);
+  assert.equal(value.schemaVersion, 3);
   assert.deepEqual(value.apiKeys, {});
+  assert.deepEqual(value.externalSettingTokens, {});
   assert.equal(Object.hasOwn(value, 'apiKey'), false);
+});
+
+test('external setting access tokens stay bound to their exact canonical source scope', async (t) => {
+  const { vault } = await createVault(t);
+  const first = 'first-local-access-value';
+  const second = 'second-local-access-value';
+
+  await vault.setExternalSettingToken('home-assistant:https://one.example/|input_boolean.mode|home-assistant-primary', first);
+  await vault.setExternalSettingToken('home-assistant:https://two.example/|input_boolean.mode|home-assistant-primary', second);
+
+  assert.equal(await vault.externalSettingToken('home-assistant:https://one.example/|input_boolean.mode|home-assistant-primary'), first);
+  assert.equal(await vault.externalSettingToken('home-assistant:https://two.example/|input_boolean.mode|home-assistant-primary'), second);
+  assert.equal(await vault.hasExternalSettingToken('home-assistant:https://three.example/|input_boolean.mode|home-assistant-primary'), false);
+
+  await vault.setExternalSettingToken('home-assistant:https://one.example/|input_boolean.mode|home-assistant-primary', '');
+  assert.equal(await vault.hasExternalSettingToken('home-assistant:https://one.example/|input_boolean.mode|home-assistant-primary'), false);
+  assert.equal(await vault.externalSettingToken('home-assistant:https://two.example/|input_boolean.mode|home-assistant-primary'), second);
+});
+
+test('external setting access tokens are bounded and control characters are rejected', async (t) => {
+  const { vault } = await createVault(t);
+  const scope = 'home-assistant:https://one.example/|input_boolean.mode|home-assistant-primary';
+  await assert.rejects(vault.setExternalSettingToken(scope, 'short'), /16 to 2048/);
+  await assert.rejects(vault.setExternalSettingToken(scope, 'x'.repeat(2049)), /16 to 2048/);
+  await assert.rejects(vault.setExternalSettingToken(scope, `${'x'.repeat(16)}\n`), /control characters/);
 });
 
 test('credential scopes and key values are bounded before persistence', async (t) => {
