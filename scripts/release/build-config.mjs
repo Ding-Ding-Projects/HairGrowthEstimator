@@ -21,7 +21,7 @@ export function createBuilderConfig(packageJson, provenance) {
   config.extraMetadata = { ...(config.extraMetadata || {}), version: provenance.version };
   config.files = [
     {
-      from: '.',
+      from: 'dist/package-source',
       to: '.',
       filter: [
         'app/**/*',
@@ -46,6 +46,9 @@ export function createBuilderConfig(packageJson, provenance) {
       filter: ['app-icon*.png', 'app-icon.ico', 'icon-manifest.json', 'logo-master.svg']
     }
   ];
+  config.extraResources = (config.extraResources || []).map((entry) => entry?.to === 'server'
+    ? { ...entry, from: 'dist/package-source/server' }
+    : entry);
   config.afterPack = './scripts/release/apply-executable-icon.cjs';
   config.forceCodeSigning = false;
   config.win = { ...config.win, forceCodeSigning: false, signExecutable: false, signAndEditExecutable: false };
@@ -71,9 +74,10 @@ export function validateBuilderConfig(config, expected) {
   if (JSON.stringify(config).includes('/main/') || JSON.stringify(config).includes('/master/')) {
     throw new TypeError('Builder configuration contains a mutable branch URL.');
   }
-  const sourceFiles = config.files?.find((entry) => entry?.from === '.' && entry?.to === '.');
+  const sourceFiles = config.files?.find((entry) => entry?.from === 'dist/package-source' && entry?.to === '.');
   const stagedRelease = config.files?.find((entry) => entry?.from === 'dist/package-input' && entry?.to === '.');
   const canonicalIcons = config.files?.find((entry) => entry?.from === 'assets/icons' && entry?.to === 'assets');
+  const stagedServer = config.extraResources?.find((entry) => entry?.to === 'server');
   if (!sourceFiles?.filter?.includes('app/**/*') || !sourceFiles.filter.includes('!app/provenance.json') || !sourceFiles.filter.includes('!app/release-metadata.json') || !sourceFiles.filter.includes('assets/**/*') || !sourceFiles.filter.includes('!assets/icons/**/*')) {
     throw new TypeError('Builder configuration does not include the application payload and exclude the unmapped icon source directory.');
   }
@@ -82,6 +86,9 @@ export function validateBuilderConfig(config, expected) {
   }
   if (!canonicalIcons?.filter?.includes('app-icon.ico') || !canonicalIcons.filter.includes('logo-master.svg') || !canonicalIcons.filter.includes('icon-manifest.json')) {
     throw new TypeError('Builder configuration does not map the canonical generated icon family into the packaged asset paths.');
+  }
+  if (stagedServer?.from !== 'dist/package-source/server' || !stagedServer.filter?.includes('**/*')) {
+    throw new TypeError('Builder configuration does not map the exact staged server source into the packaged resources.');
   }
   if (config.afterPack !== './scripts/release/apply-executable-icon.cjs') throw new TypeError('Builder configuration does not apply the verified icon after unsigned packaging.');
   return config;

@@ -8,6 +8,19 @@ import { createPackage } from '@electron/asar';
 import { assertCleanStatus } from '../assert-clean-candidate.mjs';
 import { assertTrackedSnapshot, trackedSnapshot } from '../assert-source-preserved.mjs';
 import { asarFiles, compareBoundFiles, expectedReleaseMetadata, validateSourceBindingReceipt } from '../source-binding.mjs';
+import { writeExactSnapshot } from '../stage-package-source.mjs';
+
+test('package source staging preserves exact Git-style line endings', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hair-growth-package-source-'));
+  try {
+    const expected = Buffer.from('first line\nsecond line\n', 'utf8');
+    const paths = writeExactSnapshot(root, new Map([['app/core/fixture.js', expected]]));
+    assert.deepEqual(paths, ['app/core/fixture.js']);
+    assert.deepEqual(await fs.readFile(path.join(root, 'app', 'core', 'fixture.js')), expected);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 test('ASAR inventory reads nested files through the host path separator', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hair-growth-asar-binding-'));
