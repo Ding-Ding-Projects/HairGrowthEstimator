@@ -63,7 +63,7 @@ Portable-only、ZIP-only、MSI-only、NSIS、MSIX 同其他 installer family 都
 
 `assets/icons/logo-master.svg` 係 canonical source。`scripts/core/generate-icons.mjs` 用 `sharp` 0.34.3 產生七個 PNG size 同一個 multi-resolution `.ico`。`assets/icons/icon-manifest.json` 會記錄 master bytes、master SHA-256、renderer version、file size 同 output hash。
 
-Package 會將 canonical generated file 對應到 application asset path。Squirrel update metadata 會用一條包含 exact source commit 嘅 immutable raw GitHub URL。由於 no-signing policy 之下 `signAndEditExecutable` 會保持 disabled，獨立 post-pack step 只會使用通過 digest 驗證嘅 Squirrel resource editor，將 canonical icon 嵌入 executable。同一個 verified step 亦會更新 `Setup.exe`。Installer validator 會讀取實際 PE resource group，再將七個 icon payload digest 同 packaged `.ico` 逐個比對。
+Package 會將 canonical generated file 對應到 application asset path。Squirrel update metadata 會用一條包含 exact source commit 嘅 immutable raw GitHub URL。由於 no-signing policy 之下 `signAndEditExecutable` 會保持 disabled，獨立 post-pack step 只會使用通過 digest 驗證嘅 Squirrel resource editor，將 canonical icon 嵌入 executable。同一個 verified step 亦會更新 `Setup.exe`。Installer validator 會讀取 language `1033` 嘅 primary PE resource group `1`，將七個 icon payload digest 同 packaged `.ico` 逐個比對，同時保留 Squirrel bootstrapper 必需嘅額外 internal groups。
 
 ## Installer integrity
 

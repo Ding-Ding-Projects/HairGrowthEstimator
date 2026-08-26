@@ -63,7 +63,7 @@ The first release has no prior full package, so it must contain exactly one full
 
 `assets/icons/logo-master.svg` is the canonical source. `scripts/core/generate-icons.mjs` uses `sharp` 0.34.3 to produce seven PNG sizes and a multi-resolution `.ico`. `assets/icons/icon-manifest.json` records the master bytes, master SHA-256, renderer version, file sizes, and output hashes.
 
-The package maps the canonical generated files into the application asset paths. Squirrel update metadata uses an immutable raw GitHub URL containing the exact source commit. Because `signAndEditExecutable` remains disabled under the no-signing policy, a separate post-pack step uses the digest-verified Squirrel resource editor only to embed the canonical icon. The same verified step updates `Setup.exe`. The installer validator reads the actual PE resource group and compares all seven icon payload digests with the packaged `.ico`.
+The package maps the canonical generated files into the application asset paths. Squirrel update metadata uses an immutable raw GitHub URL containing the exact source commit. Because `signAndEditExecutable` remains disabled under the no-signing policy, a separate post-pack step uses the digest-verified Squirrel resource editor only to embed the canonical icon. The same verified step updates `Setup.exe`. The installer validator reads primary PE resource group `1` with language `1033`, compares all seven icon payload digests with the packaged `.ico`, and retains the additional internal groups required by the Squirrel bootstrapper.
 
 ## Installer integrity
 

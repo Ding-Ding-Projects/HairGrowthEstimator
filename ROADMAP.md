@@ -66,9 +66,10 @@ Checkboxes are complete only when the named work is implemented and locally veri
 - [x] Implement exact dependency bootstrap, digest checks, source preservation, provenance, icons, safe-output collection, line counts, and source binding.
 - [x] Verify repeated root-script timing events and nested ASAR source binding through focused regression checks.
 - [x] Stage every application, asset, canonical icon, and server package input from exact candidate Git blobs.
+- [x] Validate the canonical Setup icon without rejecting required Squirrel bootstrapper icon groups.
 - [x] Implement the four-job release workflow for every push and manual dispatch, without test or lint jobs.
 - [x] Implement the fixed four-file terminal transfer and split context and terminal run-attempt validation.
-- [x] Pass all 83 release-packaging checks.
+- [x] Pass all 84 release-packaging checks.
 - [ ] Build the final runnable Windows application from the final clean commit.
 - [ ] Build and validate the final unsigned Squirrel.Windows installer family.
 - [ ] Build and validate the final deterministic OCI archive.

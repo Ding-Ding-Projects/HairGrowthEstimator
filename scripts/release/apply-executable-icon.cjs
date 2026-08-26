@@ -33,10 +33,12 @@ function executableIconRecords(buffer) {
   const executable = NtExecutable.from(buffer);
   const resources = NtExecutableResource.from(executable);
   const groups = Resource.IconGroupEntry.fromEntries(resources.entries);
-  if (groups.length !== 1) throw new TypeError(`Expected exactly one executable icon group, received ${groups.length}.`);
-  return groups[0].getIconItemsFromEntries(resources.entries).map((data, index) => {
+  const primaryGroups = groups.filter((group) => group.id === 1 && group.lang === 1033);
+  if (primaryGroups.length !== 1) throw new TypeError(`Expected exactly one primary executable icon group with id 1 and language 1033, received ${primaryGroups.length}.`);
+  const primaryGroup = primaryGroups[0];
+  return primaryGroup.getIconItemsFromEntries(resources.entries).map((data, index) => {
     const bytes = iconBytes(data);
-    const groupRecord = groups[0].icons[index];
+    const groupRecord = primaryGroup.icons[index];
     return {
       width: groupRecord.width || data.width || data.bitmapInfo?.width || 256,
       height: groupRecord.height || data.height || Math.abs(data.bitmapInfo?.height || 0) / 2 || 256,
