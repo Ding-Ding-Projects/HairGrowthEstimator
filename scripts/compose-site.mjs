@@ -166,11 +166,12 @@ function validateTrustedProductValidation(value, { context }) {
 }
 
 function validateTerminalReceipt(value, { context, installer, fileBytes }) {
-  const fields = ['schemaVersion', 'repository', 'runId', 'runAttempt', 'tag', 'target', 'version', 'files'];
+  const fields = ['schemaVersion', 'repository', 'runId', 'contextRunAttempt', 'terminalRunAttempt', 'tag', 'target', 'version', 'files'];
   exactObjectFields(value, fields, 'Terminal transfer receipt');
   if (value.schemaVersion !== 1 || value.repository !== 'Ding-Ding-Projects/HairGrowthEstimator') throw new Error('Terminal transfer receipt repository identity is invalid.');
-  if (!/^[1-9]\d*$/.test(value.runId) || !Number.isSafeInteger(value.runAttempt) || value.runAttempt < 1) throw new Error('Terminal transfer receipt run identity is invalid.');
-  if (value.runId !== context.runId || String(value.runAttempt) !== context.runAttempt || value.tag !== context.tag || value.target !== context.commit || value.version !== context.version) throw new Error('Terminal transfer receipt identity does not match the release context.');
+  if (!/^[1-9]\d*$/.test(value.runId) || !Number.isSafeInteger(value.contextRunAttempt) || value.contextRunAttempt < 1 || !Number.isSafeInteger(value.terminalRunAttempt) || value.terminalRunAttempt < 1) throw new Error('Terminal transfer receipt run identity is invalid.');
+  if (value.terminalRunAttempt < value.contextRunAttempt) throw new Error('Terminal transfer receipt terminal attempt cannot predate its context attempt.');
+  if (value.runId !== context.runId || String(value.contextRunAttempt) !== context.runAttempt || value.tag !== context.tag || value.target !== context.commit || value.version !== context.version) throw new Error('Terminal transfer receipt identity does not match the release context.');
   if (value.tag !== installer.tag || value.target !== installer.target || value.version !== installer.version) throw new Error('Terminal transfer receipt identity does not match the installer manifest.');
   if (!Array.isArray(value.files) || value.files.length !== TERMINAL_HASHED_FILES.length) throw new Error('Terminal transfer receipt must contain exactly three copied file records.');
   const names = [];
@@ -192,6 +193,10 @@ const githubReleaseAdapter = {
   },
   async download(owner, repository, tag, filename, destination) {
     execFileSync('gh', ['release', 'download', tag, '--repo', `${owner}/${repository}`, '--pattern', filename, '--dir', destination], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+  },
+  async runAttempt(owner, repository, runId, attempt) {
+    const output = execFileSync('gh', ['api', `repos/${owner}/${repository}/actions/runs/${runId}/attempts/${attempt}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+    return JSON.parse(output);
   }
 };
 
@@ -217,6 +222,15 @@ export async function verifyPublishedInstaller(manifest, adapter = githubRelease
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+  return true;
+}
+
+export async function verifyPublishedTerminalTransfer({ installer, receipt }, adapter = githubReleaseAdapter) {
+  await verifyPublishedInstaller(installer, adapter);
+  let attempt;
+  try { attempt = await adapter.runAttempt(installer.owner, installer.repository, receipt.runId, receipt.terminalRunAttempt); }
+  catch (error) { throw new Error(`GitHub Actions terminal attempt readback failed: ${error.message}`); }
+  if (!attempt || String(attempt.id) !== receipt.runId || attempt.run_attempt !== receipt.terminalRunAttempt || attempt.head_sha !== installer.target || attempt.repository?.full_name !== `${installer.owner}/${installer.repository}` || attempt.status !== 'completed' || attempt.conclusion !== 'success') throw new Error('GitHub Actions terminal attempt readback does not match the terminal transfer receipt.');
   return true;
 }
 
@@ -246,9 +260,9 @@ export async function validateTerminalTransfer(directory, commit, options = {}) 
     ['release-context.json', contextInput.bytes],
     ['trusted-product-validation.json', validationInput.bytes]
   ]);
-  validateTerminalReceipt(receiptInput.value, { context, installer, fileBytes });
-  const verifyExternal = options.verifyExternal || verifyPublishedInstaller;
-  await verifyExternal(installer);
+  const receipt = validateTerminalReceipt(receiptInput.value, { context, installer, fileBytes });
+  const verifyExternal = options.verifyExternal || verifyPublishedTerminalTransfer;
+  await verifyExternal({ installer, context, receipt });
   return installer;
 }
 

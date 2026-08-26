@@ -10,7 +10,7 @@ Windows 發佈必須使用真正嘅 Squirrel.Windows 封裝，並包含 `Setup.e
 
 `package.json` 目前選用 Squirrel 目標、停用強制程式碼簽署，並將 `dist/squirrel-windows` 設為輸出目錄。發佈工作流程必須由固定來源 commit 建置同發佈、記錄工作流程計時、附加必要成品、程式碼行數證據同公開點心中繼資料，而且唔可以喺 GitHub Actions 執行測試或 lint。
 
-網站只會由精確四檔案 `dist/terminal-transfer` 目錄接收 release。Installer、release-context 同 terminal-receipt JSON 輸入各自最多 65,536 bytes，而 trusted product validation 因為攜帶完整已排序 source-binding arrays，所以最多 16,777,216 bytes。Fatal UTF-8 decoding、closed schemas、copied-file byte counts 同 hashes、精確 logical-run identity、精確 composed commit、nested application 同 server bindings、container binding，以及 terminal publication metadata 必須全部一致。部分目錄會被拒絕；完整目錄完全唔存在時，就會產生坦白嘅 package-and-commit provenance，而且唔會有 installer URL。
+網站只會由精確四檔案 `dist/terminal-transfer` 目錄接收 release。Installer、release-context 同 terminal-receipt JSON 輸入各自最多 65,536 bytes，而 trusted product validation 因為攜帶完整已排序 source-binding arrays，所以最多 16,777,216 bytes。Fatal UTF-8 decoding、closed schemas、copied-file byte counts 同 hashes、精確 logical-run identity、精確 composed commit、nested application 同 server bindings、container binding，以及 terminal publication metadata 必須全部一致。Receipt 會將起始 `contextRunAttempt` 同完成發佈嘅 `terminalRunAttempt` 分開。如果係 rerun，terminal value 可以較後。Composer 會查詢精確 GitHub Actions run-attempt record，驗證佢嘅 run、attempt、commit、repository、completed status 同 successful conclusion。Job-name topology 唔屬於今次 consumer proof。部分目錄會被拒絕；完整目錄完全唔存在時，就會產生坦白嘅 package-and-commit provenance，而且唔會有 installer URL。
 
 Release version 來自已驗證 terminal installer，可以合理係 `1.0.<run number>`，而 tracked package metadata 仍然係 `1.0.0`。Updated-at 來自 canonical `publication.publishedAt`，唔會來自 source metadata 或 composition time。Composer 會獨立重新讀取 tagged GitHub release，再下載 Setup asset，重新檢查 byte count 同 SHA-256。之後瀏覽器會再驗證 release-bound provenance source、精確 tag、filename 同 size limits、digest、unsigned state、publication fields 同 IDs，以及 immutable URL，全部過關先畀 `renderProvenance` 啟用下載。
 
@@ -29,7 +29,7 @@ Release version 來自已驗證 terminal installer，可以合理係 `1.0.<run n
 
 ## 驗證
 
-原始碼檢查已確認 fixed transfer path、精確 four-file inventory、每一項 byte bound、fatal UTF-8 decoding、closed schemas、source-binding record validation、receipt hashes、release/context identity、精確 composed target、獨立 GitHub release metadata，同 downloaded Setup-byte verification。Runtime `isValidProvenance` 同 `isValidInstallerManifest` 會重複 embedded release contract。Focused suite 喺實作之前，針對 static-version contradiction、target mismatch、stale or incomplete receipt 同 missing manifest，刻意錄得 red 4 of 4。還原之後回報 4 passed、0 failed、0 skipped。真實 terminal transfer、本機 `build.bat`、`build-installer.bat`、完整 Squirrel artifacts、unsigned signature inspection、updater states、public website link 同 final workflow result 仍然待辦。
+原始碼檢查已確認 fixed transfer path、精確 four-file inventory、每一項 byte bound、fatal UTF-8 decoding、closed schemas、source-binding record validation、receipt hashes、分開嘅 context 同 terminal attempt identities、外部 GitHub Actions attempt readback、release/context identity、精確 composed target、獨立 GitHub release metadata，同 downloaded Setup-byte verification。Runtime `isValidProvenance` 同 `isValidInstallerManifest` 會重複 embedded release contract。Focused suite 喺實作之前，針對 static-version contradiction、target mismatch、stale or incomplete receipt 同 missing manifest，刻意錄得 red 4 of 4。之後 unequal-attempt fixture 刻意 red 1 of 1，還原後回報 4 passed、0 failed、0 skipped。真實 terminal transfer、本機 `build.bat`、`build-installer.bat`、完整 Squirrel artifacts、unsigned signature inspection、updater states、public website link 同 final workflow result 仍然待辦。
 
 ## 建議文章
 

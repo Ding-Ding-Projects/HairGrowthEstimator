@@ -6,7 +6,7 @@ Every front screen must show the running version and that exact version's record
 
 ## Configuration
 
-A valid provenance record includes schema version, product version, source commit, build or release instant in UTC, artifact identity, and the source of that claim. Without a terminal transfer, the website uses tracked package metadata and commit time and embeds no installer. With a verified terminal transfer, version comes from the immutable installer and matching release context, while updated-at comes from canonical `publication.publishedAt`. Presentation converts that stable instant to local time and names the timezone.
+A valid provenance record includes schema version, product version, source commit, build or release instant in UTC, artifact identity, and the source of that claim. Without a terminal transfer, the website uses tracked package metadata and commit time and embeds no installer. With a verified terminal transfer, version comes from the immutable installer and matching release context, while updated-at comes from canonical `publication.publishedAt`. The originating context attempt and later terminal attempt are separate receipt fields. The terminal attempt is accepted only after an independent GitHub Actions attempt readback matches the run, attempt, commit, repository, completed status, and successful conclusion. Presentation converts the stable release instant to local time and names the timezone.
 
 ## Failure modes
 

@@ -34,7 +34,7 @@ function fixtureValues() {
     version: releaseVersion,
     tag: `v${releaseVersion}`,
     runId: '987654321',
-    runAttempt: '2',
+    runAttempt: '1',
     commit: candidateCommit,
     commitEpoch: '1787659200',
     createdAt: '2026-08-25T12:00:00.000Z',
@@ -104,7 +104,8 @@ async function writeBundle(directory, values = fixtureValues()) {
     schemaVersion: 1,
     repository: 'Ding-Ding-Projects/HairGrowthEstimator',
     runId: values.context.runId,
-    runAttempt: Number(values.context.runAttempt),
+    contextRunAttempt: Number(values.context.runAttempt),
+    terminalRunAttempt: 2,
     tag: values.context.tag,
     target: values.context.commit,
     version: values.context.version,
@@ -118,32 +119,45 @@ async function refreshReceipt(directory, values) {
   return writeBundle(directory, values);
 }
 
-function acceptedExternalReadback(expectedSetup) {
-  return async (manifest) => composer.verifyPublishedInstaller(manifest, {
+function acceptedExternalReadback(expectedSetup, mutateAttempt = (attempt) => attempt) {
+  return async ({ installer, receipt }) => composer.verifyPublishedTerminalTransfer({ installer, receipt }, {
     async release(owner, repository, tag) {
       assert.equal(`${owner}/${repository}`, 'Ding-Ding-Projects/HairGrowthEstimator');
-      assert.equal(tag, manifest.tag);
+      assert.equal(tag, installer.tag);
       return {
-        id: manifest.publication.releaseId,
-        tag_name: manifest.tag,
-        target_commitish: manifest.target,
+        id: installer.publication.releaseId,
+        tag_name: installer.tag,
+        target_commitish: installer.target,
         draft: false,
         prerelease: false,
-        published_at: manifest.publication.publishedAt,
+        published_at: installer.publication.publishedAt,
         html_url: `https://github.com/${owner}/${repository}/releases/tag/${tag}`,
         assets: [{
-          id: manifest.publication.assetId,
-          name: manifest.filename,
-          size: manifest.bytes,
+          id: installer.publication.assetId,
+          name: installer.filename,
+          size: installer.bytes,
           state: 'uploaded',
-          browser_download_url: manifest.publication.url
+          browser_download_url: installer.publication.url
         }]
       };
     },
     async download(owner, repository, tag, filename, destination) {
       assert.equal(`${owner}/${repository}`, 'Ding-Ding-Projects/HairGrowthEstimator');
-      assert.equal(tag, manifest.tag);
+      assert.equal(tag, installer.tag);
       await writeFile(join(destination, filename), expectedSetup);
+    },
+    async runAttempt(owner, repository, runId, attempt) {
+      assert.equal(`${owner}/${repository}`, 'Ding-Ding-Projects/HairGrowthEstimator');
+      assert.equal(runId, receipt.runId);
+      assert.equal(attempt, receipt.terminalRunAttempt);
+      return mutateAttempt({
+        id: Number(runId),
+        run_attempt: attempt,
+        head_sha: installer.target,
+        repository: { full_name: `${owner}/${repository}` },
+        status: 'completed',
+        conclusion: 'success'
+      });
     }
   });
 }
@@ -152,6 +166,8 @@ test('terminal release identity overrides the static package version only after 
   const directory = await mkdtemp(join(tmpdir(), 'hair-growth-terminal-release-'));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const fixture = await writeBundle(directory);
+  assert.equal(fixture.receipt.contextRunAttempt, 1);
+  assert.equal(fixture.receipt.terminalRunAttempt, 2);
   const installer = await composer.validateTerminalTransfer(directory, candidateCommit, {
     verifyExternal: acceptedExternalReadback(fixture.setupBytes)
   });
@@ -192,11 +208,68 @@ test('terminal transfer refuses stale hashes, incomplete receipts, and malformed
 
   await writeBundle(directory);
   const receipt = JSON.parse(await readFile(join(directory, 'terminal-transfer-receipt.json'), 'utf8'));
-  delete receipt.runAttempt;
+  delete receipt.contextRunAttempt;
   await writeFile(join(directory, 'terminal-transfer-receipt.json'), jsonBytes(receipt));
   await assert.rejects(
     composer.validateTerminalTransfer(directory, candidateCommit, { verifyExternal: acceptedExternalReadback(values.setupBytes) }),
     /receipt.*mismatch|receipt.*incomplete/i
+  );
+
+  await writeBundle(directory);
+  const missingTerminalAttempt = JSON.parse(await readFile(join(directory, 'terminal-transfer-receipt.json'), 'utf8'));
+  delete missingTerminalAttempt.terminalRunAttempt;
+  await writeFile(join(directory, 'terminal-transfer-receipt.json'), jsonBytes(missingTerminalAttempt));
+  await assert.rejects(
+    composer.validateTerminalTransfer(directory, candidateCommit, { verifyExternal: acceptedExternalReadback(values.setupBytes) }),
+    /receipt.*mismatch|receipt.*incomplete/i
+  );
+
+  await writeBundle(directory);
+  const ambiguousAttempt = JSON.parse(await readFile(join(directory, 'terminal-transfer-receipt.json'), 'utf8'));
+  ambiguousAttempt.runAttempt = ambiguousAttempt.terminalRunAttempt;
+  await writeFile(join(directory, 'terminal-transfer-receipt.json'), jsonBytes(ambiguousAttempt));
+  await assert.rejects(
+    composer.validateTerminalTransfer(directory, candidateCommit, { verifyExternal: acceptedExternalReadback(values.setupBytes) }),
+    /receipt field mismatch.*runAttempt/i
+  );
+
+  for (const [field, invalid] of [
+    ['contextRunAttempt', 0],
+    ['contextRunAttempt', -1],
+    ['contextRunAttempt', 1.5],
+    ['contextRunAttempt', '1'],
+    ['terminalRunAttempt', 0],
+    ['terminalRunAttempt', -1],
+    ['terminalRunAttempt', 1.5],
+    ['terminalRunAttempt', '2']
+  ]) {
+    await writeBundle(directory);
+    const invalidAttempt = JSON.parse(await readFile(join(directory, 'terminal-transfer-receipt.json'), 'utf8'));
+    invalidAttempt[field] = invalid;
+    await writeFile(join(directory, 'terminal-transfer-receipt.json'), jsonBytes(invalidAttempt));
+    await assert.rejects(
+      composer.validateTerminalTransfer(directory, candidateCommit, { verifyExternal: acceptedExternalReadback(values.setupBytes) }),
+      /receipt run identity is invalid/i
+    );
+  }
+
+  const reversedAttempts = fixtureValues();
+  reversedAttempts.context.runAttempt = '2';
+  await writeBundle(directory, reversedAttempts);
+  const reversedReceipt = JSON.parse(await readFile(join(directory, 'terminal-transfer-receipt.json'), 'utf8'));
+  reversedReceipt.terminalRunAttempt = 1;
+  await writeFile(join(directory, 'terminal-transfer-receipt.json'), jsonBytes(reversedReceipt));
+  await assert.rejects(
+    composer.validateTerminalTransfer(directory, candidateCommit, { verifyExternal: acceptedExternalReadback(reversedAttempts.setupBytes) }),
+    /terminal attempt cannot predate its context attempt/i
+  );
+
+  const splitAttempt = await writeBundle(directory);
+  await assert.rejects(
+    composer.validateTerminalTransfer(directory, candidateCommit, {
+      verifyExternal: acceptedExternalReadback(splitAttempt.setupBytes, (attempt) => ({ ...attempt, run_attempt: 1 }))
+    }),
+    /terminal attempt readback does not match/i
   );
 
   const missingBinding = fixtureValues();

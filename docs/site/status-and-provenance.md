@@ -8,7 +8,7 @@ The website also requires a status surface with current release, latest verified
 
 ## Configuration
 
-Build composition writes one of two explicit provenance sources. An absent terminal transfer produces tracked package version plus commit time and no installer. A complete terminal transfer produces the exact terminal release version plus canonical publication time only after all four local records, copied hashes, context identity, GitHub release metadata, and downloaded Setup bytes validate. The front screen localizes the recorded timestamp while keeping the underlying instant stable.
+Build composition writes one of two explicit provenance sources. An absent terminal transfer produces tracked package version plus commit time and no installer. A complete terminal transfer produces the exact terminal release version plus canonical publication time only after all four local records, copied hashes, originating context identity, independent successful GitHub Actions terminal-attempt identity, GitHub release metadata, and downloaded Setup bytes validate. The front screen localizes the recorded timestamp while keeping the underlying instant stable.
 
 ## Failure modes
 

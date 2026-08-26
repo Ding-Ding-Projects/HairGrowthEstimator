@@ -6,7 +6,7 @@
 
 ## 設定
 
-有效 provenance record 包含 schema version、product version、source commit、UTC build 或 release instant、artifact identity，同埋嗰項聲明嘅來源。冇 terminal transfer 時，網站會使用 tracked package metadata 同 commit time，亦唔會嵌入 installer。有已驗證 terminal transfer 時，version 來自 immutable installer 同相符 release context，而 updated-at 就來自 canonical `publication.publishedAt`。顯示層會將穩定時點轉成本機時間，並指出時區。
+有效 provenance record 包含 schema version、product version、source commit、UTC build 或 release instant、artifact identity，同埋嗰項聲明嘅來源。冇 terminal transfer 時，網站會使用 tracked package metadata 同 commit time，亦唔會嵌入 installer。有已驗證 terminal transfer 時，version 來自 immutable installer 同相符 release context，而 updated-at 就來自 canonical `publication.publishedAt`。起始 context attempt 同較後嘅 terminal attempt 係兩個分開 receipt fields。Terminal attempt 只有喺獨立 GitHub Actions attempt readback 符合 run、attempt、commit、repository、completed status 同 successful conclusion 之後先會接納。顯示層會將穩定 release instant 轉成本機時間，並指出時區。
 
 ## 失敗情況
 

@@ -48,6 +48,7 @@ Commit link: unavailable in this entry because a commit cannot truthfully refere
 - Narrator admission now uses a 250 ms global debounce, fixed per-category cooldowns, and an urgent error path that is never delayed by those limits.
 - External schedule documentation now distinguishes session-only in-memory Home Assistant credentials from an operating-system vault and reports CORS or missing-mediator limitations without claiming that remote settings were applied.
 - Release-bound composition now accepts only the fixed four-file `dist/terminal-transfer` handoff, validates exact receipt hashes and nested source bindings, rereads the published GitHub release and Setup asset, and derives visible version and updated-at values from the verified terminal installer instead of requiring the tracked package version to impersonate a release version.
+- Terminal transfer receipts now separate the originating `contextRunAttempt` from a later successful `terminalRunAttempt`. The composer independently verifies the exact GitHub Actions terminal-attempt identity and no longer rejects a valid rerun merely because publication finished on a later attempt.
 
 ### Security and privacy
 

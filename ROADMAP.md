@@ -60,7 +60,7 @@ Checkboxes are marked complete only when the named work is implemented and local
 
 - [x] Keep the installer state disabled until an immutable release manifest exists.
 - [x] Add a 65,536-byte fatal-UTF-8 installer-manifest input boundary and repeat complete manifest validation in the runtime, with focused red-then-green source proof.
-- [x] Consume release identity only from the fixed four-file `dist/terminal-transfer` handoff, validate its exact copied-file receipt and nested source bindings, reread the published GitHub release and Setup asset, and derive release-bound front-screen provenance from the verified terminal installer. The four focused checks passed after a deliberate 0-of-4 red state.
+- [x] Consume release identity only from the fixed four-file `dist/terminal-transfer` handoff, validate its exact copied-file receipt and nested source bindings, distinguish originating and terminal run attempts, reread the exact successful GitHub Actions terminal attempt plus the published release and Setup asset, and derive release-bound front-screen provenance from the verified terminal installer. The four focused checks passed after the original deliberate 0-of-4 red state and a later split-attempt 0-of-1 red state.
 - [ ] Exercise a real immutable installer manifest through composition and the built download control.
 - [x] Document the `Classic Har Gow · 蝦餃` release code name and public catalog record.
 - [ ] Add release workflow wiring only after feature work is integrated.

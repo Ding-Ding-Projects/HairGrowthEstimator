@@ -48,6 +48,7 @@ Commit 連結：呢個項目目前不可用，因為一個 commit 喺存在之�
 - 旁白 admission 而家使用 250 ms global debounce、固定 per-category cooldowns，同一條永遠唔會畀呢啲限制拖慢嘅 urgent error path。
 - 外部排程文件而家會分清楚 session-only in-memory Home Assistant credentials 同 operating-system vault，亦會報告 CORS 或缺少 mediator 嘅限制，唔會未套用就扮成已套用。
 - Release-bound composition 而家只接受固定四檔案 `dist/terminal-transfer` 交接，會驗證精確 receipt hashes 同 nested source bindings，再讀返已發佈 GitHub release 同 Setup asset，並由已驗證 terminal installer 推導可見 version 同 updated-at，唔再要求 tracked package version 扮成 release version。
+- Terminal transfer receipt 而家會分開起始 `contextRunAttempt` 同較後成功嘅 `terminalRunAttempt`。Composer 會獨立驗證精確 GitHub Actions terminal-attempt identity，唔會再因為發佈喺較後 attempt 完成，就將合法 rerun 當成撞錯門牌。
 
 ### 保安同私隱
 

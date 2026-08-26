@@ -332,9 +332,12 @@ test('installer manifest and canonical hair images fail closed on incomplete or 
   ]);
   for (const token of ['validateInstallerManifest', 'schemaVersion', 'owner', 'repository', 'tag', 'target', 'version', 'platform', 'filename', 'bytes', 'sha256', 'unsigned', 'publication']) assert.match(composer, new RegExp(token));
   assert.match(composer, /MAX_INSTALLER_MANIFEST_BYTES\s*=\s*64\s*\*\s*1024/);
-  for (const token of ['validateTerminalTransfer', 'release-context.json', 'trusted-product-validation.json', 'terminal-transfer-receipt.json', 'installerSourceBinding', 'containerSourceBinding']) assert.match(composer, new RegExp(token));
+  for (const token of ['validateTerminalTransfer', 'release-context.json', 'trusted-product-validation.json', 'terminal-transfer-receipt.json', 'installerSourceBinding', 'containerSourceBinding', 'contextRunAttempt', 'terminalRunAttempt', 'verifyPublishedTerminalTransfer']) assert.match(composer, new RegExp(token));
   assert.match(composer, /join\(root, 'dist', 'terminal-transfer'\)/);
   assert.doesNotMatch(composer, /process\.env\.INSTALLER_MANIFEST|release['"], ['"]installer-manifest\.json/);
+  assert.match(composer, /actions\/runs\/\$\{runId\}\/attempts\/\$\{attempt\}/);
+  assert.match(composer, /attempt\.status !== 'completed'/);
+  assert.match(composer, /attempt\.conclusion !== 'success'/);
   assert.match(composer, /new TextDecoder\('utf-8', \{ fatal: true \}\)/);
   assert.match(composer, /MAX_HAIR_MANIFEST_BYTES\s*=\s*64\s*\*\s*1024/);
   assert.match(app, /manifest\.tag\s*!==\s*`v\$\{build\.version\}`/);

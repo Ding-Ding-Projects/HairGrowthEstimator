@@ -8,7 +8,7 @@
 
 ## 設定
 
-Build composition 會寫入兩種明確 provenance source 其中一種。Terminal transfer 唔存在時，就產生 tracked package version 加 commit time，而且冇 installer。完整 terminal transfer 只有喺四份 local records、copied hashes、context identity、GitHub release metadata 同 downloaded Setup bytes 全部通過驗證之後，先會產生精確 terminal release version 加 canonical publication time。初始畫面會將已記錄 timestamp 本地化顯示，同時保持底層 instant 不變。
+Build composition 會寫入兩種明確 provenance source 其中一種。Terminal transfer 唔存在時，就產生 tracked package version 加 commit time，而且冇 installer。完整 terminal transfer 只有喺四份 local records、copied hashes、起始 context identity、獨立而成功嘅 GitHub Actions terminal-attempt identity、GitHub release metadata 同 downloaded Setup bytes 全部通過驗證之後，先會產生精確 terminal release version 加 canonical publication time。初始畫面會將已記錄 timestamp 本地化顯示，同時保持底層 instant 不變。
 
 ## 失效情況
 
