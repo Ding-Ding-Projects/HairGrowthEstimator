@@ -12,6 +12,7 @@ import {
   assertReproducibleContainerBuilds,
   candidateBuildInputInventory,
   deriveBaseManifestProof,
+  stageContainerBuildInputs,
   validateBaseManifestProof
 } from '../build-container.mjs';
 import { canonicalTar, readTarEntries, validateContainerArchive } from '../container-contract.mjs';
@@ -431,6 +432,21 @@ test('container build inputs bind current bytes to exact candidate Git blobs', (
     () => candidateBuildInputInventory(['Dockerfile'], commit, (relativePath) => Buffer.concat([gitFile(relativePath), Buffer.from('\nchanged')])),
     /candidate Git blob: Dockerfile/
   );
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hair-growth-container-input-'));
+  try {
+    const staged = stageContainerBuildInputs(['Dockerfile', 'server/index.js'], commit, directory);
+    assert.deepEqual(
+      staged.inventory,
+      candidateBuildInputInventory(['Dockerfile', 'server/index.js'], commit, (relativePath) => fs.readFileSync(path.join(directory, ...relativePath.split('/'))))
+    );
+    fs.appendFileSync(path.join(directory, 'server', 'index.js'), '\r\n');
+    assert.throws(
+      () => candidateBuildInputInventory(['Dockerfile', 'server/index.js'], commit, (relativePath) => fs.readFileSync(path.join(directory, ...relativePath.split('/')))),
+      /candidate Git blob: server\/index\.js/
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('repeated OCI build proof requires identical archive and descriptor identities', () => {

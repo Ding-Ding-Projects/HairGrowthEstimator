@@ -13,6 +13,7 @@ import {
 import { atomicWriteFileSync } from './atomic-file.mjs';
 import { releaseIdentity, releaseIdentitySha256 } from './release-identity.mjs';
 import { expectedReleaseMetadata } from './source-binding.mjs';
+import { writeExactSnapshot } from './stage-package-source.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '..', '..');
@@ -63,6 +64,14 @@ export function candidateBuildInputInventory(paths, commit, readCurrent = (relat
       gitBlobSha1: gitBlobSha1(committed)
     };
   });
+}
+
+export function stageContainerBuildInputs(paths, commit, destination = path.join(repositoryRoot, 'dist', 'container-input')) {
+  const files = new Map();
+  for (const inputPath of paths) files.set(inputPath, gitBytes('show', `${commit}:${inputPath}`));
+  writeExactSnapshot(destination, files);
+  const inventory = candidateBuildInputInventory(paths, commit, (relativePath) => fs.readFileSync(path.join(destination, ...relativePath.split('/'))));
+  return { destination, inventory };
 }
 
 export function assertReproducibleContainerBuilds(first, second) {
@@ -193,14 +202,14 @@ export function validateBaseManifestProof(proof, expected) {
   return derived;
 }
 
-function runContainerBuild({ archivePath, buildMetadataPath, version, commit, createdAt, commitEpoch, container, baseProof }) {
+function runContainerBuild({ archivePath, buildMetadataPath, version, commit, createdAt, commitEpoch, container, baseProof, buildInputRoot }) {
   fs.rmSync(archivePath, { force: true });
   fs.rmSync(buildMetadataPath, { force: true });
   const output = `type=oci,dest=${archivePath},oci-mediatypes=true,rewrite-timestamp=true`;
   const args = [
     'buildx', 'build',
     '--platform', 'linux/amd64',
-    '--file', path.join(repositoryRoot, 'Dockerfile'),
+    '--file', path.join(buildInputRoot, 'Dockerfile'),
     '--build-arg', `BUILD_VERSION=${version}`,
     '--build-arg', `BUILD_REVISION=${commit}`,
     '--build-arg', `BUILD_CREATED_AT=${createdAt}`,
@@ -212,7 +221,7 @@ function runContainerBuild({ archivePath, buildMetadataPath, version, commit, cr
     '--sbom=false',
     '--metadata-file', buildMetadataPath,
     '--output', output,
-    path.join(repositoryRoot, 'server')
+    path.join(buildInputRoot, 'server')
   ];
   execFileSync('docker', args, {
     cwd: repositoryRoot,
@@ -238,6 +247,14 @@ export function buildContainer() {
   const baseMetadata = JSON.parse(gitBytes('show', `${context.commit}:app/release-metadata.json`).toString('utf8'));
   const metadata = expectedReleaseMetadata(baseMetadata, context);
   const container = metadata.container;
+  const commit = metadata.sourceCommit || git('rev-parse', 'HEAD');
+  const version = metadata.version;
+  const commitEpoch = Number(git('show', '-s', '--format=%ct', commit));
+  const createdAt = metadata.createdAt || new Date(commitEpoch * 1000).toISOString();
+  if (!/^[0-9a-f]{40}$/.test(commit) || !/^\d+\.\d+\.\d+$/.test(version) || !Number.isSafeInteger(commitEpoch)) {
+    throw new TypeError('Container build requires exact version and commit provenance.');
+  }
+  const stagedBuildInputs = stageContainerBuildInputs(container.buildInputs, commit);
   const baseIndexBytes = execFileSync('docker', ['buildx', 'imagetools', 'inspect', '--raw', container.baseImage], {
     cwd: repositoryRoot,
     encoding: 'buffer',
@@ -267,14 +284,6 @@ export function buildContainer() {
     manifestDigest: container.baseImageManifestDigest
   });
   const derivedContainer = { ...container, baseImageManifestDigest: baseProof.selectedDescriptor.digest };
-  const commit = metadata.sourceCommit || git('rev-parse', 'HEAD');
-  const version = metadata.version;
-  const commitEpoch = Number(git('show', '-s', '--format=%ct', commit));
-  const createdAt = metadata.createdAt || new Date(commitEpoch * 1000).toISOString();
-  if (!/^[0-9a-f]{40}$/.test(commit) || !/^\d+\.\d+\.\d+$/.test(version) || !Number.isSafeInteger(commitEpoch)) {
-    throw new TypeError('Container build requires exact version and commit provenance.');
-  }
-
   const outputDirectory = path.join(repositoryRoot, 'dist', 'container');
   fs.mkdirSync(outputDirectory, { recursive: true });
   const archivePath = path.join(outputDirectory, container.ociArchive);
@@ -284,7 +293,7 @@ export function buildContainer() {
   }));
   const builds = proofPaths.map((paths) => ({
     paths,
-    validated: runContainerBuild({ ...paths, version, commit, createdAt, commitEpoch, container: derivedContainer, baseProof })
+    validated: runContainerBuild({ ...paths, version, commit, createdAt, commitEpoch, container: derivedContainer, baseProof, buildInputRoot: stagedBuildInputs.destination })
   }));
   assertReproducibleContainerBuilds(builds[0].validated, builds[1].validated);
   atomicWriteFileSync(archivePath, fs.readFileSync(builds[0].paths.archivePath));
@@ -325,7 +334,7 @@ export function buildContainer() {
       bytes: validated.archiveBytes,
       sha256: validated.archiveSha256
     },
-    buildInputs: candidateBuildInputInventory(container.buildInputs, commit),
+    buildInputs: stagedBuildInputs.inventory,
     sourceBinding: validated.sourceBinding,
     signing: 'unsigned-not-applicable-to-oci'
   };
@@ -334,6 +343,10 @@ export function buildContainer() {
     buildCount: 2,
     archiveSha256: validated.archiveSha256
   };
+  const finalBuildInputs = candidateBuildInputInventory(container.buildInputs, commit, (relativePath) => fs.readFileSync(path.join(stagedBuildInputs.destination, ...relativePath.split('/'))));
+  if (JSON.stringify(finalBuildInputs) !== JSON.stringify(stagedBuildInputs.inventory)) {
+    throw new TypeError('Container build changed the exact staged candidate inputs.');
+  }
   manifest.releaseIdentity = releaseIdentity(context);
   manifest.releaseIdentitySha256 = releaseIdentitySha256(context);
   const manifestPath = path.join(outputDirectory, 'container-manifest.json');

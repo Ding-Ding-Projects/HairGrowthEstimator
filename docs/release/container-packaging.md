@@ -31,6 +31,8 @@ The Compose definition adds operational restrictions:
 
 ## Build command
 
+Before either no-cache build starts, the build path materializes `Dockerfile` and the complete declared server input inventory from exact candidate Git blobs into `dist/container-input`. Both builds use only that staged Dockerfile and staged server context. Final validation re-reads the staged inputs and refuses checkout line-ending conversion, extra bytes, missing files, or any mutation during the builds.
+
 After preparing release context:
 
 ```text

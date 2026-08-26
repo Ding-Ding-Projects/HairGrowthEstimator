@@ -31,6 +31,8 @@ Compose definition 會再加以下營運限制：
 
 ## Build 指令
 
+兩次 no-cache build 開始之前，build path 會由 exact candidate Git blobs 將 `Dockerfile` 同完整 declared server input inventory 寫入 `dist/container-input`。兩次 build 都只會使用 staged Dockerfile 同 staged server context。Final validation 會重新讀取 staged inputs，並拒絕 checkout line-ending conversion、extra bytes、missing files，或者 build 途中任何 mutation，唔准啲 CRLF 靜雞雞搭順風車入 container。
+
 準備好 release context 之後：
 
 ```text
