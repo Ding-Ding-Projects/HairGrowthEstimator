@@ -1,0 +1,458 @@
+name: Build and publish Windows and container release
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  HGE_REQUIRE_CLEAN: "1"
+
+jobs:
+  windows-package:
+    name: Build unsigned Squirrel.Windows release files
+    runs-on: windows-2025
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      CSC_LINK: ""
+      CSC_KEY_PASSWORD: ""
+      WIN_CSC_LINK: ""
+      WIN_CSC_KEY_PASSWORD: ""
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure exact Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.18.0
+          cache: npm
+
+      - name: Bootstrap the complete Windows job tool inventory
+        shell: pwsh
+        run: node scripts/release/bootstrap-job-tools.mjs windows
+
+      - name: Start bounded Windows evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/evidence/windows | Out-Null
+          @{
+            schemaVersion = 1
+            sourceCommit = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            runAttempt = $env:GITHUB_RUN_ATTEMPT
+            runner = 'windows-2025'
+            architecture = $env:RUNNER_ARCH
+            status = 'started'
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/evidence/windows/job.json
+
+      - name: Verify the complete Windows tool inventory
+        shell: pwsh
+        run: |
+          git --version
+          gh --version
+          node --version
+          npm --version
+          powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+
+      - name: Install the exact npm dependency graph
+        shell: pwsh
+        run: npm ci --ignore-scripts=false --no-audit --no-fund
+
+      - name: Resolve or reuse one immutable logical-run context
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/ensure-run-context.mjs --destination dist/release/release-context.json --evidence dist/evidence/windows/release-context.json
+
+      - name: Assert the committed no-signing configuration
+        shell: pwsh
+        run: |
+          node -e "const p=require('./package.json');if(p.releasePolicy.forceCodeSigning!==false||p.releasePolicy.signExecutable!==false||p.releasePolicy.signAndEditExecutable!==false)process.exit(1);console.log('forceCodeSigning=false; signExecutable=false; signAndEditExecutable=false')"
+
+      - name: Build runnable package and Squirrel.Windows release files
+        shell: pwsh
+        env:
+          HGE_RELEASE_CONTEXT_PATH: dist/release/release-context.json
+        run: |
+          & cmd.exe /d /s /c ('""{0}\build.bat" /s"' -f $env:GITHUB_WORKSPACE)
+          if ($LASTEXITCODE -ne 0) { throw "build.bat exited $LASTEXITCODE" }
+          & cmd.exe /d /s /c ('""{0}\build-installer.bat" /s"' -f $env:GITHUB_WORKSPACE)
+          if ($LASTEXITCODE -ne 0) { throw "build-installer.bat exited $LASTEXITCODE" }
+
+      - name: Stage only validated Windows release files
+        id: stage-windows-product
+        shell: pwsh
+        run: |
+          node scripts/release/stage-product-files.mjs windows dist/squirrel-windows dist/workflow/windows-release
+          Copy-Item -LiteralPath dist/release/release-context.json -Destination dist/workflow/windows-release/release-context.json
+
+      - name: Upload validated Windows release files
+        id: upload-windows-product
+        if: ${{ steps.stage-windows-product.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/workflow/windows-release/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Finalize bounded Windows evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          HGE_JOB_STATUS: ${{ job.status }}
+        run: |
+          $collectionError = $null
+          try {
+            node scripts/release/collect-safe-outputs.mjs windows dist/evidence/windows/partial
+            if ($LASTEXITCODE -ne 0) { $collectionError = "Safe partial-output collection exited $LASTEXITCODE." }
+          } catch {
+            $collectionError = $_
+          }
+          if (-not (Test-Path -LiteralPath dist/evidence/windows)) {
+            New-Item -ItemType Directory -Force -Path dist/evidence/windows | Out-Null
+          }
+          $record = if (Test-Path -LiteralPath dist/evidence/windows/job.json) {
+            Get-Content -Raw dist/evidence/windows/job.json | ConvertFrom-Json
+          } else {
+            [pscustomobject]@{ schemaVersion = 1; sourceCommit = $env:GITHUB_SHA; runId = $env:GITHUB_RUN_ID; runAttempt = $env:GITHUB_RUN_ATTEMPT; runner = 'windows-2025'; architecture = $env:RUNNER_ARCH }
+          }
+          $record | Add-Member -NotePropertyName status -NotePropertyValue $env:HGE_JOB_STATUS -Force
+          $record | ConvertTo-Json | Set-Content -Encoding utf8 dist/evidence/windows/job.json
+          if ($collectionError) { throw $collectionError }
+
+      - name: Upload bounded Windows evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/evidence/windows/
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: false
+  linux-container:
+    name: Build deterministic OCI container archive
+    needs: [windows-package]
+    runs-on: ubuntu-24.04
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure exact Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.18.0
+          cache: npm
+
+      - name: Bootstrap the complete Ubuntu job tool inventory
+        shell: bash
+        run: node scripts/release/bootstrap-job-tools.mjs ubuntu
+
+      - name: Configure exact Docker Engine
+        uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5.4.0
+        with:
+          version: v29.6.1
+
+      - name: Configure exact Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          version: v0.27.0
+
+      - name: Start bounded container evidence
+        shell: bash
+        run: |
+          mkdir -p dist/evidence/container
+          node -e "require('fs').writeFileSync('dist/evidence/container/job.json', JSON.stringify({schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH,status:'started'}, null, 2)+'\n')"
+
+      - name: Verify the complete container tool inventory
+        shell: bash
+        run: |
+          git --version
+          tar --version
+          gh --version
+          node --version
+          npm --version
+          docker version
+          docker buildx version
+
+      - name: Install the exact npm dependency graph
+        shell: bash
+        run: npm ci --ignore-scripts=false --no-audit --no-fund
+
+      - name: Reuse the immutable logical-run context
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/ensure-run-context.mjs --require-existing --destination dist/release/release-context.json
+
+      - name: Build and validate OCI release archive
+        shell: bash
+        env:
+          HGE_RELEASE_CONTEXT_PATH: dist/release/release-context.json
+        run: |
+          set -euo pipefail
+          node scripts/release/assert-clean-candidate.mjs --ensure
+          node scripts/release/release-context.mjs --apply dist/release/release-context.json
+          node scripts/release/build-container.mjs
+
+      - name: Stage only validated container release files
+        id: stage-container-product
+        shell: bash
+        run: node scripts/release/stage-product-files.mjs container dist/container dist/workflow/container-release
+
+      - name: Upload validated OCI release files
+        id: upload-container-product
+        if: ${{ steps.stage-container-product.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/workflow/container-release/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Finalize bounded container evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          HGE_JOB_STATUS: ${{ job.status }}
+        run: |
+          collector_status=0
+          node scripts/release/collect-safe-outputs.mjs container dist/evidence/container/partial || collector_status=$?
+          mkdir -p dist/evidence/container
+          STATUS="$HGE_JOB_STATUS" node -e "const fs=require('fs');const p='dist/evidence/container/job.json';const j=fs.existsSync(p)?JSON.parse(fs.readFileSync(p)): {schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH};j.status=process.env.STATUS;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+          exit "$collector_status"
+
+      - name: Upload bounded container evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/evidence/container/
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: false
+  publish-release:
+    name: Publish one verified release
+    if: ${{ always() && needs.windows-package.result == 'success' && needs.linux-container.result == 'success' }}
+    needs: [windows-package, linux-container]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure exact Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.18.0
+          cache: npm
+
+      - name: Bootstrap the complete Ubuntu job tool inventory
+        shell: bash
+        run: node scripts/release/bootstrap-job-tools.mjs ubuntu
+
+      - name: Start bounded release evidence
+        shell: bash
+        run: |
+          mkdir -p dist/evidence/release
+          node -e "require('fs').writeFileSync('dist/evidence/release/job.json', JSON.stringify({schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH,status:'started'}, null, 2)+'\n')"
+
+      - name: Verify the complete publication tool inventory
+        shell: bash
+        run: |
+          git --version
+          tar --version
+          gh --version
+          node --version
+          npm --version
+
+      - name: Install the exact npm dependency graph
+        shell: bash
+        run: npm ci --ignore-scripts=false --no-audit --no-fund
+
+      - name: Reuse the immutable logical-run context
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/ensure-run-context.mjs --require-existing --destination dist/release/release-context.json
+
+      - name: Download the newest valid attempt for each build product
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/download-run-products.mjs dist/transfers
+
+      - name: Revalidate transferred products against their packaged contents
+        shell: bash
+        run: node scripts/release/validate-transferred-products.mjs dist/transfers/windows dist/transfers/container dist/release/release-context.json
+
+      - name: Stage exact files and generate committed line-count evidence
+        shell: bash
+        run: |
+          node scripts/release/stage-release-files.mjs dist/transfers/windows dist/transfers/container dist/release-assets
+          node scripts/core/count-lines.mjs --commit "$GITHUB_SHA" --markdown dist/release-assets/line-count.md --json dist/release-assets/line-count.json
+
+      - name: Publish and verify exactly one non-draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.ORG_TOKEN || secrets.GITHUB_TOKEN }}
+        run: node scripts/release/publish-release.mjs dist/release-assets dist/release/release-context.json dist/release-assets/line-count.md
+
+      - name: Finalize bounded release evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          HGE_JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p dist/evidence/release
+          STATUS="$HGE_JOB_STATUS" node -e "const fs=require('fs');const p='dist/evidence/release/job.json';const j=fs.existsSync(p)?JSON.parse(fs.readFileSync(p)): {schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH};j.status=process.env.STATUS;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
+      - name: Upload bounded release evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dist/evidence/release/
+            dist/release/release-context.json
+            dist/release/release-notes-preliminary.md
+            dist/release/release-notes-published.md
+            dist/release/published-release.json
+            dist/release/context-selection.json
+            dist/transfers/selection.json
+            dist/release/trusted-product-validation.json
+            dist/release-assets/release-manifest.json
+            dist/release-assets/container-manifest.json
+            dist/release-assets/line-count.md
+            dist/release-assets/line-count.json
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: false
+  finalize-release:
+    name: Finalize release readback
+    needs: [publish-release]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure exact Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.18.0
+          cache: npm
+
+      - name: Bootstrap the complete Ubuntu job tool inventory
+        shell: bash
+        run: node scripts/release/bootstrap-job-tools.mjs ubuntu
+
+      - name: Start bounded finalization evidence
+        shell: bash
+        run: |
+          mkdir -p dist/evidence/finalize
+          node -e "require('fs').writeFileSync('dist/evidence/finalize/job.json', JSON.stringify({schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH,status:'started'}, null, 2)+'\n')"
+
+      - name: Verify the complete finalization tool inventory
+        shell: bash
+        run: |
+          git --version
+          tar --version
+          gh --version
+          node --version
+          npm --version
+
+      - name: Install the exact npm dependency graph
+        shell: bash
+        run: npm ci --ignore-scripts=false --no-audit --no-fund
+
+      - name: Reuse the immutable logical-run context
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/ensure-run-context.mjs --require-existing --destination dist/release/release-context.json
+
+      - name: Download the newest valid attempt for each build product
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/download-run-products.mjs dist/transfers
+
+      - name: Revalidate transferred products against their packaged contents
+        shell: bash
+        run: node scripts/release/validate-transferred-products.mjs dist/transfers/windows dist/transfers/container dist/release/release-context.json
+
+      - name: Recreate exact release staging and line-count evidence
+        shell: bash
+        run: |
+          node scripts/release/stage-release-files.mjs dist/transfers/windows dist/transfers/container dist/release-assets
+          node scripts/core/count-lines.mjs --commit "$GITHUB_SHA" --markdown dist/release-assets/line-count.md --json dist/release-assets/line-count.json
+
+      - name: Verify published state with an honest pending terminal boundary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/finalize-release.mjs --verify-pending dist/release-assets dist/release/release-context.json dist/release-assets/line-count.md
+
+      - name: Finalize bounded finalization evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          HGE_JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p dist/evidence/finalize
+          STATUS="$HGE_JOB_STATUS" node -e "const fs=require('fs');const p='dist/evidence/finalize/job.json';const j=fs.existsSync(p)?JSON.parse(fs.readFileSync(p)): {schemaVersion:1,sourceCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:'ubuntu-24.04',architecture:process.env.RUNNER_ARCH};j.status=process.env.STATUS;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
+      - name: Upload bounded finalization evidence
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: finalize-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dist/evidence/finalize/
+            dist/release/release-context.json
+            dist/release/pending-release-readback.json
+            dist/release/release-readback.json
+            dist/release/trusted-product-validation.json
+            dist/release-assets/release-manifest.json
+            dist/release-assets/container-manifest.json
+            dist/release-assets/line-count.md
+            dist/release-assets/line-count.json
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: false

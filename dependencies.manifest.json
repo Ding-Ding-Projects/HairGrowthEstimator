@@ -1,30 +1,213 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "platform": "win32-x64",
+  "git": {
+    "name": "Git for Windows MinGit",
+    "exactVersion": "2.55.0.windows.2",
+    "reportedVersion": "2.55.0.windows.2",
+    "archive": "MinGit-2.55.0.2-64-bit.zip",
+    "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.2/MinGit-2.55.0.2-64-bit.zip",
+    "sha256": "e3ea2944cea4b3fabcd69c7c1669ef69b1b66c05ac7806d81224d0abad2dec31",
+    "commandExecutableSha256": "22fead8244ef3a7225fb800099a4e43eca8bcec0466774917669599c2f19a05a",
+    "coreExecutableSha256": "77965c1ffd7d5d0f7d55ddbec10ad540efa61e58f36eae565cde0f36fab8fe53",
+    "canonicalDigestSource": "GitHub release asset digest for git-for-windows/git v2.55.0.windows.2",
+    "installRoot": "%LOCALAPPDATA%/DingDingProjects/HairGrowthEstimator/toolchain"
+  },
   "runtime": {
     "name": "Node.js",
-    "constraint": ">=22.0.0",
-    "canonicalPackageManager": "winget",
-    "canonicalPackageId": "OpenJS.NodeJS.LTS",
-    "scope": "user"
+    "exactVersion": "22.18.0",
+    "constraint": "22.18.0",
+    "scope": "user",
+    "acquisitionOrder": [
+      "verified existing exact version",
+      "verified portable archive"
+    ],
+    "portable": {
+      "archive": "node-v22.18.0-win-x64.zip",
+      "url": "https://nodejs.org/dist/v22.18.0/node-v22.18.0-win-x64.zip",
+      "sha256": "c95d8a7e1c99e669cc08c9f1176e068c1f50847c37908fcb8c35b62482366511",
+      "nodeExecutableSha256": "c22d1c59a1f767a1ed0178445a027f2257d318c55430fc819d48f269586822b7",
+      "canonicalDigestSource": "https://nodejs.org/dist/v22.18.0/SHASUMS256.txt",
+      "installRoot": "%LOCALAPPDATA%/DingDingProjects/HairGrowthEstimator/toolchain"
+    }
   },
   "npm": {
     "lockfile": "package-lock.json",
     "cleanInstallCommand": "npm ci --ignore-scripts=false --no-audit --no-fund",
     "packages": [
+      { "name": "@electron/asar", "version": "4.3.0" },
       { "name": "electron", "version": "44.0.0" },
       { "name": "electron-builder", "version": "26.15.3" },
-      { "name": "electron-builder-squirrel-windows", "version": "26.15.3" }
+      { "name": "electron-builder-squirrel-windows", "version": "26.15.3" },
+      { "name": "resedit", "version": "1.7.2" },
+      { "name": "sharp", "version": "0.34.3" }
     ],
-    "integritySource": "package-lock.json"
+    "integritySource": "package-lock.json",
+    "squirrelBundled7Zip": {
+      "path": "node_modules/electron-winstaller/vendor/7z-x64.exe",
+      "sha256": "c7245e21a7553d9e52d434002a401c77a7ca7d0f245f2311b0ddf16f8f946c6f"
+    },
+    "squirrelResourceEditor": {
+      "path": "node_modules/electron-winstaller/vendor/rcedit.exe",
+      "sha256": "e2df7b664db830f159d0dc6b3da8a95442cca175b9577f2d19952646d37ac32f"
+    },
+    "squirrelExecutableTools": {
+      "Squirrel.exe": "76359cd4b0349a83337b941332ad042c90351c2bb0a4628307740324c97984cc",
+      "Setup.exe": "1e47eb606dad4c5c1568cfb8f4e970e1051ba5806aedb1ff3256284a8280d83b",
+      "WriteZipToSetup.exe": "9278fe28ac434fde0be3a10788dc13ad92a28940ed70a52f86d9d69435599349"
+    },
+    "electronRuntime": {
+      "archive": "electron-v44.0.0-win32-x64.zip",
+      "archiveSha256": "e61aa3bcea8152bc0730abd015e47c032d778a0ef10e2a1c78ba3c4ea47942f9",
+      "executablePath": "node_modules/electron/dist/electron.exe",
+      "executableSha256": "1dc2d12e5c60341782e68c4b65a8e49cbd86217f81568f90575547cec13b5610",
+      "canonicalDigestSource": "node_modules/electron/checksums.json from electron 44.0.0"
+    }
+  },
+  "workflowTools": {
+    "node": {
+      "exactVersion": "22.18.0",
+      "installer": "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+    },
+    "npm": {
+      "exactVersion": "10.9.3",
+      "source": "bundled with Node.js 22.18.0"
+    },
+    "git": {
+      "windowsExactVersion": "2.55.0.windows.2",
+      "windowsBootstrap": "scripts/release/bootstrap-git.ps1",
+      "ubuntuConstraint": ">=2.43.0 <3.0.0",
+      "ubuntuFallback": "Ubuntu 24.04 signed apt package",
+      "canonicalSource": "https://git-scm.com/"
+    },
+    "tar": {
+      "ubuntuConstraint": ">=1.35 <2.0",
+      "ubuntuFallback": "Ubuntu 24.04 signed apt package",
+      "canonicalSource": "https://www.gnu.org/software/tar/"
+    },
+    "githubCli": {
+      "constraint": "=2.98.0",
+      "fallbackVersion": "2.98.0",
+      "windowsArchive": {
+        "url": "https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_windows_amd64.zip",
+        "sha256": "c28c7b3b584967a05b74d9eaf7481bff24ddc34930bf2d6e442c148236561eb1",
+        "executableSha256": "a1701e3c806a805981554ace7df04812772c6449bdcfd1a77675013d97786401"
+      },
+      "linuxArchive": {
+        "url": "https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_linux_amd64.tar.gz",
+        "sha256": "3b8ac6b30336802fc1a858d7c084e11cdf24ac1a761ca90b68022d7d729208de",
+        "executableSha256": "62885b97de6a0cd85e616cdd94bcda908bf5cf1018094385892b05cea3537163"
+      },
+      "canonicalSource": "https://github.com/cli/cli/releases/tag/v2.98.0"
+    },
+    "powershell": {
+      "windowsConstraint": ">=5.1 <6.0",
+      "source": "Windows Server 2025 operating-system component"
+    },
+    "dockerEngine": {
+      "exactVersion": "29.6.1",
+      "installer": "docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1"
+    },
+    "dockerBuildx": {
+      "exactVersion": "0.27.0",
+      "installer": "docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e"
+    }
+  },
+  "workflowJobs": {
+    "windowsPackage": {
+      "runner": "windows-2025",
+      "dependencies": [
+        "Git for Windows MinGit 2.55.0.windows.2 from the verified portable bootstrap",
+        "GitHub CLI 2.98.0 from the digest-verified portable archive",
+        "Node.js 22.18.0 and bundled npm 10.9.3 from actions/setup-node",
+        "npm packages with exact package-lock.json integrity",
+        "Windows PowerShell >=5.1 <6.0 from the Windows Server 2025 operating-system image",
+        "Squirrel.Windows packaging from electron-builder-squirrel-windows 26.15.3"
+      ],
+      "bootstrap": "actions/setup-node, bootstrap-job-tools.mjs windows, npm ci, build.bat /s, and build-installer.bat /s",
+      "cacheMissProof": "bootstrap-job-tools.mjs and download-dependencies.bat /s verify portable archives, installed executables, npm integrity, Electron runtime, and bundled Squirrel tools",
+      "checks": [
+        "git --version",
+        "gh --version",
+        "node --version",
+        "npm --version",
+        "powershell.exe version probe"
+      ]
+    },
+    "linuxContainer": {
+      "runner": "ubuntu-24.04",
+      "dependencies": [
+        "Git >=2.43.0 <3.0.0 with Ubuntu 24.04 signed apt fallback",
+        "GNU tar >=1.35 <2.0 with Ubuntu 24.04 signed apt fallback",
+        "GitHub CLI 2.98.0 from the digest-verified portable archive",
+        "Node.js 22.18.0 and bundled npm 10.9.3 from actions/setup-node",
+        "Docker Engine 29.6.1 from docker/setup-docker-action",
+        "Docker Buildx v0.27.0 from docker/setup-buildx-action",
+        "npm packages with exact package-lock.json integrity"
+      ],
+      "bootstrap": "actions/setup-node, bootstrap-job-tools.mjs ubuntu, docker/setup-docker-action, docker/setup-buildx-action, and npm ci",
+      "cacheMissProof": "verified GitHub CLI fallback, Ubuntu Git fallback, clean npm install, exact Docker Engine setup, and docker buildx inspect --bootstrap",
+      "checks": [
+        "git --version",
+        "tar --version",
+        "gh --version",
+        "node --version",
+        "npm --version",
+        "docker version",
+        "docker buildx version"
+      ]
+    },
+    "publishRelease": {
+      "runner": "ubuntu-24.04",
+      "dependencies": [
+        "Git >=2.43.0 <3.0.0 with Ubuntu 24.04 signed apt fallback",
+        "GNU tar >=1.35 <2.0 with Ubuntu 24.04 signed apt fallback",
+        "GitHub CLI 2.98.0 from the digest-verified portable archive",
+        "Node.js 22.18.0 and bundled npm 10.9.3 from actions/setup-node",
+        "npm packages with exact package-lock.json integrity",
+        "Committed GitHub CLI product and context download selectors"
+      ],
+      "bootstrap": "actions/setup-node, bootstrap-job-tools.mjs ubuntu, npm ci, and committed cross-attempt artifact selection",
+      "cacheMissProof": "verified GitHub CLI fallback, Ubuntu Git fallback, clean npm install, and exact tool probes before staging",
+      "checks": [
+        "git --version",
+        "tar --version",
+        "gh --version",
+        "node --version",
+        "npm --version"
+      ]
+    },
+    "finalizeRelease": {
+      "runner": "ubuntu-24.04",
+      "dependencies": [
+        "Git >=2.43.0 <3.0.0 with Ubuntu 24.04 signed apt fallback",
+        "GNU tar >=1.35 <2.0 with Ubuntu 24.04 signed apt fallback",
+        "GitHub CLI 2.98.0 from the digest-verified portable archive",
+        "Node.js 22.18.0 and bundled npm 10.9.3 from actions/setup-node",
+        "npm packages with exact package-lock.json integrity",
+        "Committed GitHub CLI product selector and release readback validator"
+      ],
+      "bootstrap": "actions/setup-node, bootstrap-job-tools.mjs ubuntu, npm ci, and committed cross-attempt artifact selection",
+      "cacheMissProof": "digest-verified GitHub CLI archive, Ubuntu Git fallback, clean npm install, and exact tool probes before readback",
+      "checks": [
+        "git --version",
+        "tar --version",
+        "gh --version",
+        "node --version",
+        "npm --version"
+      ]
+    }
   },
   "container": {
     "buildContext": "server",
     "dockerfile": "Dockerfile",
     "platform": "linux/amd64",
     "baseImage": "node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
-    "integritySource": "OCI image-index digest",
-    "archiveFormat": "oci"
+    "baseImageIndexDigest": "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
+    "baseImageManifestDigest": "sha256:76789712cd1ae89a1225eac9077010d68987a423588042dac30446f502f1858c",
+    "builder": "Docker Buildx v0.27.0",
+    "output": "OCI image layout tar",
+    "integritySource": "OCI descriptor digests plus container-manifest.json"
   },
   "prohibited": [
     "code-signing certificates",

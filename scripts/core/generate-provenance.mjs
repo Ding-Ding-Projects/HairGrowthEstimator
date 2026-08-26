@@ -1,12 +1,22 @@
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '..', '..');
-const packagePath = path.join(repositoryRoot, 'package.json');
-const outputPath = path.join(repositoryRoot, 'app', 'provenance.json');
+const stagedPackagePath = path.join(repositoryRoot, 'dist', 'package-input', 'package.json');
+const sourcePackagePath = path.join(repositoryRoot, 'package.json');
+const outputPath = path.join(repositoryRoot, 'dist', 'package-input', 'app', 'provenance.json');
+
+async function existingPackagePath() {
+  try {
+    await access(stagedPackagePath);
+    return stagedPackagePath;
+  } catch {
+    return sourcePackagePath;
+  }
+}
 
 function git(...args) {
   return execFileSync('git', args, {
@@ -29,7 +39,7 @@ function sourceDateEpochInstant() {
   return Number.isSafeInteger(milliseconds) ? validIsoInstant(new Date(milliseconds).toISOString()) : null;
 }
 
-const packageJson = JSON.parse(await readFile(packagePath, 'utf8'));
+const packageJson = JSON.parse(await readFile(await existingPackagePath(), 'utf8'));
 const commit = git('rev-parse', 'HEAD');
 const commitTimestamp = validIsoInstant(git('show', '-s', '--format=%cI', commit));
 const environmentTimestamp = validIsoInstant(process.env.BUILD_UPDATED_AT);
@@ -59,5 +69,6 @@ const provenance = {
   signing: 'unsigned'
 };
 
+await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(provenance, null, 2)}\n`, 'utf8');
 process.stdout.write(`Wrote ${path.relative(repositoryRoot, outputPath)} for ${packageJson.version} at ${updatedAt} from ${source}.\n`);

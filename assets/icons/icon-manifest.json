@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 2,
+  "master": "logo-master.svg",
+  "masterBytes": 1554,
+  "masterSha256": "e237cee60d2b654fe9db2a834a671d29a12d51a058e4d383bf6361700c8615bf",
+  "generatedBy": "scripts/core/generate-icons.mjs",
+  "renderer": {
+    "package": "sharp",
+    "version": "0.34.3",
+    "sourceIsMasterBytes": true
+  },
+  "ico": {
+    "file": "app-icon.ico",
+    "sizes": [
+      16,
+      24,
+      32,
+      48,
+      64,
+      128,
+      256
+    ],
+    "bytes": 28143,
+    "sha256": "14746ee9593ccdcfa0dd9b85a5d8b43055bbefa6086c06e02bd81171c0d05765"
+  },
+  "png": [
+    {
+      "file": "app-icon-16.png",
+      "size": 16,
+      "bytes": 719,
+      "sha256": "a0074d9a8d92c7090822442af2775de896a214f245890fee7116b12921efe1f0"
+    },
+    {
+      "file": "app-icon-24.png",
+      "size": 24,
+      "bytes": 1075,
+      "sha256": "84a351223c5019554ae39967e18e05727b37c4c4cfff001e3f25de3e88c5bb29"
+    },
+    {
+      "file": "app-icon-32.png",
+      "size": 32,
+      "bytes": 1498,
+      "sha256": "48ffddbc00becd2169cef0c2de15a5042344a73d98f1d725d03dca814b09e4de"
+    },
+    {
+      "file": "app-icon-48.png",
+      "size": 48,
+      "bytes": 2294,
+      "sha256": "289ec4b01ff2ce9e6291c5ee0226aa3e41af00a4edce8e395d1c61574b1c925b"
+    },
+    {
+      "file": "app-icon-64.png",
+      "size": 64,
+      "bytes": 3122,
+      "sha256": "36d68964709a2811bf258f96b2a29157b40c6bc2c2350a850b62ae20ddd990d4"
+    },
+    {
+      "file": "app-icon-128.png",
+      "size": 128,
+      "bytes": 6312,
+      "sha256": "ee26796aff3aa2c38dadf031bde2d1cc6d3db1b6b2d0e513ea1f91fc12a68771"
+    },
+    {
+      "file": "app-icon-256.png",
+      "size": 256,
+      "bytes": 13005,
+      "sha256": "f61965d96d2886a2fa7cd61c6d65c993b17d5809ec85b73c05b0bf2e10f71adb"
+    }
+  ]
+}

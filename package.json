@@ -7,27 +7,38 @@
   "license": "MIT",
   "private": false,
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.18.0 <23"
   },
   "scripts": {
+    "prepare:release": "node scripts/release/release-context.mjs",
     "generate:provenance": "node scripts/core/generate-provenance.mjs",
     "generate:icons": "node scripts/core/generate-icons.mjs",
-    "prestart": "npm run generate:provenance && npm run generate:icons",
+    "verify:icons": "node scripts/core/generate-icons.mjs --verify",
+    "generate:build-config": "node scripts/release/build-config.mjs",
     "start": "electron .",
     "start:server": "node server/index.js",
-    "pretest": "npm run generate:icons",
+    "pretest": "npm run verify:icons",
     "test": "node --test tests/core/*.test.js && npm run validate:assets && npm run validate:inventory",
     "test:core": "node --test tests/core/*.test.js",
     "validate:assets": "node scripts/core/validate-hair-assets.mjs",
     "validate:inventory": "node scripts/core/check-universal-inventory.mjs",
     "count-lines": "node scripts/core/count-lines.mjs",
-    "prepack": "npm run generate:provenance && npm run generate:icons",
-    "dist": "npm run prepack && electron-builder --win squirrel --x64"
+    "finalize:run": "node scripts/release/finalize-run.mjs",
+    "validate:release-workflow": "node scripts/release/workflow-contract.mjs",
+    "validate:container": "node scripts/release/container-contract.mjs",
+    "build:container": "node scripts/release/build-container.mjs",
+    "test:packaging": "node --test scripts/release/tests/*.test.mjs",
+    "prepack": "npm run prepare:release && npm run generate:provenance && npm run verify:icons && npm run generate:build-config",
+    "package:dir": "npm run prepack && electron-builder --dir --win --x64 --config dist/build-config/electron-builder.json",
+    "dist": "npm run prepack && electron-builder --win squirrel --x64 --config dist/build-config/electron-builder.json"
   },
   "devDependencies": {
+    "@electron/asar": "4.3.0",
     "electron": "44.0.0",
     "electron-builder": "26.15.3",
-    "electron-builder-squirrel-windows": "26.15.3"
+    "electron-builder-squirrel-windows": "26.15.3",
+    "resedit": "1.7.2",
+    "sharp": "0.34.3"
   },
   "releasePolicy": {
     "forceCodeSigning": false,
@@ -45,9 +56,25 @@
       "output": "dist"
     },
     "files": [
-      "app/**/*",
-      "assets/**/*",
-      "package.json"
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "app/**/*",
+          "!app/provenance.json",
+          "!app/release-metadata.json",
+          "assets/**/*"
+        ]
+      },
+      {
+        "from": "dist/package-input",
+        "to": ".",
+        "filter": [
+          "package.json",
+          "app/provenance.json",
+          "app/release-metadata.json"
+        ]
+      }
     ],
     "extraResources": [
       {
@@ -67,13 +94,12 @@
           ]
         }
       ],
-      "icon": "assets/app-icon.ico",
+      "icon": "assets/icons/app-icon.ico",
       "forceCodeSigning": false,
       "signExecutable": false,
       "signAndEditExecutable": false
     },
     "squirrelWindows": {
-      "iconUrl": "https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/app-icon.ico",
       "artifactName": "HairGrowthEstimator-Setup-${version}-${arch}.${ext}",
       "msi": false
     }

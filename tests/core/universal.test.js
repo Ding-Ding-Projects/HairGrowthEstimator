@@ -14,7 +14,7 @@ test('hand-written universal inventory is complete and every non-implemented row
   const result = module.validateInventory(inventory);
   assert.ok(result.rows >= 45);
   assert.ok(result.implemented > 10);
-  assert.ok(result.gaps > 0, 'Yum Tong gaps must remain explicit instead of being hidden.');
+  assert.ok(result.gaps > 0, 'Release-grade gaps must remain explicit instead of being hidden.');
 });
 
 test('inventory negative regression turns red when an exact canonical row disappears', async () => {
