@@ -47,12 +47,12 @@ Checkboxes are complete only when the named work is implemented and locally veri
 ## Built evidence
 
 - [x] Integrate the frozen evidence harness with source, package, process, window, page, input, semantic, capture, privacy, and recording bindings.
-- [x] Pass all 30 evidence-harness checks.
+- [x] Pass all 31 evidence-harness checks, including the self-contained receipt and outer-window geometry boundaries.
 - [x] Pass JavaScript syntax checks for all 18 evidence files.
 - [x] Implement bounded resume and recovery rules that refuse ambiguous post-input reuse.
 - [x] Implement window-only capture and recording with exact byte receipts and separate human inspection.
-- [ ] Author the final complete interaction and capture inventory.
-- [ ] Build the exact packaged candidate required by the harness preflight.
+- [ ] Replace the refuted 254-row interaction inventory. The current audit found 176 reachable states, 49 deterministic-fixture states, 6 duplicates, 23 unreachable states, and nine omitted canonical completeness areas.
+- [x] Build an exact unsigned packaged candidate with a self-contained evidence receipt at `da7b68baa89678e3ca3d45188f122c379eccc8c4`.
 - [ ] Capture every required desktop and website interaction.
 - [ ] Inspect every capture and recording for pixels, accessibility, privacy, and source identity.
 - [ ] Commit the real screen recording.
@@ -71,7 +71,7 @@ Checkboxes are complete only when the named work is implemented and locally veri
 - [x] Validate explicit Squirrel ZIP directory records without weakening extraction safety.
 - [x] Implement the four-job release workflow for every push and manual dispatch, without test or lint jobs.
 - [x] Implement the fixed four-file terminal transfer and split context and terminal run-attempt validation.
-- [x] Pass all 86 release-packaging checks.
+- [x] Pass all 87 release-packaging checks.
 - [ ] Build the final runnable Windows application from the final clean commit.
 - [ ] Build and validate the final unsigned Squirrel.Windows installer family.
 - [ ] Build and validate the final deterministic OCI archive.

@@ -2,7 +2,7 @@
 
 ## Candidate identity
 
-The implementation basis immediately before this handoff update is `a4cec62c55804e6e4eb39d4bbf759e83eed2719f` on the integration branch.
+The implementation basis immediately before this handoff update is `da7b68baa89678e3ca3d45188f122c379eccc8c4` on the integration branch. Local `main` and `origin/main` remain at `bae395a18590f0fb7b46091bf5b6656f521159ee` until this handoff commit is integrated.
 
 This candidate contains four completed source milestones:
 
@@ -11,7 +11,7 @@ This candidate contains four completed source milestones:
 3. The frozen built-evidence harness.
 4. Reproducible Windows, Squirrel.Windows, OCI, release, and GitHub Pages packaging sources.
 
-No final installer, container archive, screen capture set, screen recording, release, Pages deployment, host deployment, or cleanup result is claimed by this handoff.
+A runnable unsigned Windows package was rebuilt from this exact candidate. Deterministic OCI and Squirrel.Windows products exist only as earlier local milestones. No complete screen capture set, screen recording, release verification, Pages deployment, host deployment, or cleanup result is claimed by this handoff.
 
 ## Integrated product scope
 
@@ -36,9 +36,9 @@ The candidate includes:
 | Core | 349 passed, 2 explicitly skipped, 0 failed | Source behavior and strict boundaries |
 | Website, integrated environment | 53 passed, 2 explicitly skipped, 0 failed | Source, composition, structure, and optional external-source skips |
 | Website, external private vocabulary supplied | 55 passed, 0 failed, 0 skipped | Complete source suite with value-free external currentness |
-| Evidence harness | 30 passed, 0 failed | Plan, identity, process, ledger, recovery, capture, and recording contracts |
+| Evidence harness | 31 passed, 0 failed | Plan, identity, process, ledger, recovery, client-only capture, outer-window geometry, and recording contracts |
 | Evidence JavaScript syntax | 18 of 18 passed | Every evidence JavaScript file |
-| Release packaging | 86 passed, 0 failed | Windows, Squirrel.Windows, staged updater provenance, OCI, workflow, source-binding, safe-output, and publication contracts |
+| Release packaging | 87 passed, 0 failed | Windows, Squirrel.Windows, staged updater provenance, self-contained packaged receipts, OCI, workflow, source-binding, safe-output, and publication contracts |
 
 Additional accepted facts:
 
@@ -47,8 +47,10 @@ Additional accepted facts:
 - Deliberate catalog-entry deletion and article-mirror omission turn the localization checks red before restoration.
 - The strict asset fixture composes all eight hair stages, rejects one changed image by SHA-256, and succeeds after restoration.
 - Desktop and core month calculations use `app/shared/hair.js`; website calculations use `site/state-contract.js`.
-- The evidence harness is source complete and locally verified, but has not captured the final packaged product.
-- The release packaging is source complete and locally verified, but has not built or published the final release products.
+- The evidence harness has a self-contained package receipt and a verified client-only capture geometry contract, but no interaction step or screenshot has completed human pixel inspection.
+- The current runnable package is bound to `da7b68baa89678e3ca3d45188f122c379eccc8c4`. Its unsigned executable is 244,440,576 bytes with SHA-256 `70170757df3815b3a881f5f1bfd72e431c80e208430858df55f27525cfbf89e3`; `resources/app.asar` is 18,474,116 bytes with SHA-256 `cf0f1707b9562490804ea4ee448a32e871d4eb6251f795181d8b11dd520fa4a5`; the canonical in-package receipt is 15,832 bytes with SHA-256 `65bfbb48cbd4b28c3e641c8dbc18adc35854c901cb9caf78095aa61589b4d8a5`.
+- The current package completed through `build.bat /s` in `00:01:24`, including source preservation before and after packaging. It is a local build milestone, not a release verification claim.
+- The 254-row proposed capture inventory was independently refuted as incomplete: 176 states are directly reachable, 49 require deterministic fixtures, 6 duplicate another visual state, and 23 are not reachable from the current product. It also omits nine canonical completeness areas, so it must be rewritten after the missing features are implemented.
 - Root build timing now uses `scripts/release/batch-timing.bat`, and nested ASAR source binding is proven by a real temporary archive check.
 - `scripts/release/stage-package-source.mjs` materializes application, asset, canonical icon, and server inputs from exact candidate Git blobs before packaging, preventing checkout line-ending conversion from changing release bytes.
 - Setup icon replacement uses in-process `resedit` allocation, validates every group-to-icon reference, writes atomically, and preserves the installer bootstrapper's two additional internal icon groups byte for byte.
@@ -72,10 +74,9 @@ Additional accepted facts:
 
 ### Build and package
 
-- Build the runnable Windows application from the final clean commit.
-- Build and validate the unsigned Squirrel.Windows setup executable, `RELEASES`, and full package.
-- Build and validate the deterministic Linux amd64 OCI archive.
-- Record exact product paths, sizes, SHA-256 values, source bindings, unsigned state, and provenance.
+- Rebuild and validate the unsigned Squirrel.Windows setup executable, `RELEASES`, and full package from the future release candidate.
+- Rebuild and validate the deterministic Linux amd64 OCI archive from the same future release candidate.
+- Record exact final-release paths, sizes, SHA-256 values, source bindings, unsigned state, and provenance.
 
 ### Drive and capture
 
@@ -112,4 +113,4 @@ Additional accepted facts:
 
 ## Next owner
 
-The integration owner should preserve the immutable candidate commit and all unrelated in-flight changes, reconcile these union drafts into the repository records, build the final products, run the frozen evidence route, publish and verify the release and Pages deployment, deploy the private-LAN service if the host remains safe, and only then complete ancestry-proven cleanup.
+The next owner should start from the pushed default branch after this session closeout. The first priority is implementing the 23 unreachable planned states and nine omitted canonical completeness areas, then replacing the refuted capture inventory. After that, rebuild every release product from one exact candidate, run the complete built-product evidence route, publish and verify the release and Pages deployment, and deploy the private-LAN service only if the inventoried shared host remains safe.

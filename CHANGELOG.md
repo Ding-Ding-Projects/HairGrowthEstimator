@@ -4,7 +4,7 @@ All notable changes are documented here. Dates and immutable commit links are ad
 
 ## Unreleased
 
-Implementation basis before this release-record update: `a4cec62c55804e6e4eb39d4bbf759e83eed2719f`
+Implementation basis before this release-record update: `da7b68baa89678e3ca3d45188f122c379eccc8c4`
 
 The release entry cannot truthfully link to its own future integration commit. The final release record must replace this candidate note with the exact immutable commit and release date.
 
@@ -42,6 +42,8 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Squirrel package validation now accepts strictly formed explicit ZIP directory records while retaining traversal, alias, type, payload, and ancestor-conflict refusal.
 - Installer validation now reads `Update.exe` from the outer Setup bootstrap payload, where Squirrel places it, while validating the full `.nupkg` independently without requiring a nonexistent inner updater.
 - Container builds now materialize `Dockerfile` and every server input from exact candidate Git blobs before both reproducibility builds, preventing checkout line-ending conversion from changing OCI payload bytes.
+- Packaged-application receipts are now self-contained under the disposable package directory, with package-root-relative proof paths and a byte-identical convenience mirror.
+- Client-only evidence captures now validate the exact renderer tuple independently from the bounded outer Windows resize-border envelope.
 
 ### Security and privacy
 
@@ -59,11 +61,11 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Core application checks: 349 passed, 2 explicitly skipped, 0 failed.
 - Website checks at the integrated candidate: 53 passed, 2 explicitly skipped because optional external private sources were absent, 0 failed.
 - A separate website run with the current private vocabulary supplied through its external value-free path reported 55 passed, 0 failed, and 0 skipped.
-- Evidence-harness checks: 30 passed, 0 failed, plus 18 of 18 JavaScript syntax checks.
-- Release-packaging checks: 86 passed, 0 failed.
+- Evidence-harness checks: 31 passed, 0 failed, plus 18 of 18 JavaScript syntax checks.
+- Release-packaging checks: 87 passed, 0 failed.
 - Localization checks prove all three catalog counts and all 66 article pairs, including deliberate catalog-entry deletion and article-mirror omission failures before restoration.
 - The strict hair-asset fixture composes all eight canonical stages, rejects a changed image at the SHA-256 boundary, and succeeds again after restoration.
-- The evidence harness and release packaging are source and contract verified. They have not yet produced final user-facing capture or release evidence.
+- The runnable unsigned Windows package at `da7b68baa89678e3ca3d45188f122c379eccc8c4` completed the one-click build, source-preservation, packaged-source, icon, and self-contained-receipt validation path. No user-facing capture or release verification is claimed.
 
 ### Pending release evidence
 
