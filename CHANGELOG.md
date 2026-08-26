@@ -1,75 +1,71 @@
 # Changelog
 
-All notable changes are documented here. Dates and commit links are added only when they can be verified.
+All notable changes are documented here. Dates and immutable commit links are added only when they can be verified.
 
 ## Unreleased
 
-Commit link: unavailable in this entry because a commit cannot truthfully reference its own future SHA before it exists. The immutable release record will bind the entry to its exact commit.
+Candidate source commit: `943927b81ac74d06c58cd5eab5b8506b51477325`
+
+The release entry cannot truthfully link to its own future integration commit. The final release record must replace this candidate note with the exact immutable commit and release date.
 
 ### Added
 
-- A public documentation website with build-bound provenance shown before navigation.
-- Hair-growth estimation, haircut history, unit conversion, visual-stage, service, privacy, export, download-status, and update-status surfaces.
-- Per-visitor language, playfulness, appearance, narration, schedule, attention, navigation, search, notification, history, and export controls.
-- Browser-local equivalents for advanced regular expressions, contextual appearance, toy locks, authentication codes, file conversion, and local Ollama mediation, each with explicit browser limitations.
-- Detailed categorized documentation and hand-written completeness inventories.
-- Deterministic generation of a genuine product-logo social preview.
-- Source-level verification with deliberate red-then-green negative regressions.
-- A frozen browser presentation contract for three language modes, eight factual message categories at five independent funny levels, shared School mode suppression, narrator admission and serialized tracks, bounded scheduled settings, the exact startup-surprise predicate, and five independent attention accommodations.
-- Documentation for the accepted website hardening contract, including strict local JSON validation, positive export allowlisting, internal documentation links, bounded installer manifests, byte-level PNG inspection, Worker-isolated regular expressions, Content Security Policy, and accessibility findings 18 through 24.
-- Focused website articles for three-mode language presentation, five-level factual-copy parity, shared and user-renamable School mode behavior, narrator voices and yielding, scheduled local and external settings, the exact 10 percent startup surprise, and five independent attention accommodations.
-- Versioned Cantonese source catalogs with 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries, plus 50 complete article mirrors and an explicit completeness inventory.
+- A Windows desktop application for hair-growth estimation, haircut resets and history, exact centimetre and inch display, target-date projection, local persistence, private-LAN service access, and managed SSH tunnelling.
+- Eight generated male hair-reference stages, their single `assets/hair-growth/stages.json` mapping authority, and a digest-bearing image-sequence manifest.
+- English, playful Hong Kong-style Cantonese, and bilingual presentation with independently persisted English and Cantonese funny levels.
+- Shared School mode behavior, narrator and voice controls, scheduled settings, startup surprise rules, five independent attention accommodations, local history, notifications, accessibility wiring, and privacy-preserving personal-vocabulary loading.
+- A public documentation website with build-bound provenance, responsive layouts, local assets, search and regular-expression tools, contextual appearance controls, visitor-local demonstrations, detailed feature articles, and a deterministic product-logo social preview.
+- Versioned Cantonese catalogs containing 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries, plus 66 complete documentation mirrors and an explicit localization inventory.
+- A frozen built-evidence harness with exact source and package identity, isolated data roots, exact page targeting, per-interaction ledgers, window-only capture, resumable recovery, privacy review, and bounded recording support.
+- Reproducible release packaging for a runnable Windows x64 application, an unsigned Squirrel.Windows installer family, and a deterministic Linux amd64 OCI archive.
+- Push and manual-dispatch workflows for release packaging and GitHub Pages deployment. The workflows contain packaging and publication validation only, with no test or lint jobs.
+- Dependency bootstrap, source-preservation, provenance, icon, line-count, safe-output, terminal-transfer, installer, container, and publication validators.
 
 ### Fixed
 
-- The browser estimator and its public documentation now share one average Gregorian month, `365.2425 / 12 = 30.436875 days`, for both the elapsed current-length calculation and the remaining projected-target calculation.
-- The documented 1.0 cm per month default remains adjustable, explicitly non-medical, subject to meaningful individual variation, and linked to the existing NCBI clinical overview.
-- The browser estimator now derives its active baseline from the newest valid remaining haircut after create, edit, and delete while retaining the visitor's independent manual fallback.
-- Manual baseline and haircut forms now reject future dates with guided inline errors. Legacy future haircut records remain visible but do not become active while their dates remain in the future.
-- Same-origin tabs now store monotonic browser revisions with a fresh writer identity for each loaded document, serialize writes through Web Locks or an IndexedDB transaction, reconcile storage events, verify each write, and refuse stale mutations visibly.
-- CSV and TSV state exports now contain normalized JSON Pointer rows for the complete redacted record instead of only aggregate counts. Every row carries typed JSON values plus explicit representation and privacy metadata.
-- Accessibility documentation now requires explicit setting-control names, complete nested tab relationships and roving navigation, stable focus during tab filtering, full context-menu keyboard traversal and focus return, deliberate documentation-result activation, and 44 by 44 CSS pixel standalone selection targets.
-- Website setting controls now receive explicit accessible names, and Tools and Settings sections expose complete tab and tabpanel relationships with shared roving keyboard behavior.
-- Website regular-expression workbench and search evaluation now run through bounded disposable Workers instead of constructing user patterns on the interface thread.
-- Worker construction and message-send failures now reject cleanly, terminate any created Worker, release queue capacity, and continue queued work.
-- Activating School mode now closes an active School-sensitive regular-expression dialog and any related context, appearance, or lock overlay whose target becomes unavailable.
-- Filtered tab-strip rebuilds now restore focus through the rebuilt `focusTarget`, falling back to the selected or first visible tab without changing selection.
-- JSONL haircut convenience rows now come only from the positive export allowlist at `record.state.haircuts`, never from live state.
-- Personal-vocabulary file loading now enforces the 256 KiB limit before reading, rejects a changed byte count, and decodes with fatal UTF-8. Its localized status, choose or replace, clear, live-region, palette, and School-filtering anchors are source checked.
-- Personal-vocabulary replacement now marks user-authored and factual display names, notes, local labels, authenticator codes, model names, and the release code name as exempt while continuing to replace website-owned visible and accessible copy.
-- The external personal-vocabulary scanner now fatal-decodes the selected file, requires the exact version 1 root fields and nonzero expected entry count, checks nonempty text replacements without printing values, and proves that its private replacement scan is nonempty.
-- Documentation results now move focus to the explicitly focusable article region only after deliberate activation.
-- Installer manifest input now has a 65,536-byte limit and fatal UTF-8 decoding before JSON parsing.
-- Runtime provenance handling now revalidates the complete installer contract, including exact version-tag matching, a 160-character filename bound, publication field types, positive IDs, and the immutable asset URL.
-- Hair-reference manifest input now has a 65,536-byte limit and fatal UTF-8 decoding before JSON parsing.
-- Local Ollama configuration now accepts only `http://127.0.0.1:11434` or `http://localhost:11434`, persists the normalized origin, and uses the same boundary in runtime validation and Content Security Policy.
-- Language and attention source plus documentation now use the same precise schedule rules: browser-resolved IANA timezone input, inclusive dates, start-inclusive and end-exclusive time windows, equal-time all-day behavior, previous-start-date and weekday ownership after midnight, highest-priority selection, and later-list-position tie-breaking.
-- Narrator documentation now states that browsers cannot reliably detect an active screen reader, so the website must use explicit visitor-controlled yielding and must not claim automatic ducking.
-- Narrator admission now uses a 250 ms global debounce, fixed per-category cooldowns, and an urgent error path that is never delayed by those limits.
-- External schedule documentation now distinguishes session-only in-memory Home Assistant credentials from an operating-system vault and reports CORS or missing-mediator limitations without claiming that remote settings were applied.
-- Release-bound composition now accepts only the fixed four-file `dist/terminal-transfer` handoff, validates exact receipt hashes and nested source bindings, rereads the published GitHub release and Setup asset, and derives visible version and updated-at values from the verified terminal installer instead of requiring the tracked package version to impersonate a release version.
-- Terminal transfer receipts now separate the originating `contextRunAttempt` from a later successful `terminalRunAttempt`. The composer independently verifies the exact GitHub Actions terminal-attempt identity and no longer rejects a valid rerun merely because publication finished on a later attempt.
+- Desktop, core, and website calculations now use one average Gregorian month, `365.2425 / 12 = 30.436875 days`, for current-length and projected-target calculations.
+- The adjustable 1.0 cm per month default remains explicitly non-medical and subject to meaningful individual variation.
+- The active baseline now comes from the newest valid remaining haircut while preserving the independent manual fallback.
+- Future manual baselines and haircut dates are rejected, and legacy future haircut records remain visible without becoming active.
+- Same-origin website writes now use monotonic revisions, per-document writer identity, Web Locks or IndexedDB serialization, storage-event reconciliation, and visible stale-write refusal.
+- CSV and TSV exports now contain normalized JSON Pointer rows, typed values, and explicit representation and privacy metadata.
+- Strict personal-vocabulary, browser-state, appearance, stored-envelope, and import validation now fail closed without partial application.
+- Browser regular-expression work runs in bounded disposable Workers with queue recovery after construction or message-send failure.
+- School-sensitive overlays close when School mode hides their targets, filtered tabs restore focus safely, and managed context menus return focus to their opener.
+- Release-bound website composition accepts only the fixed four-file terminal transfer and independently revalidates the successful workflow attempt, release identity, published release, Setup asset, and source bindings.
+- Terminal transfer receipts now distinguish the originating `contextRunAttempt` from a later successful `terminalRunAttempt`.
+- Root build scripts send timing events through a fresh helper batch context, avoiding repeated same-file label lookup failures on Windows.
+- Packaged application validation now reads nested ASAR entries with the host path separator and proves the behavior with a real temporary archive.
 
 ### Security and privacy
 
-- No analytics, trackers, remote fonts, or CDN assets.
-- The website template now declares a static Content Security Policy that limits scripts and Workers to same-origin files, limits local model connections to the documented loopback endpoints, blocks objects and frames, and constrains image, base, and form destinations.
-- No verified installer link is exposed before an immutable release manifest exists.
-- The composer is the only source consumer configured for canonical hair-reference images from the root asset authority. The source images are not present in this checkout, and no duplicate authority was added.
-- Private visitor settings remain in local browser storage and can be cleared by the visitor.
-- Same-origin coordination stays local to the browser profile. It does not synchronize data to another device, service, or network provider.
-- External schedule sources accept HTTPS or exact loopback HTTP, reject embedded credentials, fragments, and redirects, limit responses to 16 KiB with fatal UTF-8 and bounded JSON parsing, time out after 3 seconds, and keep Home Assistant credentials only in tab memory. Browser CORS and the static Content Security Policy still determine whether a real request can proceed.
-- Saved narrator and theme-only schedule records from the preceding website version now migrate through exact legacy shapes before strict current-schema validation, retaining unrelated visitor state while malformed legacy records still fail closed.
-- Normalized CSV and TSV exports preserve the already redacted record and repeat the omission statement on every row.
-- The strict security contract and active browser consumers now implement duplicate-key-aware JSON parsing, bounded personal-vocabulary validation, complete browser-state and appearance validation, sanitized import construction, bounded stored-envelope parsing, and a positive export allowlist. The complete focused hardening suite reports 12 passed, 0 failed, and 0 skipped after restoration. Its latest six-boundary adversarial fixture reported 5 passed and 6 failed before restoration. Separate personal-vocabulary size-order, status-and-action, owned-copy exemption, and external-scanner fixtures each reported one failure before restoration and one pass afterward. These focused results are partial negative-regression evidence, not complete inventory proof.
-- The final complete website source suite reports 55 passed, 0 failed, and 0 skipped with the current private vocabulary validated through an external value-free path.
+- No analytics, trackers, remote fonts, or CDN runtime assets are included.
+- The website declares a static Content Security Policy and permits local model connections only to the documented loopback origins.
+- Private visitor state remains local to the browser profile and is excluded from public records and ordinary exports.
+- Personal-vocabulary data is supplied only through an external private file, is validated before use, and is never committed to this repository.
+- Scheduled network destinations, service credentials, IPC channels, evidence paths, installer inputs, and update metadata use bounded fail-closed validation.
+- Release builds require a clean candidate and prove tracked source bytes remain unchanged during packaging.
+- Windows executables are intentionally unsigned. Release hashes and manifests provide integrity evidence but are not a code-signing substitute.
+- The OCI service archive uses a digest-pinned base, a non-root account, source-bound server bytes, and documented read-only runtime restrictions.
 
-### Known evidence gaps
+### Locally verified source state
 
-- Built-artifact interaction evidence, real captures, and the screen recording are pending.
-- Deployed Open Graph and anonymous image-fetch verification are pending.
-- Installer and automatic-update verification are pending.
-- The final three-check repair subset was red 3 of 3 when its exact article-focus, bounded manifest-reader, and runtime installer-validation boundaries were removed, then passed 3 with 0 failed and 0 skipped after restoration. The full focused hardening suite and integrated service-counterpart audit now pass, but complete negative-regression coverage for every inventory, localization, interaction, and capture boundary remains pending. The counterpart audit deliberately breaks only the server health-route boundary, while the other accepted fixtures cover only their named source boundaries.
-- Website source parity is implemented through the shared calculator and deterministic vectors. Desktop and core consumption, integrated cross-surface proof, and built-artifact interaction remain pending for the adjustable 1.0 cm per month default and both calculations that use the canonical 30.436875-day month.
-- The final README capture update remains pending and is not part of this documentation-only lane.
-- L06 source integration is present. The main focused source-boundary test reports 5 passed after its deliberate 0-of-5 red state. The final pure-contract test reports 12 passed, 0 failed, 0 skipped, and exit code 0. The localization suite reports 5 passed after exact catalog-entry deletion and article-locale omission checks turned red. The terminal-transfer provenance suite reports 4 passed after its deliberate 0-of-4 red state. Composed language, School mode, narrator, schedule, surprise, attention, and real terminal-release interactions plus their capture evidence remain pending.
+- Core application checks: 349 passed, 2 explicitly skipped, 0 failed.
+- Website checks at the integrated candidate: 53 passed, 2 explicitly skipped because optional external private sources were absent, 0 failed.
+- A separate website run with the current private vocabulary supplied through its external value-free path reported 55 passed, 0 failed, and 0 skipped.
+- Evidence-harness checks: 30 passed, 0 failed, plus 18 of 18 JavaScript syntax checks.
+- Release-packaging checks: 82 passed, 0 failed.
+- Localization checks prove all three catalog counts and all 66 article pairs, including deliberate catalog-entry deletion and article-mirror omission failures before restoration.
+- The strict hair-asset fixture composes all eight canonical stages, rejects a changed image at the SHA-256 boundary, and succeeds again after restoration.
+- The evidence harness and release packaging are source and contract verified. They have not yet produced final user-facing capture or release evidence.
+
+### Pending release evidence
+
+- Build the final runnable application, unsigned Squirrel.Windows installer family, and OCI archive from the final clean commit.
+- Drive the packaged application and composed website through the approved off-screen route.
+- Capture every required surface and commit the real screen recording.
+- Replace the README capture plan with the complete real, non-collapsed capture set.
+- Publish and verify one unique non-draft GitHub release and all required downloadable assets.
+- Deploy GitHub Pages, verify the served Open Graph response and anonymous image fetch, and set the repository homepage.
+- Deploy the private-LAN service only after the final container bytes and target host state are revalidated.
+- Complete integration ancestry proof and remove only proven task-owned merged branches and worktrees.

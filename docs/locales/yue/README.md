@@ -1,33 +1,113 @@
-# Hair Growth Estimator 文件
+# 頭髮生長估算器文件
 
-呢套文件講解桌面產品、可選用嘅 HTTP 服務，同埋公開文件及下載網站。內容會將已實作嘅行為，同仍然等緊程式碼或者驗證嘅要求分開寫清楚，唔會用「就快得」扮「已經得」。
+呢套文件講解 Windows 桌面產品、可選用嘅 HTTP 服務、發佈同封裝路徑、證據操作框架，以及公開文件同下載網站。內容會清楚分開原始碼實作、本機驗證、已建置產品證據同已發佈證據，唔會將四樣嘢撈埋一碗當通粉。
 
 ## 文件地圖
 
 - [產品功能](features/README.md)
 - [公開網站](site/README.md)
 - [HTTP API](api/README.md)
-- [操作](operations/README.md)
-- [保安同私隱](security/README.md)
+- [操作維護](operations/README.md)
+- [安全同私隱](security/README.md)
 - [完整性清單](inventory/README.md)
+- [發佈同封裝](release/README.md)
+- [已建置證據操作框架](verification/built-evidence-harness.md)
 
 ## 證據用語
 
-以下用語會喺全部文章入面保持一致，免得同一盞綠燈到處變色：
+- **已實作** 代表喺已檢查嘅提交入面，指定原始碼邊界確實存在。
+- **本機已驗證** 代表指定本機檢查已經針對所述原始碼候選版本成功完成。
+- **已建置產品已驗證** 代表已封裝桌面產品、安裝程式、容器封存檔或者已組合網站，全部都有直接實際操作。
+- **已發佈並驗證** 代表不可變發佈版本、已部署網站或者可下載資產，已經由公開目的地讀返出嚟核對。
+- **待處理** 代表而家未有獲接納嘅證明。計劃中嘅選擇器、測試名稱、工作流程、擷取路徑或者發佈檔名，自己企喺度並唔算證據。
 
-- **已實作**代表喺已檢查嘅 revision 入面，相關原始碼邊界確實存在。
-- **已喺本機驗證**代表指定嘅本機檢查，已經針對所述 revision 成功完成。
-- **已驗證建置成品**代表已直接操作封裝後嘅桌面產品或者組合後嘅網站。
-- **待辦**代表要求仲未有獲接受嘅證據。淨係有計劃中嘅 selector、測試 identifier、互動路徑或者畫面擷取檔名，本身唔算證據。
+## 整合原始碼基礎
 
-今次加固文件更新以 revision `321f81a078012f6e10a56ca2ca47245471fa548c` 為起點。清單所記錄嘅嚴格 security-contract、可棄置 Worker、實際 consumer、無障礙、policy、installer 同 PNG-inspection 原始碼 identifier 都已經存在。Manifest reader 有明確界限並使用 fatal UTF-8，瀏覽器執行階段會再次執行精確嘅 provenance 同 installer 檢查，School-sensitive overlay 會關閉，重新建置嘅分頁會恢復焦點，JSONL 會讀取正面 allowlist，Worker 拒絕後會釋放 queue 容量，Ollama origin 已喺執行階段、policy 同已儲存狀態之間對齊，精確嘅上一版本 presentation migration 會先過 current validation，而 `#docs-article` 亦係刻意設定嘅焦點目標。聚焦加固測試套件喺還原後錄得 12 項通過、0 項失敗、0 項略過。三個 Cantonese catalogs 精確包含 250、274 同 686 個 source entries，而全部 50 篇 English articles 都各有一份 validated Cantonese mirror。標準圖片資產、組合後互動、installer 發佈、畫面擷取，同更廣泛嘅完整性證據仍然待辦。文件無法喺同一個 commit 入面如實引用自己未來嘅 commit。等相關成品存在之後，build provenance 同不可變 release record 先會釘實最終 revision。
+今次文件更新之前嘅實作基礎係 `943927b81ac74d06c58cd5eab5b8506b51477325`。
 
-估算文章用一個平均 Gregorian month，即 `365.2425 / 12 = 30.436875 days`，同時計算已過時間所對應嘅目前長度，以及到達目標前嘅剩餘預測。每月 1.0 cm 嘅預設值仍然只係可調整、非醫療用途嘅規劃估算，而且個人差異可以好明顯，現有嘅 [Hair Growth Disorders, StatPearls](https://www.ncbi.nlm.nih.gov/books/NBK499948/) 引用亦繼續支援呢個說明。網站原始碼一致性已實作。桌面同核心 consumption、整合跨介面證據，以及建置成品互動仍然待辦。
+佢包括完整桌面同服務核心、公開網站同本地化原始碼、全部八張已產生頭髮參考圖片、已凍結嘅已建置證據操作框架、可重現嘅 Windows 同 OCI 封裝、發佈自動化，以及 GitHub Pages 部署接線。
 
-L06 聚焦顯示文章定義咗三種語言模式、五級事實文案一致性、共用而且可由使用者改名嘅 School mode 行為、瀏覽器旁白同聲音處理、排程本機及外部設定、精確 10 percent 啟動驚喜，同五個獨立專注輔助模式。文章清楚分開必要行為同已接受證據，亦記錄咗瀏覽器對跨產品儲存、自動 assistive-technology 偵測、可重用外部 credential，同 cross-origin request 嘅限制。原始碼整合已存在。主要原始碼邊界測試喺刻意移除原始碼嘅狀態下錄得 0 項通過、5 項失敗，還原後就錄得 5 項通過。Pure-contract run 錄得 12 passed、0 failed、0 skipped。Localization run 錄得 5 passed、0 failed、0 skipped，當中包括刻意 catalog-entry deletion 同 article-locale omission。組合後互動同畫面擷取證據仍然待辦。
+應用程式同網站共用以下計算事實：
 
-負面回歸聲明刻意收窄。較早嘅證據涵蓋刻意移除 front provenance identifier、一項 current-strip regex-builder registration、core state-contract module、article focus target，同有界限嘅 installer 及 runtime publication check。最新刻意加固 fixture 精確移除或者削弱咗六個邊界：啟用中 School-sensitive regex 同相關 overlay closure、重新建置分頁嘅 `focusTarget` restoration、JSONL 使用 `record.state.haircuts`、Worker construction 同 `postMessage` queue recovery、`MAX_HAIR_MANIFEST_BYTES` 加 fatal UTF-8 decoding，以及執行階段、persistence、policy 同 saved-state validation 之間嘅精確 Ollama origin alignment。嗰個狀態共有 11 項測試，其中 5 項通過、6 項失敗。還原六個邊界之後，結果係 11 項通過、0 項失敗、0 項略過。個別 personal-vocabulary size-order、localized status-and-action，同 owned-copy exemption 證明，全部都先錄得紅燈 1，還原後再錄得通過 1。外部 vocabulary scanner 嘅 exact-count fixture 將 `PRIVATE_VOCABULARY_EXPECTED_COUNT` 設為 0 時錄得紅燈 1，回復預期數量 100 後就錄得通過 1。呢啲結果唔代表每一行完整性清單、本地化邊界、建置成品互動或者畫面擷取記錄都已經有由紅轉綠嘅覆蓋，綠燈有幾多就只講幾多。
+- `1 in = 2.54 cm` 係單位換算。
+- `365.2425 / 12 = 30.436875 days` 係一個估算月份。
+- 目前長度計算同預測目標計算會用同一個月份數值。
+- 隨附規劃預設值係每月可調整嘅 1.0 cm 估算，唔係醫療事實。
+- 頭髮生長速度會因人同時間而有明顯差異。
+
+`app/shared/hair.js` 提供桌面同核心月份合約。`site/state-contract.js` 提供網站合約。聚焦核心同網站檢查涵蓋兩條計算路徑。整合原始碼一致性已完成，而已封裝互動仍然待處理。
+
+## 頭髮參考原始權威
+
+八個已產生男性頭髮參考 PNG 檔案同相關清單，已經整合到 `assets/hair-growth/`。
+
+`assets/hair-growth/stages.json` 係唯一階段對檔案映射權威。組合器同封裝路徑會使用呢個權威，唔會偷偷養多一份映射。各項本機檢查會驗證清單結構、檔案身分、圖片尺寸、PNG 結構同 SHA-256 邊界。嚴格固定資料會組合全部八個階段，改動其中一張圖片以觀察摘要拒絕，再還原佢並觀察成功結果。
+
+原始碼整合同自動圖片驗證已完成。最後人工像素檢查、動畫互動、已建置產品擷取同 README 圖片仍然待處理。
+
+## 語言同本地化
+
+原始碼提供英文、玩味香港粵語同精簡雙語顯示。英文同粵語各自有獨立持久保存嘅玩味程度，範圍由 1 至 5，兩者預設都係 5。
+
+手寫本地化清單準確包含：
+
+- 250 個 `ui-core` 項目
+- 274 個 `ui-settings` 項目
+- 686 個 `runtime` 項目
+- 66 對英文同粵語文件文章
+
+聚焦本地化檢查會刻意移除一個目錄項目同一個文章鏡像，觀察失敗，再還原佢哋並觀察成功。已接納嘅原始碼檢查唔會冒充已組合瀏覽器互動，更加唔會代替每個本地化狀態嘅擷取證據。
+
+## 桌面同服務核心
+
+整合核心包括估算、剪髮紀錄、精確單位換算、本機儲存、HTTP 服務、受管理 SSH 通道、來源證明、本機歷史、語言顯示、School mode、旁白、排程、專注力輔助、個人詞彙載入、更新驗證、無障礙接線同特權邊界檢查。
+
+整合核心執行結果係 349 個通過、2 個明確略過同 0 個失敗。略過嘅檢查全部係明確可選外部來源邊界，唔係靜雞雞當通過。
+
+## 網站原始碼
+
+網站包括建置綁定來源證明、響應式同無障礙結構、本機資產、文件瀏覽、瀏覽器式導覽、情境選單、正規表示式工具、本機通知同歷史、訪客本機設定，以及本機模型、檔案轉換、鎖定同驗證碼示範嘅明確瀏覽器限制。
+
+整合網站執行結果係 53 個通過、2 個因可選外部私人來源不存在而明確略過，同 0 個失敗。另一個已接納執行，經外部無值路徑提供目前私人詞彙，結果係 55 個通過、0 個失敗同 0 個略過。
+
+呢啲係原始碼同組合檢查，唔會扮成最後瀏覽器互動、視覺質素或者已部署行為嘅證明。
+
+## 已建置證據操作框架
+
+已凍結證據操作框架會將每個計劃互動，綁定去準確原始碼提交、已封裝可執行檔、`app.asar`、封裝收據、檢視區、顯示比例、主題、語言、語意狀態、無障礙目標、輸入方式、PNG 位元組、私隱審查同完成標記。
+
+佢亦提供隔離應用程式資料根目錄、準確 CDP 目標證明、動態視窗身分、持久重試同復原規則、只錄視窗嘅錄影，以及安全程序終止。
+
+佢嘅本機檢查結果係 30 個通過同 0 個失敗，另外 18 項 JavaScript 語法檢查有 18 項通過。最後產品擷取或者螢幕錄影而家都未產生。
+
+## 發佈同封裝
+
+原始碼包括以下建置同驗證路徑：
+
+- 可執行嘅 Windows x64 封裝目錄
+- 正版未簽署 Squirrel.Windows `Setup.exe`、`RELEASES` 同完整 `.nupkg` 系列
+- 頭髮長度服務嘅確定性 Linux amd64 OCI 配置封存檔
+- 準確相依項目啟動同摘要驗證
+- 原始碼保存、來源證明、圖示、套件、容器、行數、安全輸出同發佈驗證
+- 一個四工作發佈工作流程同一個 GitHub Pages 工作流程
+- 發佈綁定網站組合完成後，固定四檔案終端傳送
+
+完整發佈封裝檢查組合結果係 82 個通過同 0 個失敗。呢個結果驗證原始碼入面嘅封裝同工作流程合約。最終應用程式、安裝程式同 OCI 產品尚未由最後整合提交建置，而且未有發佈版本。
 
 ## 產品邊界
 
-網站只係文件、下載、狀態、設定同連結介面。佢唔係已安裝嘅桌面產品，亦唔會取代桌面產品。除非文章清楚寫明有受支援嘅本機連線，否則網站控制只會影響網站同訪客自己擁有嘅瀏覽器狀態。
+公開網站係文件、下載、狀態、設定同連結介面。佢唔係已安裝桌面產品，亦唔會取代桌面產品。除非文章明確描述支援嘅本機連線，否則網站控制只會影響訪客擁有嘅瀏覽器狀態。
+
+## 尚欠證據
+
+- 最後乾淨 Windows 應用程式同 Squirrel.Windows 建置
+- 最後確定性 OCI 封存檔建置
+- 已建置桌面同網站互動記錄
+- 每個所需介面同狀態嘅真實擷取
+- 已提交嘅真實螢幕錄影
+- 配有完整非摺疊擷取集合嘅詳細 README
+- 一個獨有非草稿 GitHub 發佈版本同可下載資產讀返驗證
+- GitHub Pages 部署同已提供回應驗證
+- 儲存庫首頁同社交預覽上載驗證
+- 私人 LAN 主機部署同健康驗證
+- 最後合併祖先證明同安全清理

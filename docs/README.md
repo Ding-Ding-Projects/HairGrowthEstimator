@@ -1,6 +1,6 @@
 # Hair Growth Estimator documentation
 
-This documentation describes the desktop product, its optional HTTP service, and its public documentation and download website. It separates implemented behavior from requirements that still need code or verification.
+This documentation describes the Windows desktop product, its optional HTTP service, its release and packaging paths, its evidence harness, and its public documentation and download website. It distinguishes source implementation, local verification, built-product evidence, and published evidence.
 
 ## Documentation map
 
@@ -10,24 +10,104 @@ This documentation describes the desktop product, its optional HTTP service, and
 - [Operations](operations/README.md)
 - [Security and privacy](security/README.md)
 - [Completeness inventories](inventory/README.md)
+- [Release and packaging](release/README.md)
+- [Built evidence harness](verification/built-evidence-harness.md)
 
 ## Evidence language
 
-The following terms are used consistently throughout these articles:
+- **Implemented** means the named source boundary exists in the inspected commit.
+- **Locally verified** means the named local check completed successfully against the stated source candidate.
+- **Built-product verified** means the packaged desktop product, installer, container archive, or composed website was exercised directly.
+- **Published verified** means the immutable release, deployed website, or downloadable asset was read back from its public destination.
+- **Pending** means no accepted proof exists yet. A planned selector, test name, workflow, capture path, or release filename is not evidence by itself.
 
-- **Implemented** means a source boundary is present in the inspected revision.
-- **Locally verified** means a named local check has completed successfully against the stated revision.
-- **Built-artifact verified** means the packaged desktop product or composed website was exercised directly.
-- **Pending** means the requirement has no accepted proof yet. A planned selector, test identifier, interaction path, or capture filename is not evidence by itself.
+## Integrated source basis
 
-This hardening documentation update starts from revision `321f81a078012f6e10a56ca2ca47245471fa548c`. Strict security-contract, disposable Worker, active consumer, accessibility, policy, installer, and PNG-inspection source identifiers are present where recorded in the inventory. The manifest readers are bounded and use fatal UTF-8, the browser runtime repeats exact provenance and installer checks, School-sensitive overlays close, rebuilt tab focus is restored, JSONL reads the positive allowlist, Worker refusal releases queue capacity, Ollama origins align across runtime, policy, and saved state, exact preceding-version presentation migration runs before current validation, and `#docs-article` is a deliberate focus target. The focused hardening suite reports 12 passed, 0 failed, and 0 skipped after restoration. The three Cantonese catalogs contain exactly 250, 274, and 686 source entries, and all 50 English articles have one validated Cantonese mirror. Canonical image assets, composed interaction, installer publication, captures, and broader completeness evidence remain pending. The documentation cannot truthfully cite its own future commit from inside that commit. Build provenance and the immutable release record will pin the resulting revision when those artifacts exist.
+The implementation basis immediately before this documentation update is `943927b81ac74d06c58cd5eab5b8506b51477325`.
 
-Estimation articles use one average Gregorian month of `365.2425 / 12 = 30.436875 days` for both the elapsed current-length calculation and the remaining projected-target calculation. The 1.0 cm per month default remains an adjustable, non-medical planning estimate with meaningful individual variation, supported by the existing [Hair Growth Disorders, StatPearls](https://www.ncbi.nlm.nih.gov/books/NBK499948/) citation. Website source parity is implemented. Desktop and core consumption, integrated cross-surface proof, and built-artifact interaction remain pending.
+It includes the complete desktop and service core, the public website and localization sources, all eight generated hair-reference images, the frozen built-evidence harness, reproducible Windows and OCI packaging, release automation, and GitHub Pages deployment wiring.
 
-The focused L06 presentation articles define the three language modes, five-level factual-copy parity, shared and user-renamable School mode behavior, browser narration and voice handling, scheduled local and external settings, the exact 10 percent startup surprise, and five independent attention accommodations. The articles explicitly separate required behavior from accepted evidence and record browser limitations for cross-product storage, automatic assistive-technology detection, reusable external credentials, and cross-origin requests. Source integration is present. The main source-boundary test reports 5 passed after its deliberate source-removal state reported 0 passed and 5 failed. The pure-contract run reports 12 passed, 0 failed, and 0 skipped. The localization run reports 5 passed, 0 failed, and 0 skipped, including deliberate catalog-entry deletion and article-locale omission. Composed interaction and capture evidence remain pending.
+The application and website share these calculation facts:
 
-Negative-regression claims are intentionally narrow. Earlier evidence covers deliberate removal of the front provenance identifier, one current-strip regex-builder registration, the core state-contract module, the article focus target, and the bounded installer and runtime publication checks. The latest deliberate hardening fixture removed or weakened exactly six boundaries: active School-sensitive regex and related overlay closure, rebuilt-tab `focusTarget` restoration, JSONL use of `record.state.haircuts`, Worker construction and `postMessage` queue recovery, `MAX_HAIR_MANIFEST_BYTES` plus fatal UTF-8 decoding, and exact Ollama origin alignment across runtime, persistence, policy, and saved-state validation. That state produced 11 total tests with 5 passed and 6 failed. Restoring the six boundaries produced 11 passed, 0 failed, and 0 skipped. Separate personal-vocabulary size-order, localized status-and-action, and owned-copy exemption proofs were each red 1 before restoration and passed 1 afterward. The external vocabulary scanner's exact-count fixture was red 1 with `PRIVATE_VOCABULARY_EXPECTED_COUNT` set to 0, then passed 1 with the expected count restored to 100. These results do not prove red-then-green coverage for every completeness-inventory row, localization boundary, built interaction, or capture record.
+- `1 in = 2.54 cm` for unit conversion.
+- `365.2425 / 12 = 30.436875 days` for one estimate month.
+- The current-length calculation and projected-target calculation use the same month value.
+- The shipped planning default is an adjustable 1.0 cm per month estimate, not a medical fact.
+- Hair growth varies meaningfully between people and over time.
+
+`app/shared/hair.js` supplies the desktop and core month contract. `site/state-contract.js` supplies the website contract. Focused core and website checks cover the two calculation paths. Integrated source parity is complete, while packaged interaction remains pending.
+
+## Hair-reference source authority
+
+The eight generated male hair-reference PNG files and their manifests are integrated under `assets/hair-growth/`.
+
+`assets/hair-growth/stages.json` is the single stage-to-file mapping authority. The composer and packaging paths consume that authority instead of maintaining a second mapping. Local checks verify the manifest structure, file identities, image dimensions, PNG structure, and SHA-256 boundaries. The strict fixture composes all eight stages, changes one image to observe a digest refusal, restores it, and observes success.
+
+Source integration and automated image validation are complete. Final human pixel review, animation interaction, built-product capture, and README images remain pending.
+
+## Language and localization
+
+The source provides English, playful Hong Kong-style Cantonese, and compact bilingual presentation. English and Cantonese each have an independent persisted funny level from 1 through 5, both defaulting to 5.
+
+The hand-written localization inventory contains exactly:
+
+- 250 `ui-core` entries
+- 274 `ui-settings` entries
+- 686 `runtime` entries
+- 66 English and Cantonese documentation article pairs
+
+The focused localization checks deliberately remove one catalog entry and one article mirror, observe failure, restore them, and observe success. The accepted source checks do not replace composed-browser interaction or captures across every localized state.
+
+## Desktop and service core
+
+The integrated core includes estimation, haircut history, exact unit conversion, local storage, the HTTP service, managed SSH tunnelling, provenance, local history, language presentation, School mode, narration, schedules, attention accommodations, personal-vocabulary loading, update validation, accessibility wiring, and privileged-boundary checks.
+
+The integrated core run reports 349 passed, 2 explicitly skipped, and 0 failed. Skipped checks are explicitly optional external-source boundaries, not silent passes.
+
+## Website source
+
+The website includes build-bound provenance, responsive and accessible structure, local assets, documentation browsing, browser-style navigation, contextual menus, regular-expression tools, local notifications and history, visitor-local settings, and explicit browser limitations for local model, file-conversion, lock, and authentication-code demonstrations.
+
+The integrated website run reports 53 passed, 2 explicitly skipped because optional external private sources were absent, and 0 failed. A separate accepted run with the current private vocabulary supplied through its external value-free path reports 55 passed, 0 failed, and 0 skipped.
+
+These are source and composition checks. They do not establish final browser interaction, visual quality, or deployed behavior.
+
+## Built evidence harness
+
+The frozen evidence harness binds each planned interaction to the exact source commit, packaged executable, `app.asar`, packaging receipt, viewport, display scale, theme, language, semantic state, accessibility target, input method, PNG bytes, privacy review, and completion marker.
+
+It also provides isolated application-data roots, exact CDP target proof, dynamic window identity, durable retry and recovery rules, window-only recording, and safe process teardown.
+
+Its local checks report 30 passed and 0 failed, plus 18 of 18 JavaScript syntax checks. No final product capture or screen recording has been produced yet.
+
+## Release and packaging
+
+The source includes build and validation paths for:
+
+- a runnable Windows x64 packaged directory
+- a genuine unsigned Squirrel.Windows `Setup.exe`, `RELEASES`, and full `.nupkg` family
+- a deterministic Linux amd64 OCI layout archive for the hair-length service
+- exact dependency bootstrap and digest verification
+- source-preservation, provenance, icon, package, container, line-count, safe-output, and publication validation
+- one four-job release workflow and one GitHub Pages workflow
+- a fixed four-file post-run terminal transfer for release-bound website composition
+
+The complete release-packaging check set reports 82 passed and 0 failed. This verifies the packaging and workflow contracts in source. The final application, installer, and OCI products have not yet been built from the final integrated commit, and no release has been published.
 
 ## Product boundary
 
-The website is a documentation, download, status, settings, and link surface. It is not the installed desktop product and does not replace it. Website controls affect only the website and visitor-owned browser state unless an article explicitly describes a supported local connection.
+The public website is a documentation, download, status, settings, and link surface. It is not the installed desktop product and does not replace it. Website controls affect only visitor-owned browser state unless an article explicitly describes a supported local connection.
+
+## Remaining evidence
+
+- Final clean Windows application and Squirrel.Windows builds
+- Final deterministic OCI archive build
+- Built desktop and website interaction ledgers
+- Real captures for every required surface and state
+- A committed real screen recording
+- The detailed README with the complete non-collapsed capture set
+- One unique non-draft GitHub release and downloadable-asset readback
+- GitHub Pages deployment and served-response verification
+- Repository homepage and social-preview upload verification
+- Private-LAN host deployment and health verification
+- Final merge ancestry proof and safe cleanup

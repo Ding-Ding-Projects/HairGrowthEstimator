@@ -1,85 +1,90 @@
 # Roadmap
 
-Checkboxes are marked complete only when the named work is implemented and locally verified. Capture-dependent and release-dependent work stays open until its evidence exists.
+Checkboxes are complete only when the named work is implemented and locally verified. Built-product, capture, release, deployment, and cleanup claims remain open until their direct evidence exists.
 
-## Documentation website foundation
+## Integrated desktop and service core
 
-- [x] Compose a static website with no runtime package dependency.
-- [x] Bind visible version and updated-at values to build provenance.
-- [x] Show provenance before navigation.
-- [x] Provide responsive layouts from 320 pixels upward.
-- [x] Provide light, dark, high-contrast, and reduced-motion behavior.
-- [x] Bundle website scripts, styles, icons, and documentation locally.
-- [x] Generate a deterministic 1280 by 640 product logo social preview.
-- [ ] Verify the deployed Open Graph response and anonymous image fetch.
+- [x] Implement current-length and projected-target calculations with one shared average Gregorian month, `365.2425 / 12 = 30.436875 days`.
+- [x] Consume the shared month contract in desktop and core through `app/shared/hair.js`.
+- [x] Consume the same month contract in the website through `site/state-contract.js`.
+- [x] Keep the 1.0 cm per month default adjustable, non-medical, and qualified by meaningful individual variation.
+- [x] Use exact `1 in = 2.54 cm` conversion.
+- [x] Select the newest valid remaining haircut as the active baseline while retaining the independent manual fallback.
+- [x] Reject future manual baselines and haircut dates without hiding legacy future records.
+- [x] Implement local persistence, normalized exports, optional HTTP synchronization, private-LAN service operation, and managed SSH tunnelling.
+- [x] Integrate all eight generated male hair-reference PNG files and their single stage mapping authority.
+- [x] Validate the eight hair assets through manifest, dimension, PNG-structure, and SHA-256 checks, including a deliberate changed-image refusal.
+- [ ] Inspect all eight images visually in the exact built product.
+- [ ] Capture the animated length timeline in the packaged desktop product and composed website.
+
+## Language, settings, and accessibility
+
+- [x] Implement English, playful Hong Kong-style Cantonese, and bilingual presentation.
+- [x] Implement independent persisted English and Cantonese funny levels from 1 through 5.
+- [x] Complete the hand-written localization inventory with 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries.
+- [x] Provide one validated Cantonese mirror for each of the 66 English documentation articles.
+- [x] Prove localization failure after deliberate catalog-entry deletion and article-mirror omission, then restore green.
+- [x] Implement shared School mode, narrator settings, scheduled settings, startup surprise behavior, and five independent attention accommodations.
+- [x] Implement strict personal-vocabulary loading, cache revalidation, clear and replace states, School-mode suppression, and privacy exclusions.
+- [x] Implement browser-state, appearance, export, notification, history, contextual-menu, tab, focus, and regular-expression boundaries.
+- [ ] Exercise every language mode and funny level across all visible and accessible message categories in the built products.
+- [ ] Exercise School mode live suppression and restoration in the built products.
+- [ ] Exercise narrator voices, schedules, surprise, attention modes, keyboard use, and screen-reader states in the built products.
+
+## Public website and documentation
+
+- [x] Compose a static documentation website with local scripts, styles, icons, and articles.
+- [x] Show build-bound version and updated-at provenance before navigation.
+- [x] Provide responsive layouts from 320 pixels upward, themes, high contrast, focus, touch sizing, and reduced motion.
+- [x] Provide search, advanced regular-expression tools, navigation, contextual controls, notifications, history, settings, and browser-local demonstrations with explicit limitations.
+- [x] Generate a deterministic 1280 by 640 product-logo social preview.
+- [x] Add a GitHub Pages workflow that composes and deploys the exact static output without tests or lint.
+- [ ] Drive the exact composed website through the approved off-screen evidence route.
+- [ ] Verify the deployed HTML, Open Graph fields, theme color, and anonymous image response.
+- [ ] Set and verify the repository homepage.
 - [ ] Upload the root social preview through repository settings.
 
-## Product presentation
+## Built evidence
 
-- [x] Document estimation, haircut resets, history, units, visual stages, service connectivity, privacy, export, update status, and installer status.
-- [x] Present 1.0 cm per month as an adjustable non-medical estimate with a research citation.
-- [x] Define `365.2425 / 12 = 30.436875 days` as the single documented month length for current-length and projected-target calculations.
-- [x] Implement website source parity in `site/state-contract.js` and focused deterministic proof through `tests/site/fixtures/growth-calculation-vectors.json` and `tests/site/month-parity.test.mjs`.
-- [ ] Implement desktop and core consumption of the shared month contract, then verify integrated cross-surface behavior and built-artifact interaction.
-- [x] Use exact 2.54 cm per inch conversion.
-- [x] Define all eight canonical hair-reference lengths.
-- [ ] Verify all eight generated hair-reference images after integration.
-- [ ] Capture the animated timeline from the built website.
-- [ ] Capture every installed-application surface from the packaged artifact.
-- [ ] Record a real packaged-application walkthrough.
-- [ ] Add the final real capture set to the README after the exact built artifact has been inspected.
+- [x] Integrate the frozen evidence harness with source, package, process, window, page, input, semantic, capture, privacy, and recording bindings.
+- [x] Pass all 30 evidence-harness checks.
+- [x] Pass JavaScript syntax checks for all 18 evidence files.
+- [x] Implement bounded resume and recovery rules that refuse ambiguous post-input reuse.
+- [x] Implement window-only capture and recording with exact byte receipts and separate human inspection.
+- [ ] Author the final complete interaction and capture inventory.
+- [ ] Build the exact packaged candidate required by the harness preflight.
+- [ ] Capture every required desktop and website interaction.
+- [ ] Inspect every capture and recording for pixels, accessibility, privacy, and source identity.
+- [ ] Commit the real screen recording.
+- [ ] Add the complete non-collapsed real capture set to the README.
 
-## Visitor controls
+## Release packaging
 
-- [x] Add and source-verify the frozen L06 presentation contract and its exact runtime caller boundaries. The main focused suite returned 5 of 5 after a deliberate 0-of-5 red state, and the pure-contract suite returned 12 of 12 after deliberate caller mutations. This source-only milestone does not complete the composed interaction and capture items below.
-- [x] Complete the hand-written source-localization inventory with 250 `ui-core`, 274 `ui-settings`, and 686 `runtime` entries plus 50 Cantonese article mirrors. The five focused localization tests pass after exact catalog-entry deletion and article-locale omission regressions were observed red.
-- [ ] Exercise English, playful Hong Kong-style Cantonese, and compact bilingual presentation across every website-owned visible and accessible message in the composed website, then capture the three modes.
-- [ ] Exercise the source-present independent persisted English and Cantonese funny levels 1 through 5 across information, progress, success, warning, error, destructive, security, and accessibility messages, with exact factual-placeholder parity at every level.
-- [ ] Exercise the shared user-renamable School mode record across same-origin tabs, prove complete live suppression and restoration, and record the website's cross-product browser-storage limitation.
-- [ ] Exercise narrator opt-in, three narrated-language choices, stable installed voice identities, delayed enumeration, rate and pitch, serialized speech, explicit assistive-technology yielding, and every unavailable or partial state.
-- [ ] Exercise scheduled language and appearance rules across date, timezone, equal-time, cross-midnight, weekday, priority, base-restoration, API, and Home Assistant boundaries, including browser credential and CORS limitations.
-- [ ] Exercise the exact 10 percent public-catalog startup surprise across every eligibility and suppression condition, with no opt-out control and no duplicate draw in one launch.
-- [ ] Exercise all five independent default-off attention accommodations, their combinations, persistence, factual timing, School mode interaction, reduced motion, explicit next action, momentum snooze, keyboard use, and screen-reader states.
-- [ ] Complete persisted appearance and visitor-state export/import behavior through the composed website. Their existing source presence does not establish built interaction or capture evidence.
-- [x] Implement browser-style navigation, command search, contextual menus, local notifications, and history.
-- [x] Implement an advanced regular-expression workbench beside registered search surfaces.
-- [x] Implement browser-local demonstrations for locks, authentication codes, file conversion, and local Ollama mediation with explicit limitations.
-- [x] Reconcile the active estimator baseline from the newest valid remaining haircut while retaining an independent manual fallback after create, edit, and delete.
-- [x] Reject future manual baselines and haircut dates with guided inline validation, and exclude legacy future haircut records while their dates remain in the future.
-- [x] Serialize same-origin visitor-state writes with monotonic revisions, fresh per-document writer identity, storage-event reconciliation, stale-write refusal, and Web Locks or IndexedDB transactions.
-- [x] Export faithful normalized CSV and TSV rows with JSON Pointer paths, typed JSON values, and explicit representation and privacy metadata.
-- [ ] Inspect the source-present strict personal-vocabulary parsing, schema bounds, cache revalidation, School-mode absence, and privacy behavior through focused failure cases and the composed browser artifact.
-- [ ] Inspect the source-present strict browser-state and appearance import validation plus positive export allowlisting through focused mutation cases and the composed browser artifact.
-- [x] Implement and source-check nested-tab relationships, filtered-tab focus, context-menu keyboard behavior, narrow-layout discovery access, and an explicitly focusable article target.
-- [ ] Run the focused internal-documentation-routing check, then exercise routing, filtered focus, context-menu focus return, and unknown-route handling in the composed browser artifact.
-- [ ] Inspect the source-present Worker-isolated regular-expression consumers and static Content Security Policy in the composed artifact, including focused failure cases and no-synchronous-fallback proof.
-- [ ] Complete a real browser interaction ledger through the approved off-screen route.
-- [ ] Capture keyboard, touch, narrow-layout, high-contrast, and screen-reader evidence.
+- [x] Implement reproducible Windows x64 application packaging.
+- [x] Implement genuine unsigned Squirrel.Windows setup, `RELEASES`, and full-package validation.
+- [x] Implement deterministic Linux amd64 OCI archive packaging for the service.
+- [x] Implement exact dependency bootstrap, digest checks, source preservation, provenance, icons, safe-output collection, line counts, and source binding.
+- [x] Verify repeated root-script timing events and nested ASAR source binding through focused regression checks.
+- [x] Implement the four-job release workflow for every push and manual dispatch, without test or lint jobs.
+- [x] Implement the fixed four-file terminal transfer and split context and terminal run-attempt validation.
+- [x] Pass all 82 release-packaging checks.
+- [ ] Build the final runnable Windows application from the final clean commit.
+- [ ] Build and validate the final unsigned Squirrel.Windows installer family.
+- [ ] Build and validate the final deterministic OCI archive.
+- [ ] Publish and verify one unique non-draft GitHub release.
+- [ ] Download and independently verify every required release asset.
+- [ ] Complete terminal release timing and website installer-manifest transfer.
+- [ ] Enable and exercise the release-bound installer download control.
 
-## Release and delivery
+## Deployment and completion
 
-- [x] Keep the installer state disabled until an immutable release manifest exists.
-- [x] Add a 65,536-byte fatal-UTF-8 installer-manifest input boundary and repeat complete manifest validation in the runtime, with focused red-then-green source proof.
-- [x] Consume release identity only from the fixed four-file `dist/terminal-transfer` handoff, validate its exact copied-file receipt and nested source bindings, distinguish originating and terminal run attempts, reread the exact successful GitHub Actions terminal attempt plus the published release and Setup asset, and derive release-bound front-screen provenance from the verified terminal installer. The four focused checks passed after the original deliberate 0-of-4 red state and a later split-attempt 0-of-1 red state.
-- [ ] Exercise a real immutable installer manifest through composition and the built download control.
-- [x] Document the `Classic Har Gow · 蝦餃` release code name and public catalog record.
-- [ ] Add release workflow wiring only after feature work is integrated.
-- [ ] Build and verify the unsigned Squirrel.Windows installer set.
-- [ ] Publish and verify one immutable release manifest.
-- [ ] Enable the verified installer download button.
-- [ ] Verify the published website and repository homepage link.
-
-## Verification
-
-- [x] Add source-level structure, provenance, responsive, privacy, and local-asset checks.
-- [x] Add hand-written feature and regular-expression-builder inventories.
-- [x] Add an exact hand-written localization inventory with deliberate catalog-entry deletion and article-locale omission regressions.
-- [x] Demonstrate the two named deliberate source breaks for provenance and the current-strip builder registration.
-- [x] Add focused correctness tests and a deliberate red-then-green source-boundary regression for baseline, chronology, concurrent storage, and CSV or TSV behavior.
-- [ ] Complete deliberate red-then-green coverage for every required inventory boundary. The current evidence is partial.
-- [x] Prove the three named accessibility and installer repair checks red before restoration and green after restoration.
-- [x] Run the focused hardening suite, including the integrated service-counterpart audit and deliberate health-route break. Complete inventory-wide mutation coverage remains pending above.
-- [ ] Inspect the source-present byte-level PNG signature, chunk, CRC, exact 1254 by 1254 dimension, bounded decompression, scanline, and termination checks against all eight canonical source assets.
-- [ ] Run built-artifact interaction checks.
-- [ ] Run genuine capture review against the exact verified commit.
-- [ ] Verify the deployed page response, Open Graph metadata, and image bytes.
+- [ ] Deploy and verify GitHub Pages.
+- [ ] Recheck the selected private-LAN host before any mutation.
+- [ ] Deploy the exact validated service image without disturbing unrelated workloads.
+- [ ] Verify service health, persistence, authentication, and restart behavior on the selected host.
+- [ ] Update the detailed README with final install, release, deployment, line-count, human-effort, and capture evidence.
+- [ ] Update the changelog and handoff with the final immutable commit, release, workflow, product hashes, Pages URL, and host-deployment evidence.
+- [ ] Merge the completed work into the default branch and verify the remote default branch contains it.
+- [ ] Prove every task-owned cleanup source tip is contained in the pushed default branch.
+- [ ] Remove only task-owned, inactive, merged, pushed, and ancestry-proven branches and worktrees.
+- [ ] Confirm the final checkout and branch inventory is clean and intentionally retained.
