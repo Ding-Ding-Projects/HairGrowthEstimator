@@ -185,13 +185,18 @@ export function compareBoundFiles(expected, actual, label) {
   return result;
 }
 
-function asarFiles(asarPath) {
+function archiveLookupPath(value) {
+  return value.replace(/^[\\/]+/, '').split(/[\\/]+/).join(path.sep);
+}
+
+export function asarFiles(asarPath) {
   const actual = new Map();
   for (const listed of listPackage(asarPath)) {
     const relativePath = normalizePath(listed);
-    const stat = statFile(asarPath, relativePath);
+    const lookupPath = archiveLookupPath(listed);
+    const stat = statFile(asarPath, lookupPath);
     if (typeof stat.size !== 'number') continue;
-    actual.set(relativePath, Buffer.from(extractFile(asarPath, relativePath)));
+    actual.set(relativePath, Buffer.from(extractFile(asarPath, lookupPath)));
   }
   return actual;
 }

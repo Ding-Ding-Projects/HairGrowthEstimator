@@ -1,9 +1,29 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { createPackage } from '@electron/asar';
 
 import { assertCleanStatus } from '../assert-clean-candidate.mjs';
 import { assertTrackedSnapshot, trackedSnapshot } from '../assert-source-preserved.mjs';
-import { compareBoundFiles, expectedReleaseMetadata, validateSourceBindingReceipt } from '../source-binding.mjs';
+import { asarFiles, compareBoundFiles, expectedReleaseMetadata, validateSourceBindingReceipt } from '../source-binding.mjs';
+
+test('ASAR inventory reads nested files through the host path separator', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hair-growth-asar-binding-'));
+  const source = path.join(root, 'source');
+  const archive = path.join(root, 'fixture.asar');
+  try {
+    await fs.mkdir(path.join(source, 'app', 'core'), { recursive: true });
+    await fs.writeFile(path.join(source, 'app', 'core', 'atomic.js'), 'nested bytes\n', 'utf8');
+    await createPackage(source, archive);
+    const files = asarFiles(archive);
+    assert.deepEqual([...files.keys()], ['app/core/atomic.js']);
+    assert.equal(files.get('app/core/atomic.js').toString('utf8'), 'nested bytes\n');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 test('candidate source binding proves exact bytes and rejects tampering or extra files', () => {
   const expected = new Map([

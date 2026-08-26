@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(testDirectory, '..', '..', '..');
 const helper = path.join(root, 'scripts', 'release', 'batch-timing.ps1');
+const batchHelper = path.join(root, 'scripts', 'release', 'batch-timing.bat');
 const contracts = new Map([
   ['build.bat', ['dependencies', 'source-capture', 'package', 'source-verification', 'packaged-validation']],
   ['build-installer.bat', ['dependencies', 'source-capture', 'squirrel-package', 'icon-application', 'installer-validation', 'source-verification']],
@@ -22,20 +23,23 @@ const originalFailureCodes = new Map([
 
 test('every batch entry point declares and records its exact phase inventory', () => {
   assert.equal(fs.existsSync(helper), true, 'The shared batch timing helper must exist.');
+  assert.equal(fs.existsSync(batchHelper), true, 'The external batch timing dispatcher must exist.');
+  const dispatcher = fs.readFileSync(batchHelper, 'utf8').replace(/\r\n/g, '\n');
+  for (const event of ['start', 'phase-start', 'phase-finish', 'finish', 'fail']) {
+    assert.match(dispatcher, new RegExp(`-Event ${event}(?:\\s|$)`, 'm'));
+  }
   for (const [name, phases] of contracts) {
     const source = fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
     assert.match(source, new RegExp(`^set "HGE_PHASE_INVENTORY=${phases.join(';')}"$`, 'm'));
-    assert.match(source, /^\s*call :HGE_TIMING start\s*$/m);
+    assert.match(source, /^\s*call "%HGE_ROOT%scripts\\release\\batch-timing[.]bat" start /m);
     for (const phase of phases) {
-      assert.match(source, new RegExp(`^\\s*call :HGE_TIMING phase-start ${phase}\\s*$`, 'm'));
-      assert.match(source, new RegExp(`^\\s*call :HGE_TIMING phase-finish ${phase} success\\s*$`, 'm'));
+      assert.match(source, new RegExp(`^\\s*call "%HGE_ROOT%scripts\\\\release\\\\batch-timing[.]bat" phase-start [^\\r\\n]+ "${phase}"\\s*$`, 'm'));
+      assert.match(source, new RegExp(`^\\s*call "%HGE_ROOT%scripts\\\\release\\\\batch-timing[.]bat" phase-finish [^\\r\\n]+ "${phase}" "success"\\s*$`, 'm'));
     }
-    assert.match(source, /^\s*(?:if exist "[^"]+"\s+)?call :HGE_TIMING fail\s*$/m);
-    assert.match(source, /^\s*call :HGE_TIMING finish success\s*$/m);
+    assert.match(source, /^\s*(?:if exist "[^"]+"\s+)?call "%HGE_ROOT%scripts\\release\\batch-timing[.]bat" fail /m);
+    assert.match(source, /^\s*call "%HGE_ROOT%scripts\\release\\batch-timing[.]bat" finish [^\r\n]+ "success"\s*$/m);
 
-    const helperBoundary = source.indexOf('\n:HGE_TIMING\n');
-    assert.notEqual(helperBoundary, -1, `${name} must keep its timing subroutine after the main body.`);
-    const mainBody = source.slice(0, helperBoundary);
+    const mainBody = source;
     for (const code of originalFailureCodes.get(name)) {
       assert.match(mainBody, new RegExp(`exit /b ${code}(?:\\s|$)`, 'i'), `${name} must preserve exit code ${code}.`);
     }
@@ -49,7 +53,7 @@ test('every batch entry point declares and records its exact phase inventory', (
       const precedingExitBlock = lines.slice(Math.max(0, index - 5), index).join('\n');
       assert.match(
         precedingExitBlock,
-        /^\s*(?:if exist "[^"]+"\s+)?call :HGE_TIMING fail\s*$/im,
+        /^\s*(?:if exist "[^"]+"\s+)?call "%HGE_ROOT%scripts\\release\\batch-timing[.]bat" fail /im,
         `${name} exit path ${match[1].trim()} must report timing failure before exit.`
       );
     }
