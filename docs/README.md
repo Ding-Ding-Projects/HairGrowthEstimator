@@ -23,7 +23,7 @@ This documentation describes the Windows desktop product, its optional HTTP serv
 
 ## Integrated source basis
 
-The implementation basis immediately before this documentation update is `943927b81ac74d06c58cd5eab5b8506b51477325`.
+The implementation basis immediately before this documentation update is `a4cec62c55804e6e4eb39d4bbf759e83eed2719f`.
 
 It includes the complete desktop and service core, the public website and localization sources, all eight generated hair-reference images, the frozen built-evidence harness, reproducible Windows and OCI packaging, release automation, and GitHub Pages deployment wiring.
 
@@ -92,7 +92,7 @@ The source includes build and validation paths for:
 - one four-job release workflow and one GitHub Pages workflow
 - a fixed four-file post-run terminal transfer for release-bound website composition
 
-The complete release-packaging check set reports 82 passed and 0 failed. This verifies the packaging and workflow contracts in source. The final application, installer, and OCI products have not yet been built from the final integrated commit, and no release has been published.
+The complete release-packaging check set reports 83 passed and 0 failed. This verifies the packaging and workflow contracts in source. The final application, installer, and OCI products have not yet been built from the final integrated commit, and no release has been published.
 
 ## Product boundary
 

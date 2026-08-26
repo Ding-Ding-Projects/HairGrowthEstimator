@@ -2,7 +2,7 @@
 
 ## Candidate identity
 
-The implementation basis immediately before this handoff update is `943927b81ac74d06c58cd5eab5b8506b51477325` on the integration branch.
+The implementation basis immediately before this handoff update is `a4cec62c55804e6e4eb39d4bbf759e83eed2719f` on the integration branch.
 
 This candidate contains four completed source milestones:
 
@@ -38,7 +38,7 @@ The candidate includes:
 | Website, external private vocabulary supplied | 55 passed, 0 failed, 0 skipped | Complete source suite with value-free external currentness |
 | Evidence harness | 30 passed, 0 failed | Plan, identity, process, ledger, recovery, capture, and recording contracts |
 | Evidence JavaScript syntax | 18 of 18 passed | Every evidence JavaScript file |
-| Release packaging | 82 passed, 0 failed | Windows, Squirrel.Windows, OCI, workflow, provenance, source-binding, safe-output, and publication contracts |
+| Release packaging | 83 passed, 0 failed | Windows, Squirrel.Windows, OCI, workflow, provenance, source-binding, safe-output, and publication contracts |
 
 Additional accepted facts:
 
@@ -50,6 +50,7 @@ Additional accepted facts:
 - The evidence harness is source complete and locally verified, but has not captured the final packaged product.
 - The release packaging is source complete and locally verified, but has not built or published the final release products.
 - Root build timing now uses `scripts/release/batch-timing.bat`, and nested ASAR source binding is proven by a real temporary archive check.
+- `scripts/release/stage-package-source.mjs` materializes application, asset, canonical icon, and server inputs from exact candidate Git blobs before packaging, preventing checkout line-ending conversion from changing release bytes.
 
 ## Main implementation paths
 

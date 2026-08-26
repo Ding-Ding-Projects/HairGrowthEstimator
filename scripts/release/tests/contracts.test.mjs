@@ -96,6 +96,7 @@ test('builder configuration uses an immutable icon URL and exact source identity
   const staged = config.files.find((entry) => entry.from === 'dist/package-input');
   assert.ok(staged.filter.includes('app/provenance.json'));
   assert.ok(config.files.find((entry) => entry.from === 'dist/package-source').filter.includes('!app/provenance.json'));
+  assert.ok(config.files.find((entry) => entry.from === 'dist/package-source/assets/icons').filter.includes('app-icon.ico'));
   assert.equal(config.extraResources.find((entry) => entry.to === 'server').from, 'dist/package-source/server');
   const broken = structuredClone(config);
   broken.squirrelWindows.iconUrl = 'https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/icons/app-icon.ico';

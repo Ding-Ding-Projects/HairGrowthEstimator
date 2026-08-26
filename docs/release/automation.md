@@ -29,7 +29,7 @@ Packaging and integrity validation remain part of the build because they determi
 
 ## Clean candidate boundary
 
-Each build job records a clean candidate marker before release metadata is generated. The marker contains the exact commit, commit epoch, and resolved release-identity digest when available. Release-specific package metadata, application metadata, and provenance are written only below `dist/package-input`. Tracked source files must remain byte-identical and Git status must remain empty throughout packaging. Any staged, untracked, renamed, deleted, or changed entry fails. The Windows and OCI validators independently compare actual packaged content with Git blobs from the marked commit, and the Windows receipt records the before-and-after tracked-source inventory hash.
+Each build job records a clean candidate marker before release metadata is generated. The marker contains the exact commit, commit epoch, and resolved release-identity digest when available. Release-specific package metadata, application metadata, and provenance are written only below `dist/package-input`. Application, asset, canonical icon, and server inputs are materialized below `dist/package-source` from exact Git blobs at the marked commit before the builder reads them. Tracked source files must remain byte-identical and Git status must remain empty throughout packaging. Any staged, untracked, renamed, deleted, or changed entry fails. The Windows and OCI validators independently compare actual packaged content with Git blobs from the marked commit, and the Windows receipt records the before-and-after tracked-source inventory hash.
 
 ## Publication sequence
 

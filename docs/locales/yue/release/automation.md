@@ -29,7 +29,7 @@ Packaging 同 integrity validation 仍然屬於 build 一部分，因為佢哋�
 
 ## 乾淨 candidate 邊界
 
-每個 build job 都會喺產生 release metadata 之前記錄 clean candidate marker。Marker 包含準確 commit、commit epoch，以及可用時已解析嘅 release-identity digest。Release-specific package metadata、application metadata 同 provenance 只可以寫入 `dist/package-input` 以下。整個 packaging 期間，tracked source files 必須 bytes 完全不變，而 Git status 必須保持空白。任何 staged、untracked、renamed、deleted 或 changed entry 都會失敗。Windows 同 OCI validators 會獨立將實際封裝內容同 marker commit 嘅 Git blobs 比對，而 Windows receipt 會記錄前後 tracked-source inventory hash。
+每個 build job 都會喺產生 release metadata 之前記錄 clean candidate marker。Marker 包含準確 commit、commit epoch，以及可用時已解析嘅 release-identity digest。Release-specific package metadata、application metadata 同 provenance 只可以寫入 `dist/package-input` 以下。Application、asset、canonical icon 同 server inputs 會喺 builder 讀取之前，由 marker commit 嘅精確 Git blobs 寫入 `dist/package-source`。整個 packaging 期間，tracked source files 必須 bytes 完全不變，而 Git status 必須保持空白。任何 staged、untracked、renamed、deleted 或 changed entry 都會失敗。Windows 同 OCI validators 會獨立將實際封裝內容同 marker commit 嘅 Git blobs 比對，而 Windows receipt 會記錄前後 tracked-source inventory hash。
 
 ## 發佈次序
 

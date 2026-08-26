@@ -41,7 +41,7 @@ export function createBuilderConfig(packageJson, provenance) {
       filter: ['package.json', 'app/provenance.json', 'app/release-metadata.json']
     },
     {
-      from: 'assets/icons',
+      from: 'dist/package-source/assets/icons',
       to: 'assets',
       filter: ['app-icon*.png', 'app-icon.ico', 'icon-manifest.json', 'logo-master.svg']
     }
@@ -76,7 +76,7 @@ export function validateBuilderConfig(config, expected) {
   }
   const sourceFiles = config.files?.find((entry) => entry?.from === 'dist/package-source' && entry?.to === '.');
   const stagedRelease = config.files?.find((entry) => entry?.from === 'dist/package-input' && entry?.to === '.');
-  const canonicalIcons = config.files?.find((entry) => entry?.from === 'assets/icons' && entry?.to === 'assets');
+  const canonicalIcons = config.files?.find((entry) => entry?.from === 'dist/package-source/assets/icons' && entry?.to === 'assets');
   const stagedServer = config.extraResources?.find((entry) => entry?.to === 'server');
   if (!sourceFiles?.filter?.includes('app/**/*') || !sourceFiles.filter.includes('!app/provenance.json') || !sourceFiles.filter.includes('!app/release-metadata.json') || !sourceFiles.filter.includes('assets/**/*') || !sourceFiles.filter.includes('!assets/icons/**/*')) {
     throw new TypeError('Builder configuration does not include the application payload and exclude the unmapped icon source directory.');
