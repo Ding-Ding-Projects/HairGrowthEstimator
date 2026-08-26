@@ -26,10 +26,33 @@ function asJson(buffer, label) {
   }
 }
 
+export function packagedReceiptLayout(directory) {
+  const packageRoot = path.resolve(directory);
+  return Object.freeze({
+    packageRoot,
+    executablePath: path.join(packageRoot, 'Hair Growth Estimator.exe'),
+    appAsarPath: path.join(packageRoot, 'resources', 'app.asar'),
+    stagedProvenancePath: path.join(packageRoot, 'dist', 'package-input', 'app', 'provenance.json'),
+    sourcePreservationPath: path.join(packageRoot, 'dist', 'release', 'source-preservation-build.json'),
+    receiptPath: path.join(packageRoot, 'dist', 'package', 'packaged-app-manifest.json')
+  });
+}
+
+export function packageRelativePath(directory, target, label = 'packaged receipt path') {
+  const packageRoot = path.resolve(directory);
+  const resolvedTarget = path.resolve(target);
+  const relative = path.relative(packageRoot, resolvedTarget);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new TypeError(`${label} must be a strict child of the packaged application directory.`);
+  }
+  return relative.replace(/\\/g, '/');
+}
+
 export function validatePackagedApplication(directory, expected = {}) {
   const resolved = path.resolve(directory);
-  const executablePath = path.join(resolved, 'Hair Growth Estimator.exe');
-  const asarPath = path.join(resolved, 'resources', 'app.asar');
+  const layout = packagedReceiptLayout(resolved);
+  const executablePath = layout.executablePath;
+  const asarPath = layout.appAsarPath;
   if (!fs.existsSync(executablePath) || !fs.existsSync(asarPath)) throw new TypeError('Packaged application is missing its executable or resources/app.asar.');
   const executable = fs.readFileSync(executablePath);
   const asar = fs.readFileSync(asarPath);
@@ -39,13 +62,14 @@ export function validatePackagedApplication(directory, expected = {}) {
   const packageJson = asJson(extractFile(asarPath, 'package.json'), 'package.json');
   const provenance = asJson(extractFile(asarPath, 'app/provenance.json'), 'provenance');
   const packagedProvenance = Buffer.from(extractFile(asarPath, 'app/provenance.json'));
-  const stagedProvenancePath = path.join(repositoryRoot, 'dist', 'package-input', 'app', 'provenance.json');
-  if (!fs.existsSync(stagedProvenancePath) || !packagedProvenance.equals(fs.readFileSync(stagedProvenancePath))) {
+  const sourceProvenancePath = path.join(repositoryRoot, 'dist', 'package-input', 'app', 'provenance.json');
+  if (!fs.existsSync(sourceProvenancePath) || !packagedProvenance.equals(fs.readFileSync(sourceProvenancePath))) {
     throw new TypeError('Packaged provenance does not match the output-only staged provenance bytes.');
   }
-  const preservationPath = path.join(repositoryRoot, 'dist', 'release', 'source-preservation-build.json');
-  if (!fs.existsSync(preservationPath)) throw new TypeError('Packaged application is missing its tracked-source preservation receipt.');
-  const preservation = JSON.parse(fs.readFileSync(preservationPath, 'utf8'));
+  const sourcePreservationPath = path.join(repositoryRoot, 'dist', 'release', 'source-preservation-build.json');
+  if (!fs.existsSync(sourcePreservationPath)) throw new TypeError('Packaged application is missing its tracked-source preservation receipt.');
+  const preservationBytes = fs.readFileSync(sourcePreservationPath);
+  const preservation = JSON.parse(preservationBytes.toString('utf8'));
   if (preservation.verified !== true || preservation.commit !== (expected.commit || provenance.commit) || preservation.verifiedInventorySha256 !== preservation.inventorySha256 || preservation.verifiedFileCount !== preservation.files?.length) {
     throw new TypeError('Tracked-source preservation receipt is incomplete or bound to another candidate.');
   }
@@ -61,6 +85,11 @@ export function validatePackagedApplication(directory, expected = {}) {
   if (iconManifest.schemaVersion !== 2 || iconManifest.masterSha256 !== sha256(master) || iconManifest.ico?.sha256 !== sha256(packagedIcon)) {
     throw new TypeError('Packaged icon outputs are not bound to the SVG master and icon manifest.');
   }
+  atomicWriteFileSync(layout.stagedProvenancePath, packagedProvenance);
+  atomicWriteFileSync(layout.sourcePreservationPath, preservationBytes);
+  if (!packagedProvenance.equals(fs.readFileSync(layout.stagedProvenancePath)) || !preservationBytes.equals(fs.readFileSync(layout.sourcePreservationPath))) {
+    throw new TypeError('Packaged evidence proofs did not round-trip inside the packaged application directory.');
+  }
   const executableIconRecords = assertEmbeddedIcon(executable, packagedIcon);
   const sourceBinding = {
     appAsar: validateAsarSourceBinding(asarPath, expected),
@@ -73,25 +102,25 @@ export function validatePackagedApplication(directory, expected = {}) {
     directory: resolved,
     executable: {
       file: path.basename(executablePath),
-      path: path.relative(repositoryRoot, executablePath).replace(/\\/g, '/'),
+      path: packageRelativePath(resolved, executablePath, 'packaged executable path'),
       bytes: executable.length,
       sha256: sha256(executable),
       signing: 'NotSigned'
     },
     appAsar: {
       file: 'resources/app.asar',
-      path: path.relative(repositoryRoot, asarPath).replace(/\\/g, '/'),
+      path: packageRelativePath(resolved, asarPath, 'packaged app.asar path'),
       bytes: asar.length,
       sha256: sha256(asar)
     },
     provenance: {
       logicalPath: 'app/provenance.json',
-      stagedPath: path.relative(repositoryRoot, stagedProvenancePath).replace(/\\/g, '/'),
+      stagedPath: packageRelativePath(resolved, layout.stagedProvenancePath, 'staged provenance path'),
       stagedSha256: sha256(packagedProvenance),
       packagedSha256: sha256(packagedProvenance)
     },
     sourcePreservation: {
-      receipt: path.relative(repositoryRoot, preservationPath).replace(/\\/g, '/'),
+      receipt: packageRelativePath(resolved, layout.sourcePreservationPath, 'source preservation receipt path'),
       candidateCommit: preservation.commit,
       trackedFileCount: preservation.verifiedFileCount,
       inventorySha256: preservation.verifiedInventorySha256,
@@ -116,8 +145,14 @@ if (isMain) {
   const directory = process.argv[2] || path.join(repositoryRoot, 'dist', 'win-unpacked');
   const context = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'dist', 'release', 'release-context.json'), 'utf8'));
   const result = validatePackagedApplication(directory, context);
-  const manifestPath = path.join(repositoryRoot, 'dist', 'package', 'packaged-app-manifest.json');
-  atomicJsonWrite(manifestPath, result);
+  const layout = packagedReceiptLayout(directory);
+  atomicJsonWrite(layout.receiptPath, result);
+  const canonicalBytes = fs.readFileSync(layout.receiptPath);
+  const convenienceManifestPath = path.join(repositoryRoot, 'dist', 'package', 'packaged-app-manifest.json');
+  atomicWriteFileSync(convenienceManifestPath, canonicalBytes);
+  if (!canonicalBytes.equals(fs.readFileSync(convenienceManifestPath))) {
+    throw new TypeError('Convenience packaged receipt mirror does not match the canonical in-package receipt.');
+  }
   process.stdout.write(`Validated runnable packaged application at ${path.relative(repositoryRoot, result.directory)}.\n`);
   process.stdout.write(`Executable SHA-256: ${result.executable.sha256}. Signing: ${result.executable.signing}.\n`);
   process.stdout.write(`app.asar SHA-256: ${result.appAsar.sha256}.\n`);

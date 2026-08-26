@@ -19,9 +19,24 @@ import { validateContainerSourceContract } from '../container-contract.mjs';
 import { validateBuildScriptContract, validateIconScriptContract, validateWorkflowContract } from '../workflow-contract.mjs';
 import { categoryFor, countTextLines, extensionlessTextInventory, pathDisposition } from '../../core/count-lines.mjs';
 import { isCompatibleGnuTar, recoverCheckoutHistory, resolveBundledNpmCli } from '../bootstrap-job-tools.mjs';
+import { packageRelativePath, packagedReceiptLayout } from '../validate-packaged-app.mjs';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(testDirectory, '..', '..', '..');
+
+test('packaged evidence receipt is self-contained under the disposable package directory', () => {
+  const packageRoot = path.join(os.tmpdir(), 'hair-growth-package-receipt-contract');
+  const layout = packagedReceiptLayout(packageRoot);
+  assert.equal(packageRelativePath(packageRoot, layout.executablePath), 'Hair Growth Estimator.exe');
+  assert.equal(packageRelativePath(packageRoot, layout.appAsarPath), 'resources/app.asar');
+  assert.equal(packageRelativePath(packageRoot, layout.stagedProvenancePath), 'dist/package-input/app/provenance.json');
+  assert.equal(packageRelativePath(packageRoot, layout.sourcePreservationPath), 'dist/release/source-preservation-build.json');
+  assert.equal(packageRelativePath(packageRoot, layout.receiptPath), 'dist/package/packaged-app-manifest.json');
+  assert.throws(
+    () => packageRelativePath(packageRoot, path.join(path.dirname(packageRoot), 'packaged-app-manifest.json')),
+    /strict child of the packaged application directory/
+  );
+});
 
 test('release version is stable for a logical run and monotonic across run numbers', () => {
   assert.equal(deriveReleaseVersion(17, 1), '1.0.17');
