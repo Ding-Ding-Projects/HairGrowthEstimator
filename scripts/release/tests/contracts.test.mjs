@@ -20,6 +20,7 @@ import { validateBuildScriptContract, validateIconScriptContract, validateWorkfl
 import { categoryFor, countTextLines, extensionlessTextInventory, pathDisposition } from '../../core/count-lines.mjs';
 import { isCompatibleGnuTar, recoverCheckoutHistory, resolveBundledNpmCli } from '../bootstrap-job-tools.mjs';
 import { packageRelativePath, packagedReceiptLayout } from '../validate-packaged-app.mjs';
+import { renderIconSet, verifyIconSet } from '../../core/generate-icons.mjs';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(testDirectory, '..', '..', '..');
@@ -140,6 +141,30 @@ test('automatic package paths verify committed icons without rewriting tracked s
   assert.throws(() => validateIconScriptContract(unstagedUpdater, generator), /package preparation path/);
 });
 
+test('icon generation and verification are stable across LF and CRLF checkouts', async () => {
+  const source = fs.readFileSync(path.join(root, 'assets', 'icons', 'logo-master.svg'), 'utf8');
+  const lfSource = source.replace(/\r\n?/g, '\n');
+  const crlfSource = lfSource.replace(/\n/g, '\r\n');
+  const lfSet = await renderIconSet(Buffer.from(lfSource, 'utf8'));
+  const crlfSet = await renderIconSet(Buffer.from(crlfSource, 'utf8'));
+
+  assert.deepEqual([...crlfSet.outputs], [...lfSet.outputs]);
+  await assert.doesNotReject(() => verifyIconSet(lfSet, async (file) => {
+    const output = lfSet.outputs.get(file);
+    return file === 'icon-manifest.json'
+      ? Buffer.from(output.toString('utf8').replace(/\n/g, '\r\n'), 'utf8')
+      : output;
+  }));
+  await assert.rejects(
+    () => verifyIconSet(lfSet, async (file) => (
+      file === 'icon-manifest.json'
+        ? Buffer.from('{"schemaVersion":0}\r\n', 'utf8')
+        : lfSet.outputs.get(file)
+    )),
+    /icon-manifest\.json/
+  );
+});
+
 test('container source contract requires network binding, provenance labels, and read-only runtime settings', () => {
   const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   const compose = fs.readFileSync(path.join(root, 'docker-compose.yml'), 'utf8');
@@ -152,9 +177,9 @@ test('container source contract requires network binding, provenance labels, and
 });
 
 test('workflow contract builds both release products without tests or lint', () => {
-  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8');
-  const publisher = fs.readFileSync(path.join(root, 'scripts', 'release', 'publish-release.mjs'), 'utf8');
-  const finalizer = fs.readFileSync(path.join(root, 'scripts', 'release', 'finalize-release.mjs'), 'utf8');
+  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8').replace(/\r\n?/g, '\n');
+  const publisher = fs.readFileSync(path.join(root, 'scripts', 'release', 'publish-release.mjs'), 'utf8').replace(/\r\n?/g, '\n');
+  const finalizer = fs.readFileSync(path.join(root, 'scripts', 'release', 'finalize-release.mjs'), 'utf8').replace(/\r\n?/g, '\n');
   assert.doesNotMatch(workflow, /^\s+branches:/m, 'Every push must receive its own branch-safe release run.');
   assert.doesNotThrow(() => validateWorkflowContract(workflow, publisher));
   assert.throws(() => validateWorkflowContract(workflow.replace('npm ci', 'npm test'), publisher), /must not run tests or lint/);

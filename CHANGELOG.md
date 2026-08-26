@@ -44,6 +44,8 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Container builds now materialize `Dockerfile` and every server input from exact candidate Git blobs before both reproducibility builds, preventing checkout line-ending conversion from changing OCI payload bytes.
 - Packaged-application receipts are now self-contained under the disposable package directory, with package-root-relative proof paths and a byte-identical convenience mirror.
 - Client-only evidence captures now validate the exact renderer tuple independently from the bounded outer Windows resize-border envelope.
+- Icon generation now canonicalizes SVG and manifest line endings before hashing and verification, so Windows checkout conversion cannot produce a false release-build drift failure.
+- Release-contract mutation fixtures now normalize source line endings before deliberate red probes, so their negative checks remain effective on both LF and CRLF checkouts.
 
 ### Security and privacy
 

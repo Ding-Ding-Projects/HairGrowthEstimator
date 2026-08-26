@@ -2,7 +2,7 @@
 
 ## Candidate identity
 
-The implementation basis immediately before this handoff update is `da7b68baa89678e3ca3d45188f122c379eccc8c4` on the integration branch. Local `main` and `origin/main` remain at `bae395a18590f0fb7b46091bf5b6656f521159ee` until this handoff commit is integrated.
+The completed integration reached local and remote `main` at `1ea6215d9ca27d6f66c61ec2a56696567daddb6e` before the follow-up workflow repair recorded below. The most recent runnable local package remains bound to `da7b68baa89678e3ca3d45188f122c379eccc8c4`.
 
 This candidate contains four completed source milestones:
 
@@ -11,7 +11,17 @@ This candidate contains four completed source milestones:
 3. The frozen built-evidence harness.
 4. Reproducible Windows, Squirrel.Windows, OCI, release, and GitHub Pages packaging sources.
 
-A runnable unsigned Windows package was rebuilt from this exact candidate. Deterministic OCI and Squirrel.Windows products exist only as earlier local milestones. No complete screen capture set, screen recording, release verification, Pages deployment, host deployment, or cleanup result is claimed by this handoff.
+A runnable unsigned Windows package was rebuilt from the recorded package candidate. Deterministic OCI and Squirrel.Windows products exist only as earlier local milestones. No complete screen capture set, screen recording, release verification, live-site response verification, or host deployment is claimed by this handoff.
+
+## Post-integration workflow repair
+
+The completed integration reached local and remote `main` at `1ea6215d9ca27d6f66c61ec2a56696567daddb6e`. GitHub Pages was enabled for the existing workflow source, and retry attempt 2 of run `32938126796` completed successfully.
+
+Release run `32938126818` stopped before packaging because the icon verifier compared checkout-sensitive line endings in `assets/icons/icon-manifest.json`. The repair canonicalizes the SVG master and JSON manifest to LF at the verification boundary and adds an LF-versus-CRLF regression with an explicitly corrupted-manifest rejection. The same focused pass also repaired older workflow-contract mutation fixtures whose LF-only replacement could silently miss CRLF source.
+
+Focused local verification after the repair reported 16 of 16 release-contract checks and 7 of 7 PNG icon sizes plus the multi-resolution ICO passing. The public-boundary scan covered 323 tracked files and 24 commits with no private-vocabulary findings. This is source verification for the follow-up repair, not a shipped-release claim.
+
+The proven merged integration, website, website-repair, and narrow instruction-repair worktrees and branches were removed after their tips were verified as ancestors of their respective remote `main` branches. Four source branches containing intentionally excluded unsafe history remain preserved and are not cleanup candidates.
 
 ## Integrated product scope
 
@@ -93,7 +103,7 @@ Additional accepted facts:
 - Publish and verify exactly one unique non-draft GitHub release from the intended commit.
 - Verify every installer, package, OCI, manifest, line-count, and release-note asset by downloading it again.
 - Complete the post-run terminal transfer and compose the release-bound installer state.
-- Deploy GitHub Pages and fetch the served HTML and Open Graph image anonymously.
+- Fetch the deployed GitHub Pages HTML and Open Graph image anonymously and verify the live response.
 - Set and verify the repository homepage.
 - Upload the root `social-preview.png` through repository settings.
 - Recheck the selected private-LAN host and deploy the exact validated service image only after capacity, architecture, ports, and unrelated workloads remain safe.

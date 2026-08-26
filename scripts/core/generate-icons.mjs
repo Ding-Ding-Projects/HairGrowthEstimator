@@ -17,6 +17,11 @@ function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
+export function canonicalTextBytes(bytes) {
+  const text = Buffer.isBuffer(bytes) ? bytes.toString('utf8') : String(bytes);
+  return Buffer.from(text.replace(/\r\n?/g, '\n'), 'utf8');
+}
+
 function parsePngDimensions(bytes) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   if (!Buffer.isBuffer(bytes) || !bytes.subarray(0, 8).equals(signature) || bytes.toString('ascii', 12, 16) !== 'IHDR') {
@@ -48,7 +53,7 @@ function createIco(images) {
 }
 
 export async function renderIconSet(master = undefined) {
-  const masterBytes = master || await readFile(masterPath);
+  const masterBytes = canonicalTextBytes(master || await readFile(masterPath));
   const masterText = masterBytes.toString('utf8');
   if (!masterText.includes('Hair Growth Estimator logo') || !masterText.includes('viewBox="0 0 512 512"')) {
     throw new Error('The committed logo master is missing its expected identity or view box.');
@@ -97,17 +102,21 @@ export async function renderIconSet(master = undefined) {
   return { outputs, imageCount: images.length, icoBytes: ico.length };
 }
 
-export async function verifyIconSet(iconSet = undefined) {
+export async function verifyIconSet(iconSet = undefined, readOutput = undefined) {
   const rendered = iconSet || await renderIconSet();
   for (const [file, expected] of rendered.outputs) {
     const relativePath = path.posix.join('assets', 'icons', file);
     let actual;
     try {
-      actual = await readFile(path.join(assetsDirectory, file));
+      actual = readOutput
+        ? await readOutput(file)
+        : await readFile(path.join(assetsDirectory, file));
     } catch (error) {
       throw new Error(`Committed icon output is unavailable at ${relativePath}: ${error.message}`);
     }
-    if (!actual.equals(expected)) {
+    const comparedActual = file === 'icon-manifest.json' ? canonicalTextBytes(actual) : actual;
+    const comparedExpected = file === 'icon-manifest.json' ? canonicalTextBytes(expected) : expected;
+    if (!comparedActual.equals(comparedExpected)) {
       throw new Error(`Committed icon output drifted from logo-master.svg at ${relativePath}. Run npm run generate:icons explicitly and review the result.`);
     }
   }
