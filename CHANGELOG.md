@@ -40,6 +40,7 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Setup icon validation now verifies the canonical primary executable icon group while retaining the Squirrel installer groups used by the packaged bootstrapper.
 - Setup icon replacement now uses in-process resource editing with collision-free icon ids, validates the complete icon-resource graph, and preserves auxiliary Squirrel groups byte for byte.
 - Squirrel package validation now accepts strictly formed explicit ZIP directory records while retaining traversal, alias, type, payload, and ancestor-conflict refusal.
+- Installer validation now reads `Update.exe` from the outer Setup bootstrap payload, where Squirrel places it, while validating the full `.nupkg` independently without requiring a nonexistent inner updater.
 
 ### Security and privacy
 

@@ -80,6 +80,8 @@ The installer validator checks:
 9. Actual application, asset, icon, and server contents against Git blobs from the clean candidate.
 10. The complete Windows product release identity matches the logical-run context used by container packaging and publication.
 
+`Update.exe` is validated directly from the outer Setup bootstrap ZIP. The full `.nupkg` carries the application payload and Squirrel package runtime, not another `Update.exe`; requiring one there would validate an invented package topology rather than the produced installer.
+
 ZIP parsing accepts explicit directories only when the terminal slash, creator-specific directory attribute, zero stored payload, zero CRC, and zero sizes agree. It rejects absolute paths, drive-prefixed paths, parent traversal, duplicate entries, canonical aliases, special Unix entry types, file-directory ancestor conflicts, truncated data, unsupported compression, CRC disagreement, and central-directory size disagreement.
 
 ## Unsigned release warning

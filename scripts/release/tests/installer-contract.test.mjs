@@ -325,8 +325,9 @@ test('final Setup payload embeds the exact validated full package bytes', () => 
   const packageName = 'hair-growth-estimator-1.0.1-full.nupkg';
   const packageBytes = Buffer.from('package bytes');
   const entries = new Map([['Update.exe', Buffer.from('updater')], [packageName, packageBytes]]);
-  assert.throws(() => assertSetupPayloadEntries(entries, packageName, Buffer.from('changed')), /embedded full package bytes/);
-  assert.throws(() => assertSetupPayloadEntries(entries, packageName, packageBytes), /requires the exact validated full-package Update\.exe/);
+  const icon = fs.readFileSync(path.join(repositoryRoot, 'assets', 'icons', 'app-icon.ico'));
+  assert.throws(() => assertSetupPayloadEntries(entries, packageName, Buffer.from('changed'), icon), /embedded full package bytes/);
+  assert.throws(() => assertSetupPayloadEntries(entries, packageName, packageBytes), /requires the canonical icon bytes/);
 });
 
 test('Setup Update.exe is byte-bound to a validated unsigned PE with the canonical icon', async () => {
@@ -340,7 +341,7 @@ test('Setup Update.exe is byte-bound to a validated unsigned PE with the canonic
     await applyExecutableIcon(updaterPath, iconPath);
     const updater = fs.readFileSync(updaterPath);
     const icon = fs.readFileSync(iconPath);
-    const expectedUpdater = validator.validateUpdaterExecutable(updater, icon, 'Full package Update.exe');
+    const expectedUpdater = validator.validateUpdaterExecutable(updater, icon, 'Setup payload Update.exe');
     assert.equal(expectedUpdater.signing, 'NotSigned');
     assert.equal(expectedUpdater.sha256, crypto.createHash('sha256').update(updater).digest('hex'));
     assert.ok(expectedUpdater.iconResourceCount > 0);
@@ -348,15 +349,15 @@ test('Setup Update.exe is byte-bound to a validated unsigned PE with the canonic
     const packageName = 'hair-growth-estimator-1.0.1-full.nupkg';
     const packageBytes = Buffer.from('package bytes');
     const entries = new Map([['Update.exe', updater], [packageName, packageBytes]]);
-    const result = assertSetupPayloadEntries(entries, packageName, packageBytes, { ...expectedUpdater, buffer: updater, icon });
+    const result = assertSetupPayloadEntries(entries, packageName, packageBytes, icon);
     assert.equal(result.updateSha256, expectedUpdater.sha256);
 
     const changedUpdater = Buffer.from(updater);
-    changedUpdater[2] ^= 1;
+    changedUpdater[0] ^= 1;
     entries.set('Update.exe', changedUpdater);
     assert.throws(
-      () => assertSetupPayloadEntries(entries, packageName, packageBytes, { ...expectedUpdater, buffer: updater, icon }),
-      /Update\.exe.*bytes|digest/i
+      () => assertSetupPayloadEntries(entries, packageName, packageBytes, icon),
+      /valid PE|MZ header|Update\.exe/i
     );
 
     const wrongIcon = Buffer.from(icon);

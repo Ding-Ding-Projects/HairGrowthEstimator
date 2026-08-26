@@ -80,6 +80,8 @@ Installer validator 會檢查：
 9. 實際 application、asset、icon 同 server content，都要同 clean candidate 嘅 Git blob 對得上。
 10. Complete Windows product release identity 要同 container packaging 同 publication 使用嘅 logical-run context 一致。
 
+`Update.exe` 會直接喺 outer Setup bootstrap ZIP 入面驗證。Full `.nupkg` 會包含 application payload 同 Squirrel package runtime，而唔係再放多一個 `Update.exe`；如果硬係要求入面有一份，就會驗證咗一個憑空作出嚟嘅 package topology，成個 installer 會無啦啦多咗個孖生兄弟。
+
 ZIP parsing 只會喺 terminal slash、creator-specific directory attribute、zero stored payload、zero CRC 同 zero sizes 全部一致時接受 explicit directory。佢會拒絕 absolute path、drive-prefixed path、parent traversal、duplicate entry、canonical alias、special Unix entry type、file-directory ancestor conflict、truncated data、unsupported compression、CRC disagreement 同 central-directory size disagreement。
 
 ## Unsigned release warning

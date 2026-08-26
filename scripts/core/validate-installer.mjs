@@ -114,35 +114,16 @@ export function validateUpdaterExecutable(buffer, iconBuffer, label = 'Update.ex
   };
 }
 
-function validateClaimedUpdater(expectedUpdater) {
-  if (!expectedUpdater || !Buffer.isBuffer(expectedUpdater.buffer) || !Buffer.isBuffer(expectedUpdater.icon)) {
-    throw new TypeError('Final Setup updater binding requires the exact validated full-package Update.exe and canonical icon bytes.');
-  }
-  const verified = validateUpdaterExecutable(expectedUpdater.buffer, expectedUpdater.icon, 'Validated full-package Update.exe');
-  for (const field of ['bytes', 'sha256', 'signing', 'iconResourceCount', 'versionResourceCount', 'manifestResourceCount']) {
-    if (expectedUpdater[field] !== verified[field]) {
-      throw new TypeError(`Validated full-package Update.exe ${field} claim disagrees with its bytes.`);
-    }
-  }
-  return verified;
-}
-
-export function assertSetupPayloadEntries(entries, fullPackageName, fullPackageBytes, expectedUpdater) {
+export function assertSetupPayloadEntries(entries, fullPackageName, fullPackageBytes, iconBuffer) {
   if (!(entries instanceof Map) || !entries.has('Update.exe')) throw new TypeError('Final Setup payload is missing Update.exe.');
+  if (!Buffer.isBuffer(iconBuffer)) throw new TypeError('Final Setup updater validation requires the canonical icon bytes.');
   const packages = [...entries.keys()].filter((name) => /-full\.nupkg$/i.test(name));
   if (packages.length !== 1 || packages[0] !== fullPackageName) throw new TypeError('Final Setup payload does not name the exact validated full package.');
   const embedded = entries.get(fullPackageName);
   if (!embedded.equals(fullPackageBytes)) throw new TypeError('Final Setup embedded full package bytes disagree with the validated release package.');
 
-  const expected = validateClaimedUpdater(expectedUpdater);
   const embeddedUpdater = entries.get('Update.exe');
-  if (!embeddedUpdater.equals(expectedUpdater.buffer)) {
-    throw new TypeError('Final Setup Update.exe bytes disagree with the digest-verified full-package updater.');
-  }
-  const actual = validateUpdaterExecutable(embeddedUpdater, expectedUpdater.icon, 'Final Setup Update.exe');
-  if (actual.sha256 !== expected.sha256 || actual.bytes !== expected.bytes) {
-    throw new TypeError('Final Setup Update.exe digest or byte count disagrees with the validated full-package updater.');
-  }
+  const actual = validateUpdaterExecutable(embeddedUpdater, iconBuffer, 'Final Setup payload Update.exe');
   return {
     entryCount: entries.size,
     fullPackage: fullPackageName,
@@ -686,12 +667,10 @@ function inspectFullPackage(packageInfo, expected) {
   const entries = readZipEntries(fs.readFileSync(packageInfo.path));
   const asarEntry = findOne(entries, (name) => /\/resources\/app\.asar$/i.test(name), 'resources/app.asar');
   const applicationExecutableEntry = findOne(entries, (name) => /\/Hair Growth Estimator\.exe$/i.test(name), 'application executable');
-  const updaterEntry = findOne(entries, (name) => /(^|\/)Update\.exe$/i.test(name), 'Update.exe');
   const nuspecEntry = findOne(entries, (name) => /\.nuspec$/i.test(name), 'NuGet specification');
   const nuspec = parseNuspecMetadata(entries.get(nuspecEntry), nuspecEntry, packageInfo.name);
   if (nuspec.version !== expected.version) throw new TypeError('Full Squirrel package NuGet version does not match package.json.');
   const applicationExecutable = entries.get(applicationExecutableEntry);
-  const updaterBuffer = entries.get(updaterEntry);
   if (readPeSecurityDirectory(applicationExecutable).size !== 0) throw new TypeError('Signing policy violated: packaged application executable is signed.');
 
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hair-growth-asar-'));
@@ -715,7 +694,6 @@ function inspectFullPackage(packageInfo, expected) {
       throw new TypeError('Full Squirrel package icon does not match its SVG master and generated manifest.');
     }
     const executableIconRecords = assertEmbeddedIcon(applicationExecutable, icon);
-    const updater = validateUpdaterExecutable(updaterBuffer, icon, 'Full package Update.exe');
     const sourceBinding = {
       appAsar: validateAsarSourceBinding(asarPath, expected),
       server: validateServerZipSourceBinding(entries, asarEntry, expected.commit)
@@ -728,8 +706,6 @@ function inspectFullPackage(packageInfo, expected) {
         sha256: digest('sha256', applicationExecutable),
         signing: 'NotSigned'
       },
-      updater: { entry: updaterEntry, ...updater },
-      updaterBuffer,
       nuget: { entry: nuspecEntry, id: nuspec.id, version: nuspec.version },
       icon: { masterSha256: iconManifest.masterSha256, icoSha256: iconManifest.ico.sha256, sizes: iconManifest.ico.sizes, executableResourceCount: executableIconRecords.length },
       iconBuffer: icon,
@@ -785,13 +761,9 @@ export function validateInstallerDirectory(directory, options = {}) {
   if (!fullPackages[0].name.includes(`-${expected.version}-full.nupkg`)) throw new TypeError('Full Squirrel package filename does not contain the intended version.');
   const fullPackageBytes = fs.readFileSync(fullPackages[0].path);
   const inspected = inspectFullPackage(fullPackages[0], expected);
-  const setupPayload = assertSetupPayloadEntries(setupPayloadEntries(setup), fullPackages[0].name, fullPackageBytes, {
-    ...inspected.updater,
-    buffer: inspected.updaterBuffer,
-    icon: inspected.iconBuffer
-  });
+  const setupPayload = assertSetupPayloadEntries(setupPayloadEntries(setup), fullPackages[0].name, fullPackageBytes, inspected.iconBuffer);
   const packageSet = validateSquirrelPackageSet(packages, inspected.deltaFeed);
-  const { iconBuffer, updaterBuffer, deltaFeed, ...embedded } = inspected;
+  const { iconBuffer, deltaFeed, ...embedded } = inspected;
   const setupIconRecords = assertEmbeddedIcon(setup, iconBuffer);
   const releaseIndex = fileRecord(releasesPath);
   const setupRecord = { ...fileRecord(setupPath), signing: 'NotSigned' };
@@ -811,7 +783,7 @@ export function validateInstallerDirectory(directory, options = {}) {
     packages: packages.map(({ name, bytes, sha1, sha256 }) => ({ file: name, bytes, sha1, sha256, type: /-full\.nupkg$/i.test(name) ? 'full' : 'delta' })),
     squirrelToolProvenance: {
       vendorExecutables: squirrelExecutableTools,
-      transformedUpdaterSha256: embedded.updater.sha256
+      transformedUpdaterSha256: setupPayload.updateSha256
     },
     embedded
   };
