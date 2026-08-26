@@ -38,6 +38,8 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Packaged application validation now reads nested ASAR entries with the host path separator and proves the behavior with a real temporary archive.
 - Application, asset, canonical icon, and server package inputs now come from an exact candidate Git-blob snapshot, so checkout line-ending conversion cannot alter release bytes.
 - Setup icon validation now verifies the canonical primary executable icon group while retaining the Squirrel installer groups used by the packaged bootstrapper.
+- Setup icon replacement now uses in-process resource editing with collision-free icon ids, validates the complete icon-resource graph, and preserves auxiliary Squirrel groups byte for byte.
+- Squirrel package validation now accepts strictly formed explicit ZIP directory records while retaining traversal, alias, type, payload, and ancestor-conflict refusal.
 
 ### Security and privacy
 
@@ -56,7 +58,7 @@ The release entry cannot truthfully link to its own future integration commit. T
 - Website checks at the integrated candidate: 53 passed, 2 explicitly skipped because optional external private sources were absent, 0 failed.
 - A separate website run with the current private vocabulary supplied through its external value-free path reported 55 passed, 0 failed, and 0 skipped.
 - Evidence-harness checks: 30 passed, 0 failed, plus 18 of 18 JavaScript syntax checks.
-- Release-packaging checks: 84 passed, 0 failed.
+- Release-packaging checks: 85 passed, 0 failed.
 - Localization checks prove all three catalog counts and all 66 article pairs, including deliberate catalog-entry deletion and article-mirror omission failures before restoration.
 - The strict hair-asset fixture composes all eight canonical stages, rejects a changed image at the SHA-256 boundary, and succeeds again after restoration.
 - The evidence harness and release packaging are source and contract verified. They have not yet produced final user-facing capture or release evidence.

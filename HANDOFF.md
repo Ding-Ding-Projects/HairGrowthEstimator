@@ -38,7 +38,7 @@ The candidate includes:
 | Website, external private vocabulary supplied | 55 passed, 0 failed, 0 skipped | Complete source suite with value-free external currentness |
 | Evidence harness | 30 passed, 0 failed | Plan, identity, process, ledger, recovery, capture, and recording contracts |
 | Evidence JavaScript syntax | 18 of 18 passed | Every evidence JavaScript file |
-| Release packaging | 84 passed, 0 failed | Windows, Squirrel.Windows, OCI, workflow, provenance, source-binding, safe-output, and publication contracts |
+| Release packaging | 85 passed, 0 failed | Windows, Squirrel.Windows, OCI, workflow, provenance, source-binding, safe-output, and publication contracts |
 
 Additional accepted facts:
 
@@ -51,7 +51,8 @@ Additional accepted facts:
 - The release packaging is source complete and locally verified, but has not built or published the final release products.
 - Root build timing now uses `scripts/release/batch-timing.bat`, and nested ASAR source binding is proven by a real temporary archive check.
 - `scripts/release/stage-package-source.mjs` materializes application, asset, canonical icon, and server inputs from exact candidate Git blobs before packaging, preventing checkout line-ending conversion from changing release bytes.
-- Setup validation identifies the canonical primary icon group by resource id and language while preserving the installer bootstrapper's two additional internal icon groups.
+- Setup icon replacement uses in-process `resedit` allocation, validates every group-to-icon reference, writes atomically, and preserves the installer bootstrapper's two additional internal icon groups byte for byte.
+- Squirrel ZIP validation accepts only slash-terminated, attribute-confirmed, zero-payload directory records and keeps all existing extraction-safety checks.
 
 ## Main implementation paths
 

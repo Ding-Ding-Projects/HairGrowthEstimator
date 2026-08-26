@@ -63,7 +63,7 @@ Portable-only、ZIP-only、MSI-only、NSIS、MSIX 同其他 installer family 都
 
 `assets/icons/logo-master.svg` 係 canonical source。`scripts/core/generate-icons.mjs` 用 `sharp` 0.34.3 產生七個 PNG size 同一個 multi-resolution `.ico`。`assets/icons/icon-manifest.json` 會記錄 master bytes、master SHA-256、renderer version、file size 同 output hash。
 
-Package 會將 canonical generated file 對應到 application asset path。Squirrel update metadata 會用一條包含 exact source commit 嘅 immutable raw GitHub URL。由於 no-signing policy 之下 `signAndEditExecutable` 會保持 disabled，獨立 post-pack step 只會使用通過 digest 驗證嘅 Squirrel resource editor，將 canonical icon 嵌入 executable。同一個 verified step 亦會更新 `Setup.exe`。Installer validator 會讀取 language `1033` 嘅 primary PE resource group `1`，將七個 icon payload digest 同 packaged `.ico` 逐個比對，同時保留 Squirrel bootstrapper 必需嘅額外 internal groups。
+Package 會將 canonical generated file 對應到 application asset path。Squirrel update metadata 會用一條包含 exact source commit 嘅 immutable raw GitHub URL。由於 no-signing policy 之下 `signAndEditExecutable` 會保持 disabled，獨立 post-pack step 會用已鎖定嘅 in-process `resedit` library，以無碰撞 icon ids 取代 language `1033` 嘅 primary icon group `1`。Atomic replacement 之前會驗證每個 group descriptor、referenced icon id、byte count、dimension、plane、bit depth 同 payload digest。同一個 verified step 亦會更新 `Setup.exe`，並逐 byte 保留 Squirrel bootstrapper 必需嘅額外 internal groups。
 
 ## Installer integrity
 
@@ -80,7 +80,7 @@ Installer validator 會檢查：
 9. 實際 application、asset、icon 同 server content，都要同 clean candidate 嘅 Git blob 對得上。
 10. Complete Windows product release identity 要同 container packaging 同 publication 使用嘅 logical-run context 一致。
 
-ZIP parsing 會拒絕 absolute path、drive-prefixed path、parent traversal、duplicate entry、truncated data、unsupported compression、CRC disagreement 同 central-directory size disagreement。
+ZIP parsing 只會喺 terminal slash、creator-specific directory attribute、zero stored payload、zero CRC 同 zero sizes 全部一致時接受 explicit directory。佢會拒絕 absolute path、drive-prefixed path、parent traversal、duplicate entry、canonical alias、special Unix entry type、file-directory ancestor conflict、truncated data、unsupported compression、CRC disagreement 同 central-directory size disagreement。
 
 ## Unsigned release warning
 

@@ -186,7 +186,9 @@ function safeZipName(value) {
   if (!value || value.includes('\\') || value.startsWith('/') || /^[a-zA-Z]:/.test(value) || value.includes('\0')) {
     throw new TypeError(`Squirrel package contains an unsafe ZIP entry: ${value}`);
   }
-  const segments = value.split('/');
+  const directory = value.endsWith('/');
+  const canonicalValue = directory ? value.slice(0, -1) : value;
+  const segments = canonicalValue.split('/');
   for (const segment of segments) {
     if (!segment || segment === '.' || segment === '..' || /[. ]$/.test(segment) || /[<>:"|?*\u0000-\u001f]/.test(segment)) {
       throw new TypeError(`Squirrel package contains an unsafe canonical ZIP entry: ${value}`);
@@ -197,7 +199,7 @@ function safeZipName(value) {
     }
   }
   const identity = segments.map((segment) => segment.normalize('NFC').toLowerCase()).join('/');
-  return { name: value, identity };
+  return { name: value, identity, directory };
 }
 
 function validateExtendedTimestamp(data, label) {
@@ -267,6 +269,7 @@ export function readZipEntries(buffer) {
   if (entriesThisDisk === 0xffff || entryCount === 0xffff || centralOffset === 0xffffffff || centralSize === 0xffffffff) throw new TypeError('ZIP64 Squirrel packages are not supported by this validator.');
   if (centralOffset + centralSize !== eocd) throw new TypeError('ZIP central directory must be adjacent to its EOCD record.');
   const entries = new Map();
+  const entryNames = new Set();
   const extractionIdentities = new Map();
   const localSpans = [];
   const localOffsets = new Set();
@@ -284,6 +287,8 @@ export function readZipEntries(buffer) {
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
     const diskNumberStart = buffer.readUInt16LE(offset + 34);
+    const internalAttributes = buffer.readUInt16LE(offset + 36);
+    const externalAttributes = buffer.readUInt32LE(offset + 38);
     const localOffset = buffer.readUInt32LE(offset + 42);
     const centralEntryEnd = offset + 46 + nameLength + extraLength + commentLength;
     if (centralEntryEnd > centralOffset + centralSize || centralEntryEnd > buffer.length) throw new TypeError('ZIP central directory entry is truncated.');
@@ -301,12 +306,31 @@ export function readZipEntries(buffer) {
     if ((flags & ~allowedFlags) !== 0) throw new TypeError(`ZIP entry flags are unsupported: 0x${flags.toString(16)}.`);
     const centralNameBytes = buffer.subarray(offset + 46, offset + 46 + nameLength);
     const decodedName = decodeZipName(centralNameBytes, flags, 'ZIP central filename');
-    const { name, identity } = safeZipName(decodedName);
-    if (entries.has(name)) throw new TypeError(`Squirrel package contains a duplicate ZIP entry: ${name}`);
+    const { name, identity, directory } = safeZipName(decodedName);
+    if (entryNames.has(name)) throw new TypeError(`Squirrel package contains a duplicate ZIP entry: ${name}`);
+    entryNames.add(name);
     if (extractionIdentities.has(identity)) {
-      throw new TypeError(`Squirrel package contains a canonical Windows extraction alias: ${extractionIdentities.get(identity)} and ${name}`);
+      throw new TypeError(`Squirrel package contains a canonical Windows extraction alias: ${extractionIdentities.get(identity).name} and ${name}`);
     }
-    extractionIdentities.set(identity, name);
+    const unixMode = externalAttributes >>> 16;
+    const unixType = unixMode & 0xf000;
+    if (creatorSystem === 3 && unixType !== 0 && ![0x4000, 0x8000].includes(unixType)) {
+      throw new TypeError(`Squirrel package contains an unsupported Unix ZIP entry type: ${name}`);
+    }
+    const hasDirectoryAttribute = (externalAttributes & 0x10) !== 0 || (creatorSystem === 3 && unixType === 0x4000);
+    if (directory) {
+      if (!hasDirectoryAttribute || internalAttributes !== 0 || flags !== 0 || method !== 0 || expectedCrc !== 0 || compressedSize !== 0 || uncompressedSize !== 0) {
+        throw new TypeError(`Squirrel package contains an invalid ZIP directory entry: ${name}`);
+      }
+    } else if (hasDirectoryAttribute) {
+      throw new TypeError(`Squirrel package file entry carries a directory attribute: ${name}`);
+    }
+    for (const [existingIdentity, existing] of extractionIdentities) {
+      if ((!existing.directory && identity.startsWith(`${existingIdentity}/`)) || (!directory && existingIdentity.startsWith(`${identity}/`))) {
+        throw new TypeError(`Squirrel package contains a file-directory ancestor conflict: ${existing.name} and ${name}`);
+      }
+    }
+    extractionIdentities.set(identity, { name, directory });
     const centralExtraStart = offset + 46 + nameLength;
     parseZipExtraFields(buffer.subarray(centralExtraStart, centralExtraStart + extraLength), `ZIP central entry ${name}`);
     if (localOffset >= centralOffset || localOffsets.has(localOffset) || localOffset + 30 > centralOffset || buffer.readUInt32LE(localOffset) !== 0x04034b50) {

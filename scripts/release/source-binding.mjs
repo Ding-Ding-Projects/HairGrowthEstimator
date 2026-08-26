@@ -239,7 +239,7 @@ export function validateServerZipSourceBinding(entries, asarEntry, commit) {
   const actual = new Map();
   const serverPrefix = `${prefix}resources/server/`;
   for (const [entryPath, bytes] of entries) {
-    if (entryPath.startsWith(serverPrefix)) actual.set(entryPath.slice(serverPrefix.length), bytes);
+    if (!entryPath.endsWith('/') && entryPath.startsWith(serverPrefix)) actual.set(entryPath.slice(serverPrefix.length), bytes);
   }
   return compareBoundFiles(expectedServerFiles(commit), actual, 'Squirrel server payload');
 }

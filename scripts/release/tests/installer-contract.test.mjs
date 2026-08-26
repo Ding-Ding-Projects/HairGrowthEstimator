@@ -88,7 +88,7 @@ function storedZipEntries(definitions, options = {}) {
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(definition.versionMadeBy || 20, 4);
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(flags, 8);
     central.writeUInt32LE(crc, 16);
@@ -96,6 +96,7 @@ function storedZipEntries(definitions, options = {}) {
     central.writeUInt32LE(data.length, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt16LE(centralExtra.length, 30);
+    central.writeUInt32LE(definition.externalAttributes || 0, 38);
     central.writeUInt32LE(localOffset, 42);
     centralParts.push(Buffer.concat([central, name, centralExtra]));
     localOffset += localPart.length;
@@ -173,6 +174,30 @@ function unsignedPe() {
 test('ZIP reader validates content and rejects unsafe paths', () => {
   assert.equal(readZipEntries(storedZip('lib/net45/file.txt', Buffer.from('hello'))).get('lib/net45/file.txt').toString(), 'hello');
   assert.throws(() => readZipEntries(storedZip('../escape.txt', Buffer.from('no'))), /unsafe.*ZIP entry/i);
+});
+
+test('ZIP reader validates directory entries separately and returns only file payloads', () => {
+  const valid = storedZipEntries([
+    { name: 'lib/', data: '', externalAttributes: 0x10 },
+    { name: 'lib/net45/', data: '', externalAttributes: 0x10 },
+    { name: 'lib/net45/file.txt', data: 'payload' }
+  ]);
+  const entries = readZipEntries(valid);
+  assert.deepEqual([...entries.keys()], ['lib/', 'lib/net45/', 'lib/net45/file.txt']);
+  assert.equal(entries.get('lib/').length, 0);
+  assert.equal(entries.get('lib/net45/').length, 0);
+  assert.equal(entries.get('lib/net45/file.txt').toString(), 'payload');
+  assert.throws(() => readZipEntries(storedZipEntries([{ name: 'lib/', data: '' }])), /invalid ZIP directory entry/);
+  assert.throws(() => readZipEntries(storedZipEntries([{ name: 'lib/', data: 'payload', externalAttributes: 0x10 }])), /invalid ZIP directory entry/);
+  assert.throws(() => readZipEntries(storedZipEntries([{ name: 'file.txt', data: '', externalAttributes: 0x10 }])), /directory attribute/);
+  assert.throws(
+    () => readZipEntries(storedZipEntries([{ name: 'link', data: 'target', versionMadeBy: 0x0314, externalAttributes: (0xa000 << 16) >>> 0 }])),
+    /unsupported Unix ZIP entry type/
+  );
+  assert.throws(
+    () => readZipEntries(storedZipEntries([{ name: 'lib', data: '' }, { name: 'lib/file.txt', data: 'payload' }])),
+    /ancestor conflict/
+  );
 });
 
 test('ZIP reader binds local and central headers, rejects encryption, and validates descriptors', () => {
@@ -311,10 +336,8 @@ test('Setup Update.exe is byte-bound to a validated unsigned PE with the canonic
   try {
     const updaterPath = path.join(directory, 'Update.exe');
     const iconPath = path.join(repositoryRoot, 'assets', 'icons', 'app-icon.ico');
-    const editorPath = path.join(repositoryRoot, 'node_modules', 'electron-winstaller', 'vendor', 'rcedit.exe');
-    const editorSha256 = crypto.createHash('sha256').update(fs.readFileSync(editorPath)).digest('hex');
     fs.copyFileSync(path.join(repositoryRoot, 'node_modules', 'electron-winstaller', 'vendor', 'Squirrel.exe'), updaterPath);
-    applyExecutableIcon(updaterPath, iconPath, editorPath, editorSha256);
+    await applyExecutableIcon(updaterPath, iconPath);
     const updater = fs.readFileSync(updaterPath);
     const icon = fs.readFileSync(iconPath);
     const expectedUpdater = validator.validateUpdaterExecutable(updater, icon, 'Full package Update.exe');

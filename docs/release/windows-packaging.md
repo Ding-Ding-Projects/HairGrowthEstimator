@@ -63,7 +63,7 @@ The first release has no prior full package, so it must contain exactly one full
 
 `assets/icons/logo-master.svg` is the canonical source. `scripts/core/generate-icons.mjs` uses `sharp` 0.34.3 to produce seven PNG sizes and a multi-resolution `.ico`. `assets/icons/icon-manifest.json` records the master bytes, master SHA-256, renderer version, file sizes, and output hashes.
 
-The package maps the canonical generated files into the application asset paths. Squirrel update metadata uses an immutable raw GitHub URL containing the exact source commit. Because `signAndEditExecutable` remains disabled under the no-signing policy, a separate post-pack step uses the digest-verified Squirrel resource editor only to embed the canonical icon. The same verified step updates `Setup.exe`. The installer validator reads primary PE resource group `1` with language `1033`, compares all seven icon payload digests with the packaged `.ico`, and retains the additional internal groups required by the Squirrel bootstrapper.
+The package maps the canonical generated files into the application asset paths. Squirrel update metadata uses an immutable raw GitHub URL containing the exact source commit. Because `signAndEditExecutable` remains disabled under the no-signing policy, a separate post-pack step uses the pinned in-process `resedit` library to replace primary icon group `1` with language `1033` through collision-free icon ids. It validates every group descriptor, referenced icon id, byte count, dimension, plane, bit depth, and payload digest before an atomic replacement. The same verified step updates `Setup.exe` while preserving the additional internal groups required by the Squirrel bootstrapper byte for byte.
 
 ## Installer integrity
 
@@ -80,7 +80,7 @@ The installer validator checks:
 9. Actual application, asset, icon, and server contents against Git blobs from the clean candidate.
 10. The complete Windows product release identity matches the logical-run context used by container packaging and publication.
 
-ZIP parsing rejects absolute paths, drive-prefixed paths, parent traversal, duplicate entries, truncated data, unsupported compression, CRC disagreement, and central-directory size disagreement.
+ZIP parsing accepts explicit directories only when the terminal slash, creator-specific directory attribute, zero stored payload, zero CRC, and zero sizes agree. It rejects absolute paths, drive-prefixed paths, parent traversal, duplicate entries, canonical aliases, special Unix entry types, file-directory ancestor conflicts, truncated data, unsupported compression, CRC disagreement, and central-directory size disagreement.
 
 ## Unsigned release warning
 

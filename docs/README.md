@@ -92,7 +92,7 @@ The source includes build and validation paths for:
 - one four-job release workflow and one GitHub Pages workflow
 - a fixed four-file post-run terminal transfer for release-bound website composition
 
-The complete release-packaging check set reports 84 passed and 0 failed. This verifies the packaging and workflow contracts in source. The final application, installer, and OCI products have not yet been built from the final integrated commit, and no release has been published.
+The complete release-packaging check set reports 85 passed and 0 failed. This verifies the packaging and workflow contracts in source. The final application, installer, and OCI products have not yet been built from the final integrated commit, and no release has been published.
 
 ## Product boundary
 
