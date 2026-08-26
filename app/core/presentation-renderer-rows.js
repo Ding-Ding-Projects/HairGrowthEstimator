@@ -35,18 +35,19 @@ function article(id, title, titleYue, body, bodyYue, titleEn5 = title, titleYue5
 }
 
 function currentRendererLine(line) {
-  if (line <= 72) return line;
-  if (line <= 284) return line + 3;
-  if (line <= 295) return line + 7;
-  if (line <= 303) return line + 11;
-  if (line <= 318) return line + 33;
-  if (line <= 341) return line + 72;
-  if (line <= 348) return line + 75;
-  if (line <= 362) return line + 84;
-  if (line <= 1232) return line + 85;
-  if (line <= 1239) return line + 89;
-  if (line <= 1263) return line + 95;
-  return line + 96;
+  const schedulerOffset = line <= 1007 ? 2 : line <= 1116 ? 12 : 13;
+  if (line <= 72) return line + schedulerOffset;
+  if (line <= 284) return line + 3 + schedulerOffset;
+  if (line <= 295) return line + 7 + schedulerOffset;
+  if (line <= 303) return line + 11 + schedulerOffset;
+  if (line <= 318) return line + 33 + schedulerOffset;
+  if (line <= 341) return line + 72 + schedulerOffset;
+  if (line <= 348) return line + 75 + schedulerOffset;
+  if (line <= 362) return line + 84 + schedulerOffset;
+  if (line <= 1232) return line + 85 + schedulerOffset;
+  if (line <= 1239) return line + 89 + schedulerOffset;
+  if (line <= 1263) return line + 95 + schedulerOffset;
+  return line + 96 + schedulerOffset;
 }
 
 const SOURCE_NEEDLE_OVERRIDES = Object.freeze({
@@ -63,15 +64,17 @@ const SOURCE_NEEDLE_OVERRIDES = Object.freeze({
 });
 
 const SOURCE_LINE_OVERRIDES = Object.freeze({
-  'regex.explain.named-capture': 1246,
-  'regex.explain.lookaround': 1247,
-  'regex.explain.lazy': 1248,
-  'regex.explain.class': 1249,
-  'regex.explain.backreference': 1250,
-  'regex.explain.risk': 1251,
-  'regex.explain.completed': 1252,
-  'regex.explain.capped': 1253,
-  'regex.explain.preview-capped': 1254
+  'notification.regex-bounds-title': 1251,
+  'notification.regex-bounds-body': 1251,
+  'regex.explain.named-capture': 1259,
+  'regex.explain.lookaround': 1260,
+  'regex.explain.lazy': 1261,
+  'regex.explain.class': 1262,
+  'regex.explain.backreference': 1263,
+  'regex.explain.risk': 1264,
+  'regex.explain.completed': 1265,
+  'regex.explain.capped': 1266,
+  'regex.explain.preview-capped': 1267
 });
 
 function exactRendererLine(id, line) {
@@ -280,7 +283,7 @@ const RENDERER_SOURCE_ROWS = [
   row('school.disable', 2225, 'visible-template', 'security', 'Disable {displayName}', '停用 {displayName}', ['displayName'], PRESERVE.PROVIDER, ['displayName']),
   row('school.available-status', 2228, 'status-template', 'informational', 'Shared record available. {displayName} is {enabledOrDisabled}. Last change: {lastChange}.', '共用紀錄可以使用。{displayName}目前{enabledOrDisabled}。上次變更：{lastChange}。', ['displayName', 'enabledOrDisabled', 'lastChange'], PRESERVE.PROVIDER, ['displayName', 'lastChange']),
   row('school.not-yet-changed', 2228, 'visible', 'informational', 'not yet changed', '尚未變更'),
-  row('school.unavailable-status', 2229, 'status-template', 'warning', 'The shared record is {status}. The control cannot honestly report a shared change.', '共用紀錄目前係 {status}。呢個控制無法如實報告共用變更。', ['status'], PRESERVE.PROVIDER, ['status']),
+  row('school.unavailable-status', 2229, 'status-template', 'warning', 'The shared record is {status}: {reason}. The last valid {displayName} state remains {enabledOrDisabled}; no new restricted preference restoration was authorized.', '共用紀錄目前係 {status}：{reason}。上一個有效嘅 {displayName} 狀態維持{enabledOrDisabled}；今次無授權重新套用受限制偏好。', ['status', 'reason', 'displayName', 'enabledOrDisabled'], PRESERVE.PROVIDER, ['status', 'reason', 'displayName']),
   row('update.provider-message', 2233, 'status-template', 'provider', '{message}', '{message}', ['message'], PRESERVE.PROVIDER, ['message']),
   row('startup.ready-title', 2259, 'notification-title', 'success', 'Ready', '準備好'),
   row('startup.ready-body', 2259, 'notification-body', 'success', 'Hair growth estimates and local haircut history are ready.', '頭髮生長估算同本機剪髮歷史都準備好喇。'),

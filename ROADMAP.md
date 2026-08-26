@@ -1,5 +1,16 @@
 # Roadmap
 
+## Core security repair
+
+- [x] Fail closed to the last verified shared School mode state.
+- [x] Protect the exact 52 privileged IPC channels through one trusted-main-frame policy.
+- [x] Refuse reserved evidence switches and physically aliased evidence roots.
+- [x] Validate and pin scheduled HTTPS and explicitly approved local sources.
+- [x] Bound aggregate regular-expression workers, queues, callers, and stale generations.
+- [ ] Complete the separately accepted presentation-corpus ambiguity repair.
+- [ ] Complete the separately accepted schedule, startup, and narrator repair batch.
+- [ ] Complete the separately accepted dynamic presentation-sink and vocabulary-boundary repair batch.
+
 ## Localized presentation wave
 
 - [x] Add bounded English, playful Hong Kong-style Cantonese, and bilingual rendering for every inventoried static and renderer-generated presentation source.

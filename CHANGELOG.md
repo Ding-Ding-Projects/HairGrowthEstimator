@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Security and reliability
+
+- Preserved the last verified School mode restriction when its shared record is unavailable or invalid.
+- Centralized authorization for all 52 privileged IPC channels while keeping only the fixed provenance read public.
+- Rejected malformed evidence switches and physically aliased evidence roots before application data is read.
+- Restricted scheduled network sources through bounded DNS validation, connection-time address pinning, exact local approvals, TLS hostname verification, and redirect refusal.
+- Bounded aggregate regular-expression work with a central queue, superseded-request coalescing, explicit overload results, and caller cleanup.
+
 ### Added
 
 - Added bounded English, playful Hong Kong-style Cantonese, and bilingual message rendering with independent funny levels for both languages.

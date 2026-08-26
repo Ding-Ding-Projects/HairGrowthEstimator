@@ -63,6 +63,10 @@ class RegexWorkerError extends RegexEvaluationError {
   }
 }
 
+class RegexOverloadError extends RegexEvaluationError {
+  constructor() { super('Regular expression evaluation is temporarily busy.', 'REGEX_OVERLOADED'); this.retryAfterMs = 250; }
+}
+
 function isPlainRecord(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -574,6 +578,33 @@ async function evaluateRegex(request, runtimeOptions = {}) {
   });
 }
 
+function createRegexScheduler({ maxActive = 2, maxQueued = 16, evaluate = evaluateRegex } = {}) {
+  let active = 0;
+  const queue = [];
+  const latest = new Map();
+  const fail = (error) => ({ ok: false, error: { code: error.code || 'REGEX_WORKER_CRASHED', message: error.message, ...(error.retryAfterMs ? { retryAfterMs: error.retryAfterMs } : {}) } });
+  const drain = () => {
+    while (active < maxActive && queue.length) {
+      const job = queue.shift();
+      if (job.cancelled || latest.get(job.key) !== job.generation) { job.resolve(fail(Object.assign(new Error('A newer request replaced this one.'), { code: 'REGEX_SUPERSEDED' }))); continue; }
+      active += 1;
+      Promise.resolve(evaluate(job.request)).then((result) => job.resolve({ ok: true, result }), (error) => job.resolve(fail(error))).finally(() => { active -= 1; drain(); });
+    }
+  };
+  return Object.freeze({
+    schedule({ ownerId, coalescingKey, generation, request }) {
+      if (typeof ownerId !== 'string' || typeof coalescingKey !== 'string' || !Number.isSafeInteger(generation) || generation < 0) return Promise.resolve(fail(new RegexPolicyError('The scheduling envelope is invalid.')));
+      const key = `${ownerId}\u0000${coalescingKey}`;
+      if (generation <= (latest.get(key) ?? -1)) return Promise.resolve(fail(Object.assign(new Error('A newer request already exists.'), { code: 'REGEX_SUPERSEDED' })));
+      latest.set(key, generation);
+      for (const job of queue) if (job.key === key) job.cancelled = true;
+      if (queue.length >= maxQueued) return Promise.resolve(fail(new RegexOverloadError()));
+      return new Promise((resolve) => { queue.push({ key, ownerId, generation, request, resolve, cancelled: false }); drain(); });
+    },
+    releaseOwner(ownerId) { for (const job of queue) if (job.ownerId === ownerId) job.cancelled = true; for (const key of latest.keys()) if (key.startsWith(`${ownerId}\u0000`)) latest.delete(key); drain(); }
+  });
+}
+
 function sleepInsideWorker(milliseconds) {
   if (!milliseconds) return;
   const signal = new Int32Array(new SharedArrayBuffer(4));
@@ -616,5 +647,7 @@ module.exports = {
   RegexPolicyError,
   RegexSyntaxError,
   RegexWorkerError,
+  RegexOverloadError,
+  createRegexScheduler,
   evaluateRegex
 };

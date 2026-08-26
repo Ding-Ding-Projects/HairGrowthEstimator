@@ -137,7 +137,13 @@ contextBridge.exposeInMainWorld('hairGrowth', Object.freeze({
     request: (request) => ipcRenderer.invoke('ollama:request', request)
   }),
   regex: Object.freeze({
-    evaluate: (request) => ipcRenderer.invoke('regex:evaluate', request)
+    evaluate: async (envelope) => {
+      const outcome = await ipcRenderer.invoke('regex:evaluate', envelope);
+      if (outcome.ok === true) return outcome.result;
+      const error = new Error(outcome?.error?.message || 'Regular expression evaluation failed.');
+      error.code = outcome.error.code || 'REGEX_WORKER_CRASHED';
+      throw error;
+    }
   }),
   updates: Object.freeze({
     state: () => ipcRenderer.invoke('update:state'),

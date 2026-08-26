@@ -5,6 +5,9 @@ const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const dns = require('node:dns/promises');
+const http = require('node:http');
+const https = require('node:https');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
@@ -20,16 +23,18 @@ const { validateProvenance } = require('./core/provenance');
 const { StateStore, drainStateAndHistory } = require('./core/state-store');
 const { LocalVault } = require('./core/vault');
 const { LocalHistory } = require('./core/history');
-const { evaluateRegex: evaluateRegexInWorker } = require('./core/regex-worker');
+const { createRegexScheduler } = require('./core/regex-worker');
 const EvidencePaths = require('./core/evidence-paths');
 const { hashSecret, verifySecret } = require('./core/credentials');
 const SchoolMode = require('./core/school-mode');
 const ScheduledSettings = require('./core/scheduled-settings');
+const IpcAuthorization = require('./core/ipc-authorization');
+const NetworkPolicy = require('./core/network-policy');
+const NetworkApprovals = require('./core/network-approvals');
 const { DIM_SUM_RECORD } = require('./core/delight-attention');
 const {
   CANONICAL_UPDATE_FEED_URL,
   UpdateRestartAuthorization,
-  assertTrustedMainFrame,
   createObservedDownloadedUpdate
 } = require('./core/update-security');
 const { LIMITS: VOCABULARY_LIMITS, VocabularyStore, serializeVocabularyCache } = require('./core/vocabulary');
@@ -74,8 +79,11 @@ let stateStore = null;
 const updateAuthorization = new UpdateRestartAuthorization();
 let activeUpdateCheck = null;
 let lastSchoolRecord = '';
+let lastValidSchoolEffectiveState = null;
 let schoolPoll = null;
 let schoolUnlockFailures = { failures: 0, retryAt: 0 };
+let scheduledNetworkApprovals = null;
+const regexScheduler = createRegexScheduler();
 let shutdownStarted = false;
 let shutdownReady = false;
 
@@ -136,27 +144,57 @@ async function writeSharedSchoolCredential(kind, credential) {
   return record;
 }
 
-function publicSchoolRecord(record, credential, status = 'available') {
+function publicSchoolRecord(effectiveState, credential) {
+  const record = effectiveState.record || defaultSchoolRecord();
   return {
     ...record,
+    enabled: effectiveState.effectiveEnabled,
     credentialConfigured: Boolean(credential && record.unlock?.credentialRef === 'vault:shared-school-primary'),
     credentialKind: credential?.kind || null,
-    status
+    status: effectiveState.status,
+    availability: effectiveState.availability,
+    degraded: effectiveState.degraded,
+    degradedReason: effectiveState.reason,
+    verifiedDisable: effectiveState.verifiedDisable
   };
 }
 
-async function readSchoolRecord() {
-  try {
-    const raw = await fs.readFile(sharedSchoolPath(), 'utf8');
-    const value = SchoolMode.normalizeSchoolRecord(JSON.parse(raw));
-    const credential = await readSharedSchoolCredential();
-    return publicSchoolRecord(value, credential);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      try { return publicSchoolRecord(defaultSchoolRecord(), await readSharedSchoolCredential()); } catch { return { ...defaultSchoolRecord(), status: 'unavailable' }; }
-    }
-    return { ...defaultSchoolRecord(), status: 'invalid', credentialConfigured: false, credentialKind: null };
+function reconcileSchoolCandidate(candidate, credential, { availability = 'available', verifiedDisable = false } = {}) {
+  if (lastValidSchoolEffectiveState === null) {
+    lastValidSchoolEffectiveState = availability === 'available'
+      ? SchoolMode.createSchoolEffectiveState(candidate)
+      : SchoolMode.createSchoolEffectiveState();
+  } else {
+    lastValidSchoolEffectiveState = SchoolMode.reconcileSchoolRecordRead({
+      candidate,
+      previous: lastValidSchoolEffectiveState,
+      availability,
+      verifiedDisable
+    });
   }
+  return publicSchoolRecord(lastValidSchoolEffectiveState, credential);
+}
+
+async function readSchoolRecord({ verifiedDisable = false } = {}) {
+  let raw;
+  let candidate = null;
+  let availability = 'available';
+  let credential = null;
+  try {
+    raw = await fs.readFile(sharedSchoolPath(), 'utf8');
+  } catch (error) {
+    availability = 'unavailable';
+  }
+  if (availability === 'available') {
+    try { candidate = SchoolMode.normalizeSchoolRecord(JSON.parse(raw)); } catch { availability = 'invalid'; }
+  }
+  try { credential = await readSharedSchoolCredential(); } catch { availability = 'unavailable'; }
+  const degraded = availability !== 'available';
+  return reconcileSchoolCandidate(candidate, credential, { availability: degraded ? availability : 'available', verifiedDisable });
+}
+
+function acceptSchoolRecord(record, credential, { verifiedDisable = false } = {}) {
+  return reconcileSchoolCandidate(record, credential, { availability: 'available', verifiedDisable });
 }
 
 async function publishSchoolRecord(next) {
@@ -181,17 +219,8 @@ async function configureSchoolMode(input) {
   const credential = String(input?.credential || '');
   const requestedKind = ['pin', 'password'].includes(input?.credentialKind) ? input.credentialKind : 'password';
   const requestedDisplayName = SchoolMode.normalizeSchoolDisplayName(input?.displayName);
-  const currentPublic = await readSchoolRecord();
-  const current = currentPublic.status === 'available'
-    ? SchoolMode.normalizeSchoolRecord({
-        schemaVersion: currentPublic.schemaVersion,
-        revision: currentPublic.revision,
-        enabled: currentPublic.enabled,
-        displayName: currentPublic.displayName,
-        unlock: currentPublic.unlock,
-        updatedAt: currentPublic.updatedAt
-      })
-    : defaultSchoolRecord();
+  await readSchoolRecord();
+  const current = lastValidSchoolEffectiveState.record || defaultSchoolRecord();
   const existing = await readSharedSchoolCredential();
   let activeCredential = existing;
   const credentialRef = 'vault:shared-school-primary';
@@ -213,7 +242,7 @@ async function configureSchoolMode(input) {
     updatedAt: nextSchoolTimestamp(current)
   }, evidence));
   schoolUnlockFailures = { failures: 0, retryAt: 0 };
-  return publishSchoolRecord(publicSchoolRecord(next, activeCredential));
+  return publishSchoolRecord(acceptSchoolRecord(next, activeCredential));
 }
 
 async function disableSchoolMode(input) {
@@ -230,20 +259,14 @@ async function disableSchoolMode(input) {
     return { ...(await readSchoolRecord()), unlocked: false, retryAfterMs: retryAt ? 30000 : 0, remainingBeforeDelay: retryAt ? 0 : 5 - failures };
   }
   schoolUnlockFailures = { failures: 0, retryAt: 0 };
-  const currentPublic = await readSchoolRecord();
-  const current = SchoolMode.normalizeSchoolRecord({
-    schemaVersion: currentPublic.schemaVersion,
-    revision: currentPublic.revision,
-    enabled: currentPublic.enabled,
-    displayName: currentPublic.displayName,
-    unlock: currentPublic.unlock,
-    updatedAt: currentPublic.updatedAt
-  });
+  await readSchoolRecord();
+  const current = lastValidSchoolEffectiveState.record;
+  if (!current) throw new Error('No valid shared mode record is available to disable. The restricted state remains active.');
   const next = await persistSchoolRecord(SchoolMode.transitionSchoolMode(current, {
     enabled: false,
     updatedAt: nextSchoolTimestamp(current)
   }, { verifiedCredentialRef: current.unlock.credentialRef }));
-  return publishSchoolRecord({ ...publicSchoolRecord(next, existing), unlocked: true });
+  return publishSchoolRecord({ ...acceptSchoolRecord(next, existing, { verifiedDisable: true }), unlocked: true });
 }
 
 async function pollSchoolRecord() {
@@ -383,6 +406,239 @@ function normalizeScheduleRuleInput(input) {
   return ScheduledSettings.normalizeScheduleRule(input?.rule || input);
 }
 
+function scheduledNetworkSource(rule) {
+  if (rule.source.type === 'api') return { type: 'api', url: rule.source.url };
+  if (rule.source.type === 'home-assistant') {
+    return {
+      type: 'home-assistant',
+      baseUrl: rule.source.baseUrl,
+      entityId: rule.source.entityId,
+      credentialRef: rule.source.credentialRef
+    };
+  }
+  throw new TypeError('Only external schedule sources use the network policy.');
+}
+
+async function resolveScheduledAddresses(requestUrl) {
+  const url = new URL(requestUrl);
+  const host = NetworkPolicy.classifyHost(url.hostname);
+  if (host.kind === 'numeric-alias') throw new TypeError('Noncanonical numeric hostname aliases are not accepted.');
+  if (host.kind === 'ip') return [{ address: host.hostname, family: host.family }];
+  const records = await dns.lookup(host.hostname, { all: true, verbatim: true });
+  return records.map(({ address, family }) => ({ address, family }));
+}
+
+async function readScheduledNetworkApproval(canonicalSourceScope, origin, addresses) {
+  if (!scheduledNetworkApprovals) return null;
+  return scheduledNetworkApprovals.get({ canonicalSourceScope, origin, addresses });
+}
+
+async function resolveAndAuthorizeNetworkPlan(rule) {
+  const source = scheduledNetworkSource(rule);
+  const requestUrl = rule.source.type === 'api'
+    ? rule.source.url
+    : new URL(`api/states/${rule.source.entityId}`, rule.source.baseUrl).href;
+  const resolvedAddresses = await resolveScheduledAddresses(requestUrl);
+  const canonicalSourceScope = NetworkPolicy.canonicalScheduledSourceScope(source);
+  const origin = new URL(requestUrl).origin;
+  const host = NetworkPolicy.classifyHost(new URL(requestUrl).hostname);
+  const classifiedAddresses = resolvedAddresses.map(({ address }) => NetworkPolicy.classifyIpAddress(address));
+  let approvedScope = null;
+
+  if (
+    host.category === 'loopback' &&
+    classifiedAddresses.length > 0 &&
+    classifiedAddresses.every(({ category }) => category === 'loopback')
+  ) {
+    approvedScope = NetworkPolicy.createApprovedNetworkScope({
+      kind: 'loopback',
+      canonicalSourceScope,
+      origin,
+      addresses: classifiedAddresses.map(({ address }) => address)
+    });
+  } else if (
+    rule.source.type === 'home-assistant' &&
+    classifiedAddresses.length > 0 &&
+    classifiedAddresses.every(({ category }) => category === 'private')
+  ) {
+    const stored = await readScheduledNetworkApproval(
+      canonicalSourceScope,
+      origin,
+      classifiedAddresses.map(({ address }) => address)
+    );
+    if (!stored) {
+      const error = new Error('This private LAN source needs an explicit endpoint approval before it can connect.');
+      error.code = 'ERR_NETWORK_APPROVAL_REQUIRED';
+      throw error;
+    }
+    approvedScope = NetworkPolicy.createApprovedNetworkScope({
+      kind: 'private-lan',
+      canonicalSourceScope: stored.canonicalSourceScope,
+      origin: stored.origin,
+      addresses: stored.addresses
+    });
+  }
+
+  return NetworkPolicy.createScheduledSourceNetworkPlan({
+    source,
+    resolvedAddresses,
+    ...(approvedScope ? { approvedScope } : {})
+  });
+}
+
+async function approveHomeAssistantPrivateLanSource(rule) {
+  const source = scheduledNetworkSource(rule);
+  const requestUrl = new URL(`api/states/${rule.source.entityId}`, rule.source.baseUrl).href;
+  const resolvedAddresses = await resolveScheduledAddresses(requestUrl);
+  const classifiedAddresses = resolvedAddresses.map(({ address }) => NetworkPolicy.classifyIpAddress(address));
+  const isPrivateLan = classifiedAddresses.length > 0
+    && classifiedAddresses.every(({ category }) => category === 'private');
+  if (!isPrivateLan) {
+    await resolveAndAuthorizeNetworkPlan(rule);
+    return { approved: false, scope: 'public-or-loopback' };
+  }
+
+  const canonicalSourceScope = NetworkPolicy.canonicalScheduledSourceScope(source);
+  const origin = new URL(requestUrl).origin;
+  const addresses = classifiedAddresses.map(({ address }) => address);
+  const decision = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Approve private LAN destination',
+    message: 'Approve this exact private LAN destination for scheduled Home Assistant requests?',
+    detail: `Origin: ${origin}\nResolved addresses: ${addresses.join(', ')}\nA changed address set requires another approval.`,
+    buttons: ['Approve endpoint', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true
+  });
+  if (decision.response !== 0) {
+    const error = new Error('Private LAN endpoint approval was cancelled. No access token was stored.');
+    error.code = 'ERR_NETWORK_APPROVAL_CANCELLED';
+    throw error;
+  }
+  const approvalDocument = await scheduledNetworkApprovals.read();
+  const prior = approvalDocument.approvals.find((record) => record.canonicalSourceScope === canonicalSourceScope);
+  if (prior && (prior.origin !== origin || prior.addresses.length !== addresses.length || prior.addresses.some((address) => !addresses.includes(address)))) {
+    await scheduledNetworkApprovals.remove({
+      canonicalSourceScope: prior.canonicalSourceScope,
+      origin: prior.origin,
+      addresses: prior.addresses
+    });
+  }
+  await scheduledNetworkApprovals.set({ canonicalSourceScope, origin, addresses });
+  await resolveAndAuthorizeNetworkPlan(rule);
+  return { approved: true, scope: 'private-lan' };
+}
+
+function requestJsonThroughPinnedPlan(plan, descriptor, headers) {
+  return new Promise((resolve, reject) => {
+    const transport = plan.protocol === 'https:' ? https : http;
+    const approvedAddresses = new Set(plan.addresses.map(({ address }) => address));
+    let settled = false;
+    const finish = (handler, value) => {
+      if (settled) return;
+      settled = true;
+      handler(value);
+    };
+    const request = transport.request(new URL(plan.url), {
+      method: descriptor.method,
+      headers,
+      agent: false,
+      lookup: NetworkPolicy.createPinnedLookup(plan),
+      ...(plan.tls ? {
+        rejectUnauthorized: true,
+        servername: plan.tls.servername || undefined
+      } : {})
+    }, (response) => {
+      const statusCode = Number(response.statusCode) || 0;
+      if (statusCode >= 300 && statusCode < 400) {
+        response.resume();
+        finish(reject, new Error('Scheduled source redirects are not accepted.'));
+        return;
+      }
+      const contentLength = Number(response.headers['content-length']);
+      if (Number.isFinite(contentLength) && contentLength > descriptor.maxResponseBytes) {
+        response.destroy();
+        finish(reject, new RangeError(`Response exceeds the ${descriptor.maxResponseBytes}-byte limit.`));
+        return;
+      }
+      const chunks = [];
+      let size = 0;
+      response.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > descriptor.maxResponseBytes) {
+          response.destroy();
+          finish(reject, new RangeError(`Response exceeds the ${descriptor.maxResponseBytes}-byte limit.`));
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.once('error', (error) => finish(reject, error));
+      response.once('end', () => {
+        if (settled) return;
+        const text = Buffer.concat(chunks).toString('utf8');
+        let body = null;
+        if (text) {
+          try { body = JSON.parse(text); } catch {
+            finish(reject, new Error('The scheduled source returned invalid JSON.'));
+            return;
+          }
+        }
+        finish(resolve, { statusCode, body });
+      });
+    });
+    request.once('socket', (socket) => {
+      const verifyConnectedAddress = () => {
+        try {
+          const connected = NetworkPolicy.classifyIpAddress(socket.remoteAddress);
+          if (!approvedAddresses.has(connected.address)) {
+            const error = new Error('The connected address did not match the authorized DNS result.');
+            error.code = 'ERR_NETWORK_CONNECTED_ADDRESS';
+            request.destroy(error);
+          }
+        } catch (error) {
+          request.destroy(error);
+        }
+      };
+      if (socket.connecting) socket.once(plan.tls ? 'secureConnect' : 'connect', verifyConnectedAddress);
+      else verifyConnectedAddress();
+    });
+    request.setTimeout(descriptor.timeoutMs, () => {
+      const error = new Error('The scheduled source request timed out.');
+      error.code = 'ERR_NETWORK_TIMEOUT';
+      request.destroy(error);
+    });
+    request.once('error', (error) => finish(reject, error));
+    request.end();
+  });
+}
+
+async function secureScheduledRequest(rule, descriptor) {
+  const plan = await resolveAndAuthorizeNetworkPlan(rule);
+  if (plan.url !== descriptor.url || plan.redirectPolicy.maxRedirects !== 0) {
+    throw new Error('The authorized request plan does not match the scheduled source.');
+  }
+  const headers = { ...descriptor.headers };
+  if (rule.source.type === 'home-assistant') {
+    const expectedScope = ScheduledSettings.canonicalSourceScope(rule);
+    const binding = plan.credentialBinding;
+    const descriptorUrl = new URL(descriptor.url);
+    if (
+      !binding ||
+      binding.credentialRef !== descriptor.credentialRef ||
+      binding.canonicalSourceScope !== expectedScope ||
+      binding.requestOrigin !== descriptorUrl.origin ||
+      binding.requestUrl !== descriptorUrl.href
+    ) {
+      throw new Error('The Home Assistant credential scope changed before the request was authorized.');
+    }
+    const accessToken = await localVault.externalSettingToken(expectedScope);
+    if (!accessToken) throw new Error('The Home Assistant access token is not stored for this exact rule source.');
+    headers.authorization = `Bearer ${accessToken}`;
+  }
+  return requestJsonThroughPinnedPlan(plan, descriptor, headers);
+}
+
 async function resolveScheduledSource(input) {
   const rule = normalizeScheduleRuleInput(input);
   const generation = Number(input?.generation);
@@ -391,28 +647,20 @@ async function resolveScheduledSource(input) {
     return ScheduledSettings.validateSourceResult(rule, null, { generation, receivedAt });
   }
   const descriptor = ScheduledSettings.createExternalRequestDescriptor(rule);
-  const headers = { ...descriptor.headers };
-  if (rule.source.type === 'home-assistant') {
-    const scope = ScheduledSettings.canonicalSourceScope(rule);
-    const accessToken = await localVault.externalSettingToken(scope);
-    if (!accessToken) throw new Error('The Home Assistant access token is not stored for this exact rule source.');
-    headers.authorization = `Bearer ${accessToken}`;
-  }
-  const { response, body } = await boundedFetch(descriptor.url, {
-    method: descriptor.method,
-    headers,
-    credentials: 'omit',
-    timeoutMs: descriptor.timeoutMs,
-    maxResponseBytes: descriptor.maxResponseBytes
-  });
-  if (!response.ok) throw new Error(`The scheduled-settings source returned HTTP ${response.status}.`);
+  const { statusCode, body } = await secureScheduledRequest(rule, descriptor);
+  if (statusCode < 200 || statusCode >= 300) throw new Error(`The scheduled-settings source returned HTTP ${statusCode}.`);
   return ScheduledSettings.validateSourceResult(rule, body, { generation, receivedAt });
 }
 
 async function setHomeAssistantScheduleToken(input) {
   const rule = normalizeScheduleRuleInput(input);
   if (rule.source.type !== 'home-assistant') throw new TypeError('A Home Assistant rule is required to store this access token.');
-  return localVault.setExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule), input?.token);
+  const token = String(input?.token || '');
+  const networkApproval = token
+    ? await approveHomeAssistantPrivateLanSource(rule)
+    : { approved: false, scope: 'cleared' };
+  const result = await localVault.setExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule), token);
+  return { ...result, networkApproval };
 }
 
 async function hasHomeAssistantScheduleToken(input) {
@@ -682,15 +930,20 @@ function publishUpdateState(patch) {
 }
 
 function assertTrustedIpcSender(event) {
-  if (!mainWindow || event?.sender !== mainWindow.webContents) {
-    const error = new Error('The request did not originate from the application window.');
-    error.code = 'ERR_UNTRUSTED_IPC_SENDER';
-    throw error;
-  }
-  return assertTrustedMainFrame({
-    senderFrame: event.senderFrame,
-    mainFrame: mainWindow.webContents.mainFrame,
+  return IpcAuthorization.assertTrustedMainIpc({
+    event,
+    mainWebContents: mainWindow?.webContents,
     applicationUrl: rendererApplicationUrl
+  });
+}
+
+function registerIpcHandler(channel, handler) {
+  const policy = IpcAuthorization.getIpcChannelPolicy(channel);
+  ipcMain.handle(channel, (event, ...args) => {
+    if (policy === IpcAuthorization.IPC_CHANNEL_POLICY.TRUSTED_MAIN_FRAME) {
+      assertTrustedIpcSender(event);
+    }
+    return handler(event, ...args);
   });
 }
 
@@ -815,70 +1068,71 @@ function createWindow() {
     if (url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    regexScheduler.releaseOwner(`web-contents:${mainWindow.webContents.id}`);
+    mainWindow = null;
+  });
 }
 
 function registerIpc() {
-  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-  ipcMain.handle('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
-  ipcMain.handle('window:close', () => mainWindow?.close());
-  ipcMain.handle('window:setTitle', (_event, value) => { mainWindow?.setTitle(String(value || 'Hair Growth Estimator').slice(0, 80)); });
-  ipcMain.handle('provenance:read', readProvenance);
-  ipcMain.handle('state:read', readState);
-  ipcMain.handle('state:write', (_event, { state, event }) => writeState(state, event));
-  ipcMain.handle('school:read', (event) => { assertTrustedIpcSender(event); return readSchoolRecord(); });
-  ipcMain.handle('school:configure', (event, value) => { assertTrustedIpcSender(event); return configureSchoolMode(value); });
-  ipcMain.handle('school:disable', (event, value) => { assertTrustedIpcSender(event); return disableSchoolMode(value); });
-  ipcMain.handle('accessibility:status', (event) => { assertTrustedIpcSender(event); return Boolean(app.accessibilitySupportEnabled); });
-  ipcMain.handle('delight:photo', (event) => { assertTrustedIpcSender(event); return dimSumPhotoDataUrl(); });
-  ipcMain.handle('schedule:resolve', (event, value) => { assertTrustedIpcSender(event); return resolveScheduledSource(value); });
-  ipcMain.handle('schedule:setHomeAssistantToken', (event, value) => { assertTrustedIpcSender(event); return setHomeAssistantScheduleToken(value); });
-  ipcMain.handle('schedule:hasHomeAssistantToken', (event, value) => { assertTrustedIpcSender(event); return hasHomeAssistantScheduleToken(value); });
-  ipcMain.handle('secret:setApiKey', (event, { sync, value }) => {
-    assertTrustedIpcSender(event);
+  registerIpcHandler('window:minimize', () => mainWindow?.minimize());
+  registerIpcHandler('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
+  registerIpcHandler('window:close', () => mainWindow?.close());
+  registerIpcHandler('window:setTitle', (_event, value) => { mainWindow?.setTitle(String(value || 'Hair Growth Estimator').slice(0, 80)); });
+  registerIpcHandler('provenance:read', readProvenance);
+  registerIpcHandler('state:read', readState);
+  registerIpcHandler('state:write', (_event, { state, event }) => writeState(state, event));
+  registerIpcHandler('school:read', (_event) => readSchoolRecord());
+  registerIpcHandler('school:configure', (_event, value) => configureSchoolMode(value));
+  registerIpcHandler('school:disable', (_event, value) => disableSchoolMode(value));
+  registerIpcHandler('accessibility:status', () => Boolean(app.accessibilitySupportEnabled));
+  registerIpcHandler('delight:photo', () => dimSumPhotoDataUrl());
+  registerIpcHandler('schedule:resolve', (_event, value) => resolveScheduledSource(value));
+  registerIpcHandler('schedule:setHomeAssistantToken', (_event, value) => setHomeAssistantScheduleToken(value));
+  registerIpcHandler('schedule:hasHomeAssistantToken', (_event, value) => hasHomeAssistantScheduleToken(value));
+  registerIpcHandler('secret:setApiKey', (_event, { sync, value }) => {
     const policy = resolveServiceSecurityContext(sync, sshState);
     return localVault.setApiKeyForScope(policy.credentialScope, value);
   });
-  ipcMain.handle('secret:hasApiKey', (event, sync) => {
-    assertTrustedIpcSender(event);
+  registerIpcHandler('secret:hasApiKey', (_event, sync) => {
     const policy = resolveServiceSecurityContext(sync, sshState);
     return localVault.hasApiKeyForScope(policy.credentialScope);
   });
-  ipcMain.handle('lock:set', (_event, value) => localVault.setLock(value));
-  ipcMain.handle('lock:list', () => localVault.listLocks());
-  ipcMain.handle('lock:verify', (_event, value) => localVault.verifyLock(value));
-  ipcMain.handle('lock:remove', (_event, value) => localVault.removeLock(value));
-  ipcMain.handle('auth:createSecret', () => localVault.createTotpSecret());
-  ipcMain.handle('auth:add', (_event, value) => localVault.addAuthenticator(value));
-  ipcMain.handle('auth:list', () => localVault.listAuthenticators());
-  ipcMain.handle('auth:remove', (_event, id) => localVault.removeAuthenticator(id));
-  ipcMain.handle('file:chooseKey', async () => {
+  registerIpcHandler('lock:set', (_event, value) => localVault.setLock(value));
+  registerIpcHandler('lock:list', () => localVault.listLocks());
+  registerIpcHandler('lock:verify', (_event, value) => localVault.verifyLock(value));
+  registerIpcHandler('lock:remove', (_event, value) => localVault.removeLock(value));
+  registerIpcHandler('auth:createSecret', () => localVault.createTotpSecret());
+  registerIpcHandler('auth:add', (_event, value) => localVault.addAuthenticator(value));
+  registerIpcHandler('auth:list', () => localVault.listAuthenticators());
+  registerIpcHandler('auth:remove', (_event, id) => localVault.removeAuthenticator(id));
+  registerIpcHandler('file:chooseKey', async () => {
     const filePath = await chooseFile({ title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
     return filePath || '';
   });
-  ipcMain.handle('vocabulary:read', readVocabularyCache);
-  ipcMain.handle('vocabulary:replace', replaceVocabularyCache);
-  ipcMain.handle('vocabulary:clear', clearVocabularyCache);
-  ipcMain.handle('file:chooseLogo', chooseLogoFile);
-  ipcMain.handle('file:chooseConverterSource', chooseConverterSource);
-  ipcMain.handle('file:convert', (_event, value) => convertFile(value));
-  ipcMain.handle('file:export', (_event, value) => exportContent(value));
-  ipcMain.handle('file:showAppData', async () => { await shell.openPath(app.getPath('userData')); return app.getPath('userData'); });
-  ipcMain.handle('external:openVsCode', (_event, target) => openInVsCode(target));
-  ipcMain.handle('external:openUrl', async (_event, raw) => {
+  registerIpcHandler('vocabulary:read', readVocabularyCache);
+  registerIpcHandler('vocabulary:replace', replaceVocabularyCache);
+  registerIpcHandler('vocabulary:clear', clearVocabularyCache);
+  registerIpcHandler('file:chooseLogo', chooseLogoFile);
+  registerIpcHandler('file:chooseConverterSource', chooseConverterSource);
+  registerIpcHandler('file:convert', (_event, value) => convertFile(value));
+  registerIpcHandler('file:export', (_event, value) => exportContent(value));
+  registerIpcHandler('file:showAppData', async () => { await shell.openPath(app.getPath('userData')); return app.getPath('userData'); });
+  registerIpcHandler('external:openVsCode', (_event, target) => openInVsCode(target));
+  registerIpcHandler('external:openUrl', async (_event, raw) => {
     const url = new URL(raw);
     if (url.protocol !== 'https:') throw new TypeError('Only HTTPS links can be opened.');
     await shell.openExternal(url.href);
     return true;
   });
-  ipcMain.handle('history:setCredential', (_event, credential) => localVault.setHistoryPassword(credential));
-  ipcMain.handle('history:list', (_event, options) => localHistory.list(options));
-  ipcMain.handle('history:read', (_event, commit, credential) => localHistory.read(commit, { credential }));
-  ipcMain.handle('history:diff', async (_event, fromCommit, toCommit, credential) => {
+  registerIpcHandler('history:setCredential', (_event, credential) => localVault.setHistoryPassword(credential));
+  registerIpcHandler('history:list', (_event, options) => localHistory.list(options));
+  registerIpcHandler('history:read', (_event, commit, credential) => localHistory.read(commit, { credential }));
+  registerIpcHandler('history:diff', async (_event, fromCommit, toCommit, credential) => {
     const result = await localHistory.diff(fromCommit, toCommit, { credential });
     return `${JSON.stringify(result, null, 2)}\n`;
   });
-  ipcMain.handle('history:restore', async (_event, commit, credential) => {
+  registerIpcHandler('history:restore', async (_event, commit, credential) => {
     const historySnapshot = await localHistory.read(commit, { credential });
     const current = await stateStore.read();
     const restored = historySnapshot.state && typeof historySnapshot.state === 'object' ? structuredClone(historySnapshot.state) : {};
@@ -898,37 +1152,30 @@ function registerIpc() {
       state: result.state
     };
   });
-  ipcMain.handle('history:label', (_event, commit, label, credential) => localHistory.label(commit, label, { credential }));
-  ipcMain.handle('history:prune', (_event, maxEntries, credential) => localHistory.prune({ maxEntries, credential }));
-  ipcMain.handle('history:export', async (_event, options) => `${JSON.stringify(await localHistory.exportRedacted(options), null, 2)}\n`);
-  ipcMain.handle('server:request', (event, request) => {
-    assertTrustedIpcSender(event);
-    return apiRequest(request);
-  });
-  ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
-  ipcMain.handle('ssh:stop', stopSshTunnel);
-  ipcMain.handle('ssh:state', () => sshState);
-  ipcMain.handle('ollama:request', (_event, request) => ollamaRequest(request));
-  ipcMain.handle('regex:evaluate', (event, request) => {
-    assertTrustedIpcSender(event);
-    return evaluateRegexInWorker(request);
-  });
-  ipcMain.handle('update:state', (event) => {
-    assertTrustedIpcSender(event);
-    return { ...updateState, currentVersion: app.getVersion() };
-  });
-  ipcMain.handle('update:check', (event) => {
-    assertTrustedIpcSender(event);
-    return checkForUpdates();
-  });
-  ipcMain.handle('update:restart', (event) => {
-    assertTrustedIpcSender(event);
-    return restartVerifiedUpdate();
-  });
+  registerIpcHandler('history:label', (_event, commit, label, credential) => localHistory.label(commit, label, { credential }));
+  registerIpcHandler('history:prune', (_event, maxEntries, credential) => localHistory.prune({ maxEntries, credential }));
+  registerIpcHandler('history:export', async (_event, options) => `${JSON.stringify(await localHistory.exportRedacted(options), null, 2)}\n`);
+  registerIpcHandler('server:request', (_event, request) => apiRequest(request));
+  registerIpcHandler('ssh:start', (_event, config) => startSshTunnel(config));
+  registerIpcHandler('ssh:stop', stopSshTunnel);
+  registerIpcHandler('ssh:state', () => sshState);
+  registerIpcHandler('ollama:request', (_event, request) => ollamaRequest(request));
+  registerIpcHandler('regex:evaluate', (event, envelope) => regexScheduler.schedule({
+    ownerId: `web-contents:${event.sender.id}`,
+    coalescingKey: envelope.coalescingKey,
+    generation: envelope.generation,
+    request: envelope.request
+  }));
+  registerIpcHandler('update:state', () => ({ ...updateState, currentVersion: app.getVersion() }));
+  registerIpcHandler('update:check', () => checkForUpdates());
+  registerIpcHandler('update:restart', () => restartVerifiedUpdate());
 }
 
 app.whenReady().then(async () => {
   localVault = new LocalVault({ filePath: userDataPath('credentials.bin'), safeStorage });
+  scheduledNetworkApprovals = NetworkApprovals.createNetworkApprovalStore({
+    filePath: userDataPath('scheduled-network-approvals.json')
+  });
   localHistory = new LocalHistory(userDataPath('history'), {
     authenticate: ({ credential }) => localVault.verifyHistoryPassword(credential)
   });

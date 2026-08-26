@@ -9,6 +9,14 @@ const SCHOOL_CREDENTIAL_REF_MAX_CODE_POINTS = 160;
 const SCHOOL_PREFERENCE_SNAPSHOT_MAX_BYTES = 4096;
 
 const SCHOOL_UNLOCK_POLICIES = Object.freeze(['pin', 'password', 'passkey']);
+const SCHOOL_READ_AVAILABILITIES = Object.freeze(['available', 'invalid', 'unavailable']);
+const SCHOOL_DEGRADED_REASONS = Object.freeze([
+  'record-invalid',
+  'record-unavailable',
+  'disable-verification-required',
+  'record-stale',
+  'revision-conflict'
+]);
 const SCHOOL_RECORD_FIELDS = Object.freeze([
   'schemaVersion',
   'revision',
@@ -20,6 +28,23 @@ const SCHOOL_RECORD_FIELDS = Object.freeze([
 const SCHOOL_UNLOCK_FIELDS = Object.freeze(['policy', 'credentialRef']);
 const SCHOOL_TRANSITION_FIELDS = Object.freeze(['enabled', 'displayName', 'unlock', 'updatedAt']);
 const SCHOOL_AUTHORIZATION_FIELDS = Object.freeze(['verifiedCredentialRef', 'enrolledCredentialRef']);
+const SCHOOL_RECONCILIATION_FIELDS = Object.freeze([
+  'candidate',
+  'previous',
+  'availability',
+  'verifiedDisable'
+]);
+const SCHOOL_EFFECTIVE_STATE_FIELDS = Object.freeze([
+  'record',
+  'effectiveEnabled',
+  'status',
+  'availability',
+  'degraded',
+  'reason',
+  'publishable',
+  'verifiedDisable',
+  'retainedLastValid'
+]);
 const SCHOOL_PREFERENCE_FIELDS = Object.freeze([
   'language',
   'funnyEnglish',
@@ -434,6 +459,178 @@ function restoreSchoolPreferences(settings, snapshot) {
   return restored;
 }
 
+function normalizeSchoolReadAvailability(value) {
+  if (!SCHOOL_READ_AVAILABILITIES.includes(value)) {
+    fail(
+      'SCHOOL_READ_AVAILABILITY',
+      `School record availability must be one of: ${SCHOOL_READ_AVAILABILITIES.join(', ')}.`
+    );
+  }
+  return value;
+}
+
+function buildSchoolEffectiveState({
+  record = null,
+  availability,
+  reason = null,
+  publishable,
+  verifiedDisable = false,
+  retainedLastValid = false
+}) {
+  const normalizedRecord = record === null ? null : normalizeSchoolRecord(record);
+  const normalizedAvailability = normalizeSchoolReadAvailability(availability);
+  if (reason !== null && !SCHOOL_DEGRADED_REASONS.includes(reason)) {
+    fail('SCHOOL_DEGRADED_REASON', 'School degraded state uses an unsupported reason.');
+  }
+  for (const [label, value] of [
+    ['publishable', publishable],
+    ['verifiedDisable', verifiedDisable],
+    ['retainedLastValid', retainedLastValid]
+  ]) {
+    if (typeof value !== 'boolean') fail('SCHOOL_EFFECTIVE_BOOLEAN', `${label} must be a boolean.`);
+  }
+  if (verifiedDisable && (normalizedRecord === null || normalizedRecord.enabled)) {
+    fail(
+      'SCHOOL_VERIFIED_DISABLE_STATE',
+      'Verified disable evidence can accompany only an accepted disabled School record.'
+    );
+  }
+  const degraded = reason !== null;
+  return deepFreeze({
+    record: normalizedRecord,
+    effectiveEnabled: normalizedRecord ? normalizedRecord.enabled : true,
+    status: degraded ? 'degraded' : 'available',
+    availability: normalizedAvailability,
+    degraded,
+    reason,
+    publishable,
+    verifiedDisable,
+    retainedLastValid
+  });
+}
+
+function createSchoolEffectiveState(record) {
+  if (record === undefined || record === null) {
+    return buildSchoolEffectiveState({
+      record: null,
+      availability: 'unavailable',
+      reason: 'record-unavailable',
+      publishable: false,
+      retainedLastValid: false
+    });
+  }
+  return buildSchoolEffectiveState({
+    record,
+    availability: 'available',
+    publishable: true,
+    retainedLastValid: false
+  });
+}
+
+function normalizePreviousSchoolEffectiveState(value) {
+  const data = clonePlainData(value, 'Previous School effective state');
+  assertExactFields(data, SCHOOL_EFFECTIVE_STATE_FIELDS, 'Previous School effective state');
+  if (typeof data.effectiveEnabled !== 'boolean'
+    || typeof data.degraded !== 'boolean'
+    || typeof data.publishable !== 'boolean'
+    || typeof data.verifiedDisable !== 'boolean'
+    || typeof data.retainedLastValid !== 'boolean') {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state contains an invalid boolean field.');
+  }
+  if (!['available', 'degraded'].includes(data.status)) {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state has an invalid status.');
+  }
+  normalizeSchoolReadAvailability(data.availability);
+  if (data.reason !== null && !SCHOOL_DEGRADED_REASONS.includes(data.reason)) {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state has an invalid degraded reason.');
+  }
+  if (data.degraded !== (data.status === 'degraded') || data.degraded !== (data.reason !== null)) {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state has inconsistent degraded fields.');
+  }
+  const normalizedRecord = data.record === null ? null : normalizeSchoolRecord(data.record);
+  const expectedEnabled = normalizedRecord ? normalizedRecord.enabled : true;
+  if (data.effectiveEnabled !== expectedEnabled) {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state conflicts with its retained record.');
+  }
+  if (data.verifiedDisable && (normalizedRecord === null || normalizedRecord.enabled)) {
+    fail('SCHOOL_EFFECTIVE_STATE', 'Previous School effective state has invalid disable evidence.');
+  }
+  return data.record === null
+    ? createSchoolEffectiveState()
+    : createSchoolEffectiveState(normalizedRecord);
+}
+
+function degradedSchoolEffectiveState(previous, availability, reason) {
+  return buildSchoolEffectiveState({
+    record: previous.record,
+    availability,
+    reason,
+    publishable: false,
+    verifiedDisable: false,
+    retainedLastValid: previous.record !== null
+  });
+}
+
+function sameSchoolRecord(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function reconcileSchoolRecordRead(input) {
+  const data = cloneTopLevelSettings(input, 'School record reconciliation');
+  assertExactFields(data, SCHOOL_RECONCILIATION_FIELDS, 'School record reconciliation');
+  if (!OWN(data, 'previous')) {
+    fail('SCHOOL_PREVIOUS_STATE_REQUIRED', 'School record reconciliation requires the previous effective state.');
+  }
+  if (!OWN(data, 'availability')) {
+    fail('SCHOOL_READ_AVAILABILITY', 'School record reconciliation requires an availability value.');
+  }
+  const availability = normalizeSchoolReadAvailability(data.availability);
+  const previous = normalizePreviousSchoolEffectiveState(data.previous);
+  if (OWN(data, 'verifiedDisable') && typeof data.verifiedDisable !== 'boolean') {
+    fail('SCHOOL_VERIFIED_DISABLE', 'verifiedDisable must be a boolean.');
+  }
+  const verifiedDisable = data.verifiedDisable === true;
+
+  if (availability === 'invalid') {
+    return degradedSchoolEffectiveState(previous, 'invalid', 'record-invalid');
+  }
+  if (availability === 'unavailable') {
+    return degradedSchoolEffectiveState(previous, 'unavailable', 'record-unavailable');
+  }
+
+  let candidate;
+  try {
+    candidate = normalizeSchoolRecord(data.candidate);
+  } catch {
+    return degradedSchoolEffectiveState(previous, 'invalid', 'record-invalid');
+  }
+
+  if (previous.record) {
+    if (candidate.revision < previous.record.revision
+      || (candidate.revision > previous.record.revision
+        && previous.record.updatedAt !== null
+        && (candidate.updatedAt === null || Date.parse(candidate.updatedAt) <= Date.parse(previous.record.updatedAt)))) {
+      return degradedSchoolEffectiveState(previous, 'available', 'record-stale');
+    }
+    if (candidate.revision === previous.record.revision && !sameSchoolRecord(candidate, previous.record)) {
+      return degradedSchoolEffectiveState(previous, 'available', 'revision-conflict');
+    }
+  }
+
+  const disabling = previous.effectiveEnabled && !candidate.enabled;
+  if (disabling && !verifiedDisable) {
+    return degradedSchoolEffectiveState(previous, 'available', 'disable-verification-required');
+  }
+
+  return buildSchoolEffectiveState({
+    record: candidate,
+    availability: 'available',
+    publishable: true,
+    verifiedDisable: disabling,
+    retainedLastValid: false
+  });
+}
+
 function schoolModeUiPolicy(value) {
   const enabled = schoolModeEnabled(value);
   return deepFreeze({
@@ -454,6 +651,8 @@ module.exports = {
   SCHOOL_DISPLAY_NAME_MAX_BYTES,
   SCHOOL_CREDENTIAL_REF_MAX_CODE_POINTS,
   SCHOOL_PREFERENCE_SNAPSHOT_MAX_BYTES,
+  SCHOOL_READ_AVAILABILITIES,
+  SCHOOL_DEGRADED_REASONS,
   DEFAULT_SCHOOL_DISPLAY_NAME,
   SCHOOL_SUPPRESSED_FEATURE_IDS,
   SCHOOL_PREFERENCE_FIELDS,
@@ -463,6 +662,8 @@ module.exports = {
   suppressedFeatureIds,
   captureSchoolPreferences,
   restoreSchoolPreferences,
+  createSchoolEffectiveState,
+  reconcileSchoolRecordRead,
   createDefaultSchoolRecord,
   transitionSchoolMode,
   isSchoolFeatureSuppressed,

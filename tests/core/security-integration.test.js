@@ -46,8 +46,8 @@ test('updater feed selection and restart authority stay in the trusted main fram
   const state = read('app', 'core', 'state.js');
 
   assert.match(main, /assertTrustedIpcSender\(event\)/);
-  assert.match(main, /ipcMain\.handle\('update:check', \(event\) => \{\s*assertTrustedIpcSender\(event\);\s*return checkForUpdates\(\);\s*\}\)/);
-  assert.match(main, /ipcMain\.handle\('update:restart', \(event\) => \{\s*assertTrustedIpcSender\(event\);\s*return restartVerifiedUpdate\(\);\s*\}\)/);
+  assert.match(main, /registerIpcHandler\('update:check', \(\) => checkForUpdates\(\)\)/);
+  assert.match(main, /registerIpcHandler\('update:restart', \(\) => restartVerifiedUpdate\(\)\)/);
   assert.match(main, /autoUpdater\.setFeedURL\(\{ url: CANONICAL_UPDATE_FEED_URL \}\)/);
   assert.match(main, /const ready = updateAuthorization\.snapshot\(\)\.ready/);
   assert.match(main, /updateAuthorization\.consumeRestart\(ready\)/);
@@ -65,13 +65,13 @@ test('all renderer search regex and workbench evaluation crosses the killable wo
   const preload = read('app', 'preload.js');
   const renderer = read('app', 'renderer', 'app.js');
 
-  assert.match(main, /ipcMain\.handle\('regex:evaluate',[\s\S]{0,300}evaluateRegexInWorker\(request\)/);
-  assert.match(preload, /regex:\s*Object\.freeze\(\{\s*evaluate:\s*\(request\)\s*=>\s*ipcRenderer\.invoke\('regex:evaluate', request\)/);
+  assert.match(main, /registerIpcHandler\('regex:evaluate',[\s\S]{0,500}regexScheduler\.schedule/);
+  assert.match(preload, /regex:\s*Object\.freeze\(\{\s*evaluate:\s*async \(envelope\)/);
   assert.match(renderer, /async function filterBySearch\(input, candidates,/);
-  assert.match(renderer, /bridge\.regex\.evaluate\(\{\s*operation:\s*'filter'/);
+  assert.match(renderer, /bridge\.regex\.evaluate\(regexScheduleEnvelope\(\{\s*operation:\s*'filter'/);
   assert.match(renderer, /async function runRegexWorkbench\(\)/);
-  assert.match(renderer, /bridge\.regex\.evaluate\(\{\s*operation:\s*'workbench'/);
-  assert.match(renderer, /bridge\.regex\.evaluate\(\{\s*operation:\s*'validate'/);
+  assert.match(renderer, /bridge\.regex\.evaluate\(regexScheduleEnvelope\(\{ operation: 'workbench'/);
+  assert.match(renderer, /bridge\.regex\.evaluate\(regexScheduleEnvelope\(\{ operation: 'validate'/);
   assert.doesNotMatch(renderer, /function matcherFor\(/);
   assert.doesNotMatch(renderer, /function matchesSearch\(/);
 

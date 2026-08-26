@@ -1,5 +1,13 @@
 # Handoff
 
+## Core security repair
+
+The `repair/core-correctness` branch now preserves the last verified School mode restriction during invalid or unavailable shared-record reads, protects 52 privileged IPC channels through one exact inventory, rejects malformed or aliased evidence roots, and applies a fail-closed scheduled-network policy with DNS and connection-time validation. Regular-expression evaluation now uses one bounded scheduler with coalescing and explicit overload outcomes.
+
+Focused source verification covers the exact 53-channel inventory, shared-record degradation, evidence argument and physical-root boundaries, public and approved local network plans, credential scope binding, scheduler overload behavior, and all three renderer regex routes. Built-application interaction and capture evidence were not produced by this repair batch.
+
+Retained work is intentionally separate: ambiguity-aware presentation-corpus identifiers and occurrence multisets, the accepted schedule/startup/narrator findings, and independent dynamic presentation-sink and vocabulary-boundary repairs. Those items remain unimplemented and must not be inferred from this security commit.
+
 ## Scope completed in this branch
 
 This branch completes the bounded language and presentation wave on source base `c75d3f4e9e80ece354a322ed1b79ad3772cf7ca2`. It adds:

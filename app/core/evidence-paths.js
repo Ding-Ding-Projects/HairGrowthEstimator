@@ -6,9 +6,11 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 
 const EVIDENCE_MODE_SWITCH = '--evidence-mode';
+const EVIDENCE_ARGUMENT_PREFIX = '--evidence-';
 const EVIDENCE_APP_DATA_PREFIX = '--evidence-app-data=';
 const EVIDENCE_USER_DATA_PREFIX = '--evidence-user-data=';
 const EVIDENCE_OWNERSHIP_MARKER = '.hair-growth-evidence-task';
+const SAFE_FILESYSTEM_ERROR_CODES = new Set(['ENOENT', 'EACCES', 'EPERM', 'EBUSY', 'ENOTDIR', 'ELOOP']);
 
 const INACTIVE_RESULT = Object.freeze({ active: false, paths: null });
 
@@ -27,6 +29,68 @@ function isStrictDescendant(parent, candidate) {
 
 function pathsOverlap(left, right) {
   return samePath(left, right) || isStrictDescendant(left, right) || isStrictDescendant(right, left);
+}
+
+function sanitizedFilesystemCode(error) {
+  return error && SAFE_FILESYSTEM_ERROR_CODES.has(error.code)
+    ? error.code
+    : 'filesystem_error';
+}
+
+function isMalformedEvidenceModeArgument(argument) {
+  return argument !== EVIDENCE_MODE_SWITCH && argument.startsWith(EVIDENCE_MODE_SWITCH);
+}
+
+function isReservedEvidenceArgument(argument) {
+  return argument.startsWith(EVIDENCE_ARGUMENT_PREFIX);
+}
+
+function isReservedEvidenceDataArgument(argument) {
+  const appDataSwitch = EVIDENCE_APP_DATA_PREFIX.slice(0, -1);
+  const userDataSwitch = EVIDENCE_USER_DATA_PREFIX.slice(0, -1);
+  return argument === appDataSwitch
+    || argument === userDataSwitch
+    || argument.startsWith(EVIDENCE_APP_DATA_PREFIX)
+    || argument.startsWith(EVIDENCE_USER_DATA_PREFIX);
+}
+
+function isKnownReservedEvidenceArgument(argument) {
+  return argument === EVIDENCE_MODE_SWITCH || isReservedEvidenceDataArgument(argument);
+}
+
+function physicalPathIdentity(root, fsApi, label) {
+  const missingSegments = [];
+  let current = root;
+  for (;;) {
+    try {
+      fsApi.lstatSync(current);
+    } catch (error) {
+      if (error && error.code === 'ENOENT') {
+        const parent = path.dirname(current);
+        if (samePath(parent, current)) {
+          throw new Error(`${label} physical identity has no inspectable existing ancestor.`);
+        }
+        missingSegments.unshift(path.basename(current));
+        current = parent;
+        continue;
+      }
+      throw new Error(`${label} physical identity could not be inspected safely: ${sanitizedFilesystemCode(error)}.`);
+    }
+
+    let canonicalAncestor;
+    try {
+      canonicalAncestor = fsApi.realpathSync.native(current);
+    } catch (error) {
+      throw new Error(`${label} physical identity could not be resolved safely: ${sanitizedFilesystemCode(error)}.`);
+    }
+    if (typeof canonicalAncestor !== 'string'
+      || canonicalAncestor.length === 0
+      || canonicalAncestor.includes('\0')
+      || !path.isAbsolute(canonicalAncestor)) {
+      throw new Error(`${label} physical identity resolver returned an invalid absolute path.`);
+    }
+    return path.resolve(canonicalAncestor, ...missingSegments);
+  }
 }
 
 function assertStringArray(argv) {
@@ -92,7 +156,7 @@ function assertNoReparseComponents(root, fsApi, label) {
       stats = fsApi.lstatSync(current);
     } catch (error) {
       if (error && error.code === 'ENOENT') return;
-      throw new Error(`${label} could not be inspected safely: ${error && error.code ? error.code : 'unknown filesystem error'}.`);
+      throw new Error(`${label} could not be inspected safely: ${sanitizedFilesystemCode(error)}.`);
     }
     const isReparse = (typeof stats.isSymbolicLink === 'function' && stats.isSymbolicLink())
       || (typeof stats.isReparsePoint === 'function' && stats.isReparsePoint());
@@ -106,7 +170,7 @@ function assertEmptyOrMissingDirectory(root, fsApi, label) {
     stats = fsApi.lstatSync(root);
   } catch (error) {
     if (error && error.code === 'ENOENT') return;
-    throw new Error(`${label} could not be inspected safely: ${error && error.code ? error.code : 'unknown filesystem error'}.`);
+    throw new Error(`${label} could not be inspected safely: ${sanitizedFilesystemCode(error)}.`);
   }
   if (typeof stats.isDirectory !== 'function' || !stats.isDirectory()) {
     throw new Error(`${label} must be a directory when it already exists.`);
@@ -115,39 +179,58 @@ function assertEmptyOrMissingDirectory(root, fsApi, label) {
   try {
     entries = fsApi.readdirSync(root);
   } catch (error) {
-    throw new Error(`${label} could not be read safely: ${error && error.code ? error.code : 'unknown filesystem error'}.`);
+    throw new Error(`${label} could not be read safely: ${sanitizedFilesystemCode(error)}.`);
   }
   if (!Array.isArray(entries) || entries.length !== 0) throw new Error(`${label} must be empty when it already exists.`);
 }
 
 function validateEvidencePathArguments(argv, options = {}) {
   if (!Array.isArray(argv)) throw new TypeError('Evidence arguments must be an array.');
+  assertStringArray(argv);
+  const reservedArguments = argv.filter(isReservedEvidenceArgument);
+  if (reservedArguments.length === 0) return INACTIVE_RESULT;
+  if (argv.some(isMalformedEvidenceModeArgument)) {
+    throw new Error('Evidence mode must use the exact --evidence-mode switch without a value.');
+  }
   const modeCount = argv.filter(argument => argument === EVIDENCE_MODE_SWITCH).length;
-  if (modeCount === 0) return INACTIVE_RESULT;
+  if (modeCount === 0) {
+    if (argv.some(isReservedEvidenceDataArgument)) {
+      throw new Error('Reserved evidence data switches require the exact --evidence-mode switch.');
+    }
+    throw new Error('Reserved evidence arguments require the exact --evidence-mode switch.');
+  }
   if (modeCount !== 1) throw new Error('The evidence mode switch must appear exactly once.');
 
-  assertStringArray(argv);
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     throw new TypeError('Evidence path options must be an object.');
   }
   const fsApi = options.fs === undefined ? fs : options.fs;
-  if (!fsApi || typeof fsApi.lstatSync !== 'function' || typeof fsApi.readdirSync !== 'function') {
-    throw new TypeError('The filesystem adapter must provide lstatSync and readdirSync.');
+  if (!fsApi
+    || typeof fsApi.lstatSync !== 'function'
+    || typeof fsApi.readdirSync !== 'function'
+    || typeof fsApi.realpathSync !== 'function'
+    || typeof fsApi.realpathSync.native !== 'function') {
+    throw new TypeError('The filesystem adapter must provide lstatSync, readdirSync, and realpathSync.native.');
   }
 
-  const appData = normalizeAbsoluteRoot(
-    switchValues(argv, EVIDENCE_APP_DATA_PREFIX, '--evidence-app-data'),
-    'Evidence app-data root'
-  );
-  const userData = normalizeAbsoluteRoot(
-    switchValues(argv, EVIDENCE_USER_DATA_PREFIX, '--evidence-user-data'),
-    'Evidence user-data root'
-  );
+  const appDataValue = switchValues(argv, EVIDENCE_APP_DATA_PREFIX, '--evidence-app-data');
+  const userDataValue = switchValues(argv, EVIDENCE_USER_DATA_PREFIX, '--evidence-user-data');
+  if (reservedArguments.some(argument => !isKnownReservedEvidenceArgument(argument))) {
+    throw new Error('An unknown reserved evidence switch is not allowed.');
+  }
+  const appData = normalizeAbsoluteRoot(appDataValue, 'Evidence app-data root');
+  const userData = normalizeAbsoluteRoot(userDataValue, 'Evidence user-data root');
   const approvedParents = normalizeApprovedParents(options.approvedParents);
 
   assertAuthorizedRoot(appData, approvedParents, 'Evidence app-data root');
   assertAuthorizedRoot(userData, approvedParents, 'Evidence user-data root');
   if (pathsOverlap(appData, userData)) throw new Error('Evidence app-data and user-data roots must be distinct and must not overlap.');
+
+  const appDataPhysicalIdentity = physicalPathIdentity(appData, fsApi, 'Evidence app-data root');
+  const userDataPhysicalIdentity = physicalPathIdentity(userData, fsApi, 'Evidence user-data root');
+  if (pathsOverlap(appDataPhysicalIdentity, userDataPhysicalIdentity)) {
+    throw new Error('Evidence app-data and user-data physical identities must be distinct and must not overlap.');
+  }
 
   assertNoReparseComponents(appData, fsApi, 'Evidence app-data root');
   assertNoReparseComponents(userData, fsApi, 'Evidence user-data root');

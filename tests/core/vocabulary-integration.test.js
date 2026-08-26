@@ -20,7 +20,7 @@ test('main process owns the private vocabulary cache and revalidates it on reads
   assert.match(main, /atomicWriteFile\(personalVocabularyCachePath\(\), serialized,/);
   assert.doesNotMatch(main, /atomicWriteFile\(personalVocabularyCachePath\(\), `\$\{serialized\}\\n`/);
   for (const channel of ['vocabulary:read', 'vocabulary:replace', 'vocabulary:clear']) {
-    assert.match(main, new RegExp(`ipcMain\\.handle\\('${channel.replace(/[.]/g, '\\.')}[']`));
+    assert.match(main, new RegExp(`registerIpcHandler\\('${channel.replace(/[.]/g, '\\.')}[']`));
   }
 });
 

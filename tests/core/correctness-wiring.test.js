@@ -68,8 +68,8 @@ test('renderer surfaces explicit local-history degradation without invalidating 
 
 test('history restore saves primary state before reporting the appended history revision', async () => {
   const main = await source('app/main.js');
-  const start = main.indexOf("ipcMain.handle('history:restore'");
-  const end = main.indexOf("ipcMain.handle('history:label'", start);
+  const start = main.indexOf("registerIpcHandler('history:restore'");
+  const end = main.indexOf("registerIpcHandler('history:label'", start);
   assert.ok(start >= 0 && end > start, 'history restore handler boundaries must exist');
   const handler = main.slice(start, end);
   const read = handler.indexOf('localHistory.read(commit, { credential })');

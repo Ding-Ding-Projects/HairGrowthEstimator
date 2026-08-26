@@ -35,6 +35,24 @@ function evidenceArgs(appData, userData) {
   ];
 }
 
+function filesystemAdapterWithNativeRealpath(nativeRealpath) {
+  const realpathSync = value => fs.realpathSync(value);
+  realpathSync.native = nativeRealpath;
+  return {
+    lstatSync: value => fs.lstatSync(value),
+    readdirSync: value => fs.readdirSync(value),
+    realpathSync
+  };
+}
+
+function sameFilesystemTextPath(left, right) {
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
 test('normal mode is inactive and ignores ordinary arguments without touching the filesystem', () => {
   const { validateEvidencePathArguments } = evidencePaths();
   const noReadFs = new Proxy({}, {
@@ -50,18 +68,54 @@ test('normal mode is inactive and ignores ordinary arguments without touching th
 test('evidence mode requires the exact mode switch exactly once', (t) => {
   const { validateEvidencePathArguments } = evidencePaths();
   const { appData, userData } = ownedRoots(t);
-  assert.deepEqual(
-    validateEvidencePathArguments([
-      '--evidence-mode=true',
-      `--evidence-app-data=${appData}`,
-      `--evidence-user-data=${userData}`
-    ]),
-    { active: false, paths: null }
+  for (const malformedMode of ['--evidence-mode=true', '--evidence-mode=false', '--evidence-mode=', '--evidence-modee']) {
+    assert.throws(
+      () => validateEvidencePathArguments([
+        malformedMode,
+        `--evidence-app-data=${appData}`,
+        `--evidence-user-data=${userData}`
+      ]),
+      /exact --evidence-mode/i
+    );
+  }
+  assert.throws(
+    () => validateEvidencePathArguments([...evidenceArgs(appData, userData), '--evidence-mode=true']),
+    /exact --evidence-mode/i
   );
   assert.throws(
     () => validateEvidencePathArguments(['--evidence-mode', ...evidenceArgs(appData, userData)]),
     /evidence mode switch.*exactly once/i
   );
+});
+
+test('unknown reserved evidence switches never fall through to ordinary mode', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const { appData, userData } = ownedRoots(t);
+  assert.throws(
+    () => validateEvidencePathArguments(['--evidence-debug']),
+    /reserved evidence arguments.*exact --evidence-mode/i
+  );
+  assert.throws(
+    () => validateEvidencePathArguments([...evidenceArgs(appData, userData), '--evidence-debug']),
+    /unknown reserved evidence switch/i
+  );
+});
+
+test('reserved evidence data switches refuse to run without exact evidence mode', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const { appData, userData } = ownedRoots(t);
+  for (const argumentsWithoutMode of [
+    ['--evidence-app-data'],
+    ['--evidence-user-data'],
+    [`--evidence-app-data=${appData}`],
+    [`--evidence-user-data=${userData}`],
+    [`--evidence-app-data=${appData}`, `--evidence-user-data=${userData}`]
+  ]) {
+    assert.throws(
+      () => validateEvidencePathArguments(argumentsWithoutMode),
+      /reserved evidence data switches.*exact --evidence-mode/i
+    );
+  }
 });
 
 test('evidence mode requires both exact data switches', (t) => {
@@ -124,6 +178,71 @@ test('same, ancestor, and descendant data roots are rejected', (t) => {
   assert.throws(() => validateEvidencePathArguments(evidenceArgs(appData, appData)), /overlap/i);
   assert.throws(() => validateEvidencePathArguments(evidenceArgs(taskRoot, appData)), /overlap/i);
   assert.throws(() => validateEvidencePathArguments(evidenceArgs(userData, path.join(userData, 'nested'))), /overlap/i);
+});
+
+test('native physical identity refuses roots whose long or short spellings resolve to one location', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const { appData, userData } = ownedRoots(t);
+  const nativeCalls = [];
+  const fsApi = filesystemAdapterWithNativeRealpath(value => {
+    const resolved = path.resolve(value);
+    nativeCalls.push(resolved);
+    if (sameFilesystemTextPath(resolved, userData)) return fs.realpathSync.native(appData);
+    return fs.realpathSync.native(resolved);
+  });
+
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: fsApi }),
+    /physical.*overlap/i
+  );
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, appData)), true);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, userData)), true);
+});
+
+test('a link alias cannot make one physical root appear distinct', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const root = makeSandbox(t);
+  const taskRoot = path.join(root, '.hair-growth-evidence-task');
+  const physicalRoot = path.join(taskRoot, 'physical-root');
+  const linkedRoot = path.join(taskRoot, 'linked-root');
+  const physicalData = path.join(physicalRoot, 'data');
+  const linkedData = path.join(linkedRoot, 'data');
+  fs.mkdirSync(physicalData, { recursive: true });
+  fs.symlinkSync(physicalRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(physicalData, linkedData)),
+    /physical.*overlap/i
+  );
+});
+
+test('native physical identity resolves every missing root through its deepest existing ancestor', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const root = makeSandbox(t);
+  const taskRoot = path.join(root, '.hair-growth-evidence-task');
+  const longParent = path.join(taskRoot, 'physical-parent-long-name');
+  const shortParent = path.join(taskRoot, 'PHYSIC~1');
+  const appData = path.join(longParent, 'future-data');
+  const userData = path.join(shortParent, 'future-data');
+  fs.mkdirSync(longParent, { recursive: true });
+  fs.mkdirSync(shortParent, { recursive: true });
+
+  const nativeCalls = [];
+  const fsApi = filesystemAdapterWithNativeRealpath(value => {
+    const resolved = path.resolve(value);
+    nativeCalls.push(resolved);
+    if (sameFilesystemTextPath(resolved, shortParent)) return fs.realpathSync.native(longParent);
+    return fs.realpathSync.native(resolved);
+  });
+
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: fsApi }),
+    /physical.*overlap/i
+  );
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, longParent)), true);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, shortParent)), true);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, appData)), false);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, userData)), false);
 });
 
 test('existing nonempty directories and existing files are rejected', (t) => {
@@ -218,17 +337,83 @@ test('a symlink or reparse component in either data path is rejected', (t) => {
   assert.throws(() => validateEvidencePathArguments(evidenceArgs(appData, userData)), /symlink or reparse/i);
 });
 
-test('nonexistent authorized sibling roots are normalized without being created', (t) => {
+test('nonexistent authorized sibling roots resolve their existing ancestor without being created', (t) => {
   const { validateEvidencePathArguments } = evidencePaths();
   const root = makeSandbox(t);
   const taskRoot = path.join(root, '.hair-growth-evidence-task');
   fs.mkdirSync(taskRoot, { recursive: true });
   const appData = path.join(taskRoot, 'future-app-data');
   const userData = path.join(taskRoot, 'future-user-data');
-  const result = validateEvidencePathArguments(evidenceArgs(appData, userData));
+  const nativeCalls = [];
+  const fsApi = filesystemAdapterWithNativeRealpath(value => {
+    nativeCalls.push(path.resolve(value));
+    return fs.realpathSync.native(value);
+  });
+  const result = validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: fsApi });
   assert.deepEqual(result.paths, { appData: path.resolve(appData), userData: path.resolve(userData) });
   assert.equal(fs.existsSync(appData), false);
   assert.equal(fs.existsSync(userData), false);
+  assert.equal(nativeCalls.filter(value => sameFilesystemTextPath(value, taskRoot)).length, 2);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, appData)), false);
+  assert.equal(nativeCalls.some(value => sameFilesystemTextPath(value, userData)), false);
+});
+
+test('physical identity inspection fails closed without exposing a raw path', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const { appData, userData } = ownedRoots(t);
+  const fsApi = filesystemAdapterWithNativeRealpath(() => {
+    const error = new Error('could not resolve a private path');
+    error.code = 'EACCES:CANARY_RAW_PATH_VALUE';
+    throw error;
+  });
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: fsApi }),
+    error => {
+      assert.match(error.message, /filesystem_error/);
+      assert.equal(error.message.includes('CANARY_RAW_PATH_VALUE'), false);
+      assert.equal(error.message.includes(appData), false);
+      assert.equal(error.message.includes(userData), false);
+      return true;
+    }
+  );
+});
+
+test('link inspection and directory reads sanitize every adapter error code', (t) => {
+  const { validateEvidencePathArguments } = evidencePaths();
+  const { appData, userData } = ownedRoots(t);
+  const maliciousError = () => {
+    const error = new Error('adapter detail must stay private');
+    error.code = 'EACCES:CANARY_RAW_PATH_VALUE';
+    return error;
+  };
+  const assertSanitized = error => {
+    assert.match(error.message, /filesystem_error/);
+    assert.equal(error.message.includes('CANARY_RAW_PATH_VALUE'), false);
+    assert.equal(error.message.includes(appData), false);
+    assert.equal(error.message.includes(userData), false);
+    return true;
+  };
+
+  let appDataInspections = 0;
+  const lstatFailureFs = filesystemAdapterWithNativeRealpath(value => fs.realpathSync.native(value));
+  lstatFailureFs.lstatSync = value => {
+    if (sameFilesystemTextPath(value, appData) && ++appDataInspections > 1) throw maliciousError();
+    return fs.lstatSync(value);
+  };
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: lstatFailureFs }),
+    assertSanitized
+  );
+
+  const readFailureFs = filesystemAdapterWithNativeRealpath(value => fs.realpathSync.native(value));
+  readFailureFs.readdirSync = value => {
+    if (sameFilesystemTextPath(value, appData)) throw maliciousError();
+    return fs.readdirSync(value);
+  };
+  assert.throws(
+    () => validateEvidencePathArguments(evidenceArgs(appData, userData), { fs: readFailureFs }),
+    assertSanitized
+  );
 });
 
 test('receipt hashes normalized roots without retaining raw paths', (t) => {

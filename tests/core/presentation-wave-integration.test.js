@@ -74,8 +74,8 @@ test('shared mode exposes credential setup and verified disable controls', () =>
   for (const id of ['school-credential-kind', 'school-credential', 'school-save', 'school-unlock']) {
     assert.match(html, new RegExp(`id="${id}"`), `missing ${id}`);
   }
-  assert.match(main, /ipcMain\.handle\('school:configure'/);
-  assert.match(main, /ipcMain\.handle\('school:disable'/);
+  assert.match(main, /registerIpcHandler\('school:configure'/);
+  assert.match(main, /registerIpcHandler\('school:disable'/);
   assert.match(preload, /configure: \(value\) => ipcRenderer\.invoke\('school:configure'/);
   assert.match(preload, /disable: \(value\) => ipcRenderer\.invoke\('school:disable'/);
 });
@@ -107,7 +107,7 @@ test('narrator exposes independent effective voice status and assistive-technolo
   assert.match(renderer, /narrator\.reconcileVoices\(/);
   assert.match(state, /yieldToAssistiveTechnology:/);
   assert.match(state, /assistiveTechnologyActive:/);
-  assert.match(main, /ipcMain\.handle\('accessibility:status'/);
+  assert.match(main, /registerIpcHandler\('accessibility:status'/);
   assert.match(main, /app\.on\('accessibility-support-changed'/);
   assert.match(preload, /onChanged: \(callback\) => subscribe\('accessibility:changed'/);
   assert.match(renderer, /platformAccessibilityActive \|\| state\.settings\.narrator\.assistiveTechnologyActive/);
@@ -125,8 +125,8 @@ test('scheduled settings editor exposes date, weekday, timezone, priority, setti
 });
 
 test('external schedule resolution stays behind a trusted privileged boundary', () => {
-  assert.match(main, /ipcMain\.handle\('schedule:resolve'/);
-  assert.match(main, /assertTrustedIpcSender\(event\)/);
+  assert.match(main, /registerIpcHandler\('schedule:resolve'/);
+  assert.match(main, /IpcAuthorization\.getIpcChannelPolicy\(channel\)/);
   assert.match(preload, /resolve: \(value\) => ipcRenderer\.invoke\('schedule:resolve'/);
   assert.match(renderer, /evaluateAndApplySchedules\(/);
   assert.match(renderer, /scheduleGeneration/);

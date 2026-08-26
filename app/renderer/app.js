@@ -11,6 +11,8 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const regexState = new WeakMap();
   const searchGenerations = new WeakMap();
+  const regexTargetIds = new WeakMap();
+  let regexTargetSequence = 0;
   const utf8Encoder = new TextEncoder();
   const REGEX_LIMITS = Object.freeze({
     patternBytes: 512,
@@ -621,17 +623,17 @@
 
   async function applySchoolRecordTransition(record, { persist = true } = {}) {
     const wasEnabled = lastSchoolEnabled ?? Boolean(schoolRecord?.enabled);
-    schoolRecord = record;
-    const isEnabled = Boolean(record?.enabled);
+    const requestedEnabled = Boolean(record?.enabled);
+    const verifiedDisable = record?.verifiedDisable === true;
+    const isEnabled = wasEnabled && !requestedEnabled && !verifiedDisable ? true : requestedEnabled;
+    schoolRecord = isEnabled === requestedEnabled ? record : { ...record, enabled: true, status: 'degraded', degraded: true, degradedReason: 'disable-verification-required' };
     if (!wasEnabled && isEnabled) captureSchoolPreferences();
-    if (wasEnabled && !isEnabled) restoreSchoolPreferences();
+    if (wasEnabled && !isEnabled && verifiedDisable) restoreSchoolPreferences();
     lastSchoolEnabled = isEnabled;
     updateSchoolUi();
     applySettings();
     renderSettingsForm();
-    void renderDocs();
-    void renderChangelog();
-    void renderPalette();
+    void renderDocs(); void renderChangelog(); void renderPalette();
     if (persist && wasEnabled !== isEnabled) await saveNow(isEnabled ? 'Shared presentation mode enabled' : 'Shared presentation mode disabled');
   }
 
@@ -1089,6 +1091,16 @@
     return utf8Encoder.encode(String(value)).byteLength;
   }
 
+  function stableRegexTargetId(input) {
+    if (input.id) return input.id;
+    if (!regexTargetIds.has(input)) regexTargetIds.set(input, `dynamic-${++regexTargetSequence}`);
+    return regexTargetIds.get(input);
+  }
+
+  function regexScheduleEnvelope(request, coalescingKey, generation) {
+    return { request, coalescingKey, generation };
+  }
+
   function invalidateSearch(input) {
     searchGenerations.set(input, (searchGenerations.get(input) || 0) + 1);
     input.removeAttribute('aria-busy');
@@ -1137,12 +1149,12 @@
       } else {
         visible = [];
         for (const batch of regexFilterBatches(searchable)) {
-          const result = await bridge.regex.evaluate({
+          const result = await bridge.regex.evaluate(regexScheduleEnvelope({
             operation: 'filter',
             pattern: config.pattern,
             flags: config.flags,
             candidates: batch.candidates
-          });
+          }, `search:${stableRegexTargetId(input)}`, generation));
           if (searchGenerations.get(input) !== generation) return null;
           if (!Array.isArray(result?.matches) || result.matches.length !== batch.indexes.length) throw new Error('Regex worker returned an invalid filter result.');
           result.matches.forEach((matched, index) => { if (matched) visible.push(candidates[batch.indexes[index]]); });
@@ -1201,7 +1213,8 @@
     status.textContent = 'Validating in an isolated worker.';
     status.className = '';
     try {
-      await bridge.regex.evaluate({ operation: 'validate', pattern, flags: $('#popover-flags').value });
+      const input = $('#regex-popover')._targetInput;
+      await bridge.regex.evaluate(regexScheduleEnvelope({ operation: 'validate', pattern, flags: $('#popover-flags').value }, `builder:${stableRegexTargetId(input)}`, generation));
       if (generation !== regexValidationGeneration) return false;
       status.textContent = 'Pattern is valid for the JavaScript RegExp engine.';
       status.className = 'success';
@@ -1239,7 +1252,7 @@
     }
     $('#run-regex').setAttribute('aria-busy', 'true');
     try {
-      const result = await bridge.regex.evaluate({ operation: 'workbench', pattern, flags, sample, replacement });
+      const result = await bridge.regex.evaluate(regexScheduleEnvelope({ operation: 'workbench', pattern, flags, sample, replacement }, 'workbench:primary', generation));
       if (generation !== regexWorkbenchGeneration) return;
       const matches = result.matches || [];
       const explanation = [];
@@ -2322,7 +2335,7 @@
     $('#school-unlock').disabled = !schoolRecord?.enabled || schoolRecord?.status !== 'available';
     $('#school-status').textContent = schoolRecord?.status === 'available'
       ? `Shared record available. ${displayName} is ${schoolRecord.enabled ? 'enabled' : 'disabled'}. Last change: ${schoolRecord.updatedAt ? new Date(schoolRecord.updatedAt).toLocaleString() : 'not yet changed'}.`
-      : `The shared record is ${schoolRecord?.status || 'unavailable'}. The control cannot honestly report a shared change.`;
+      : `The shared record is ${schoolRecord?.status || 'degraded'}: ${schoolRecord?.degradedReason || 'record-unavailable'}. The last valid ${displayName} state remains ${schoolRecord?.enabled ? 'enabled' : 'disabled'}; no new restricted preference restoration was authorized.`;
   }
 
   function updateUpdateUi(value) {
