@@ -1,10 +1,19 @@
 {
   "schemaVersion": 1,
   "version": "1.0.0",
+  "releaseTag": "v1.0.0",
+  "sourceCommit": "2afb8871fa8bba2cf46ee0d8e50ca59034aa3f3c",
+  "createdAt": "2026-08-25T04:19:27.000Z",
+  "catalogStatus": "resolved",
+  "catalogUnavailableReason": null,
   "codeName": "Classic Har Gow · 蝦餃",
   "catalogRecord": "hk-dish-0001",
-  "catalogCommit": "736e8c1d9e40e1d146f3c3b11bb329b97c4ef515",
+  "catalogSlug": "classic-har-gow",
+  "catalogCommit": "7cc5dd6dcbd6edf64d29fdd3c0eda67500e24244",
+  "catalogBlobSha": "736e8c1d9e40e1d146f3c3b11bb329b97c4ef515",
+  "catalogBytes": 8162059,
   "publicPhotoUrl": "https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png",
+  "publicPhotoAsset": "hk-dish-0001-classic-har-gow.png",
   "photoStoredLocally": false,
   "container": {
     "schemaVersion": 1,
@@ -19,10 +28,28 @@
     "platform": "linux/amd64",
     "baseImage": "node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
     "baseImageIndexDigest": "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32",
+    "baseImageManifestDigest": "sha256:76789712cd1ae89a1225eac9077010d68987a423588042dac30446f502f1858c",
     "localTag": "hair-growth-api:1.0.0",
     "ociArchive": "hair-growth-api-1.0.0-linux-amd64.oci.tar",
     "archiveFormat": "oci",
-    "sourceDateEpoch": "required from the release commit timestamp",
+    "sourceDateEpoch": "1787631567",
+    "createdAt": "2026-08-25T04:19:27.000Z",
+    "sourceCommit": "2afb8871fa8bba2cf46ee0d8e50ca59034aa3f3c",
+    "runtime": {
+      "user": "node:node",
+      "host": "0.0.0.0",
+      "port": 4782,
+      "readOnlyRequired": true,
+      "noNewPrivilegesRequired": true,
+      "capabilitiesDropped": [
+        "ALL"
+      ]
+    },
+    "deltaFeed": {
+      "status": "first-release-no-previous-package",
+      "remoteReleases": null,
+      "requiredAfterFirstRelease": true
+    },
     "optionalRegistryTag": "ghcr.io/ding-ding-projects/hair-growth-estimator-api:1.0.0",
     "publishByDefault": false
   }

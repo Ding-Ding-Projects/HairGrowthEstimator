@@ -35,6 +35,13 @@
     "operations/release-install-and-updates.md",
     "operations/ssh-tunnels.md",
     "operations/version-provenance.md",
+    "release/automation.md",
+    "release/container-packaging.md",
+    "release/dependency-inventory.md",
+    "release/pages-deployment.md",
+    "release/provenance-and-integrity.md",
+    "release/README.md",
+    "release/windows-packaging.md",
     "README.md",
     "security/browser-storage-limitations.md",
     "security/file-converter-boundaries.md",
@@ -63,7 +70,8 @@
     "site/settings-and-appearance.md",
     "site/status-and-provenance.md",
     "site/support-tickets.md",
-    "site/tabbed-navigation.md"
+    "site/tabbed-navigation.md",
+    "verification/built-evidence-harness.md"
   ],
   "boundaries": [
     "static-visible-text",

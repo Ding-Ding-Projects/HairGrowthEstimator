@@ -261,7 +261,10 @@ test('documentation links resolve inside the public tree', async () => {
   paths.push(...['README.md', 'ROADMAP.md', 'HANDOFF.md', 'CHANGELOG.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md', 'LICENSE'].map((path) => join(root, path)));
   for (const path of paths) {
     const source = await readFile(path, 'utf8');
-    for (const match of source.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+    const prose = source
+      .replace(/^```[^\r\n]*\r?\n[\s\S]*?^```\s*$/gm, '')
+      .replace(/(?<!`)`[^`\r\n]+`(?!`)/g, '');
+    for (const match of prose.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       const target = match[1].trim();
       if (!target || target.startsWith('#') || /^(?:https?:|mailto:)/i.test(target)) continue;
       const localPath = resolve(dirname(path), decodeURIComponent(target.split('#')[0]));
