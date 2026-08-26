@@ -117,7 +117,12 @@ test('composition emits commit-bound provenance and local assets', async (contex
   assert.ok(html.indexOf('id="front-provenance"') < html.indexOf('id="app-shell"'));
   assert.ok(html.indexOf('src="state-contract.js"') < html.indexOf('src="app.js"'));
   assert.match(stateContract, /createStateCoordinator/);
-  assert.match(html, /<script id="bundled-hair-assets" type="application\/json">\[\]<\/script>/);
+  const hairPayload = html.match(/<script id="bundled-hair-assets" type="application\/json">([^<]+)<\/script>/)?.[1];
+  assert.ok(hairPayload, 'composed hair-stage payload is present');
+  const hairStages = JSON.parse(hairPayload);
+  assert.equal(hairStages.length, 8);
+  assert.deepEqual(hairStages.map((entry) => entry.cm), stageLengths);
+  for (const entry of hairStages) await access(join(directory, entry.src));
   const rootPreview = await readFile(join(root, 'social-preview.png'));
   const servedPreview = await readFile(join(directory, 'social-preview.png'));
   assert.equal(createHash('sha256').update(rootPreview).digest('hex'), createHash('sha256').update(servedPreview).digest('hex'));
@@ -182,6 +187,19 @@ test('strict composition consumes the canonical stages manifest and verifies eve
     records.push({ length, file, sha256: createHash('sha256').update(bytes).digest('hex') });
   }
   await writeFile(join(assetDirectory, 'stages.json'), JSON.stringify({ schemaVersion: 1, unit: 'cm', stages: records }));
+  const auditRecords = records.map((record, index) => ({
+    stage: index + 1,
+    file: record.file,
+    width: 1254,
+    height: 1254,
+    bytes: fixtureBytes[index].length,
+    sha256: record.sha256
+  }));
+  const writeAuditManifest = async (nextRecords = auditRecords) => writeFile(
+    join(assetDirectory, 'hair-growth-image-sequence-manifest.json'),
+    JSON.stringify({ schemaVersion: 1, stages: nextRecords })
+  );
+  await writeAuditManifest();
   const output = join(fixture, 'output');
   const env = { ...process.env, SITE_OUTPUT_DIR: output, REQUIRE_HAIR_ASSETS: '1', SOURCE_DATE_EPOCH: '1787630400' };
   const compose = () => execFileSync(process.execPath, [join(fixture, 'scripts', 'compose-site.mjs')], { cwd: fixture, env, stdio: 'pipe' });
@@ -223,6 +241,11 @@ test('strict composition consumes the canonical stages manifest and verifies eve
   await writeFile(join(assetDirectory, 'unexpected.png'), originalFirst);
   assert.throws(compose, /Unexpected hair asset|manifest mismatch/i);
   await rm(join(assetDirectory, 'unexpected.png'));
+  assert.doesNotThrow(compose);
+
+  await writeAuditManifest(auditRecords.slice(1));
+  assert.throws(compose, /audit manifest must describe all eight source stages/i);
+  await writeAuditManifest();
   assert.doesNotThrow(compose);
 
   await writeFile(join(assetDirectory, records[0].file), fixturePng(1254, 1254, 99));

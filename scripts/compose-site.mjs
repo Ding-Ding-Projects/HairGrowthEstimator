@@ -469,6 +469,7 @@ function normalizeHairManifest(value) {
 
 async function bundledHairStages() {
   const sourceDirectory = join(root, 'assets', 'hair-growth');
+  const auditManifestName = 'hair-growth-image-sequence-manifest.json';
   let sourceEntries;
   try {
     sourceEntries = await readdir(sourceDirectory, { withFileTypes: true });
@@ -494,6 +495,17 @@ async function bundledHairStages() {
       stageSet.add(entry.cm); fileSet.add(entry.file); digestSet.add(entry.sha256);
     }
     if (manifest.some((entry, index) => entry.cm !== expectedStages[index])) throw new Error(`Hair asset manifest stages must remain in canonical order: ${expectedStages.join(', ')} cm.`);
+    const auditEntry = sourceEntries.find((entry) => entry.name === auditManifestName);
+    if (auditEntry) {
+      if (!auditEntry.isFile()) throw new Error('Hair asset audit manifest must be a regular file.');
+      const auditBytes = await readFile(join(sourceDirectory, auditManifestName));
+      if (auditBytes.length > MAX_HAIR_MANIFEST_BYTES) throw new Error(`Hair asset audit manifest exceeds the ${MAX_HAIR_MANIFEST_BYTES} byte limit.`);
+      let auditText;
+      try { auditText = new TextDecoder('utf-8', { fatal: true }).decode(auditBytes); }
+      catch { throw new Error('Hair asset audit manifest must be valid UTF-8 text.'); }
+      const audit = JSON.parse(auditText);
+      if (audit?.schemaVersion !== 1 || !Array.isArray(audit.stages) || audit.stages.length !== manifest.length) throw new Error('Hair asset audit manifest must describe all eight source stages.');
+    }
     for (const entry of manifest) {
       const path = join(sourceDirectory, entry.file);
       const info = await stat(path);
@@ -504,7 +516,7 @@ async function bundledHairStages() {
       if (actualDigest !== entry.sha256) throw new Error(`Hair asset ${entry.file} does not match its manifest SHA-256 digest.`);
     }
     const actualNames = sourceEntries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
-    const expectedNames = ['stages.json', ...manifest.map((entry) => entry.file)].sort();
+    const expectedNames = ['stages.json', ...(auditEntry ? [auditManifestName] : []), ...manifest.map((entry) => entry.file)].sort();
     if (sourceEntries.some((entry) => !entry.isFile()) || actualNames.length !== expectedNames.length || actualNames.some((name, index) => name !== expectedNames[index])) throw new Error('Unexpected hair asset or manifest mismatch in the canonical source directory.');
     const targetDirectory = join(output, 'assets', 'hair-growth');
     await mkdir(targetDirectory, { recursive: true });

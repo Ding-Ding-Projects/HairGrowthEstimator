@@ -1,49 +1,81 @@
 {
   "name": "hair-growth-estimator",
   "version": "1.0.0",
-  "description": "Estimate hair growth, record haircuts, and optionally synchronize with a private LAN server.",
+  "description": "Estimate hair growth, reset projections after haircuts, and synchronize with an optional private LAN service.",
   "main": "app/main.js",
   "author": "Ding Ding Projects",
   "license": "MIT",
   "private": false,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
+    "generate:provenance": "node scripts/core/generate-provenance.mjs",
+    "generate:icons": "node scripts/core/generate-icons.mjs",
+    "prestart": "npm run generate:provenance && npm run generate:icons",
     "start": "electron .",
     "start:server": "node server/index.js",
-    "dist": "electron-builder --win squirrel",
-    "compose-site": "node scripts/compose-site.mjs"
+    "compose-site": "node scripts/compose-site.mjs",
+    "pretest": "npm run generate:icons",
+    "test": "node --test tests/core/*.test.js && npm run validate:assets && npm run validate:inventory",
+    "test:core": "node --test tests/core/*.test.js",
+    "validate:assets": "node scripts/core/validate-hair-assets.mjs",
+    "validate:inventory": "node scripts/core/check-universal-inventory.mjs",
+    "count-lines": "node scripts/core/count-lines.mjs",
+    "prepack": "npm run generate:provenance && npm run generate:icons",
+    "dist": "npm run prepack && electron-builder --win squirrel --x64"
   },
   "devDependencies": {
-    "electron": "^38.0.0",
-    "electron-builder": "^26.0.12",
-    "electron-builder-squirrel-windows": "^26.0.0"
+    "electron": "44.0.0",
+    "electron-builder": "26.15.3",
+    "electron-builder-squirrel-windows": "26.15.3"
+  },
+  "releasePolicy": {
+    "forceCodeSigning": false,
+    "signExecutable": false,
+    "signAndEditExecutable": false,
+    "installerFamily": "Squirrel.Windows",
+    "platform": "Windows"
   },
   "build": {
     "appId": "com.dingdingprojects.hairgrowthestimator",
     "productName": "Hair Growth Estimator",
+    "forceCodeSigning": false,
     "asar": true,
     "directories": {
-      "output": "dist/squirrel-windows"
+      "output": "dist"
     },
     "files": [
       "app/**/*",
+      "assets/**/*",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "server",
         "to": "server",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": ["squirrel"],
-      "icon": "assets/app-icon.png",
+      "target": [
+        {
+          "target": "squirrel",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/app-icon.ico",
       "forceCodeSigning": false,
+      "signExecutable": false,
       "signAndEditExecutable": false
     },
     "squirrelWindows": {
-      "iconUrl": "https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/app-icon.png",
-      "artifactName": "HairGrowthEstimator-${version}-${arch}-${name}.${ext}",
+      "iconUrl": "https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/app-icon.ico",
+      "artifactName": "HairGrowthEstimator-Setup-${version}-${arch}.${ext}",
       "msi": false
     }
   }

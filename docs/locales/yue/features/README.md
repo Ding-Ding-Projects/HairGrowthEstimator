@@ -4,6 +4,12 @@
 
 ## 功能文章
 
+- [注意力介面輔助](attention-accommodations.md)
+- [語言模式同搞笑程度](language-and-funny-levels.md)
+- [旁白聲線同速度](narrator.md)
+- [排程設定](scheduled-settings.md)
+- [共用 School mode](shared-school-mode.md)
+- [啟動小驚喜](startup-surprise.md)
 - [頭髮生長估算](hair-growth-estimation.md)
 - [剪髮紀錄同重設行為](haircut-history.md)
 - [厘米同英寸](measurements.md)

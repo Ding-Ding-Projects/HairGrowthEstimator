@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#0b6b5b">
+  <title>Hair Growth Estimator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="dark" data-tab-dock="left">
+  <header class="titlebar" data-element-id="app-titlebar">
+    <div class="titlebar-drag">
+      <img id="app-logo" class="app-logo" src="../../assets/app-icon-48.png" alt="">
+      <div>
+        <div class="title-row">
+          <strong id="app-name">Hair Growth Estimator</strong>
+          <span id="title-version" class="version-chip">Version unavailable</span>
+        </div>
+        <span class="title-subtitle" data-i18n="subtitle">A private, local-first growth journal</span>
+      </div>
+    </div>
+    <div class="title-actions" aria-label="Window controls">
+      <button type="button" class="icon-button" id="open-palette" data-command-id="open-palette" aria-label="Open command palette">⌕</button>
+      <button type="button" class="icon-button" id="open-notifications" data-command-id="open-notifications" aria-label="Open notification history">◉</button>
+      <button type="button" class="window-button" id="window-minimize" aria-label="Minimize">−</button>
+      <button type="button" class="window-button" id="window-maximize" aria-label="Maximize or restore">□</button>
+      <button type="button" class="window-button close" id="window-close" aria-label="Close">×</button>
+    </div>
+  </header>
+
+  <section id="front-provenance" class="provenance-banner" aria-labelledby="provenance-title" data-element-id="front-provenance">
+    <div class="provenance-mark" aria-hidden="true">✓</div>
+    <div>
+      <h1 id="provenance-title">Running artifact</h1>
+      <p id="provenance-detail" data-vocabulary-preserve>Reading version and updated-at provenance…</p>
+    </div>
+    <span id="provenance-state" class="state-chip pending">Checking</span>
+  </section>
+
+  <aside id="startup-surprise" class="startup-surprise" role="status" aria-live="polite" hidden data-school-feature="dim-sum">
+    <img id="startup-surprise-image" alt="Classic Har Gow, shrimp dumpling" width="96" height="96">
+    <div>
+      <strong id="startup-surprise-name">Classic Har Gow · 蝦餃</strong>
+      <p id="startup-surprise-copy">A small startup surprise from the public dim-sum catalog.</p>
+    </div>
+    <button type="button" class="icon-button" id="dismiss-startup-surprise" aria-label="Dismiss startup surprise">×</button>
+  </aside>
+
+  <div class="app-shell">
+    <nav id="tab-strip" class="tab-strip" role="tablist" aria-label="Application tabs" aria-orientation="vertical" data-element-id="main-tab-strip">
+      <div class="tab-search-wrap">
+        <label class="search-field compact">
+          <span class="visually-hidden">Search current tab strip</span>
+          <input id="tab-search" type="search" placeholder="Search tabs" autocomplete="off" data-search-scope="tabs">
+          <button type="button" class="regex-trigger" aria-label="Open regex builder for tab search">.*</button>
+        </label>
+      </div>
+      <div class="tab-group" data-group-id="daily">
+        <button type="button" class="group-header" data-action="toggle-group" aria-expanded="true">Daily care <span>3</span></button>
+        <div class="group-tabs">
+          <button type="button" class="tab active pinned" id="tab-dashboard" data-tab="dashboard" data-element-id="tab-dashboard" role="tab" aria-controls="view-dashboard" aria-selected="true" tabindex="0">⌂ <span>Dashboard</span></button>
+          <button type="button" class="tab" id="tab-haircuts" data-tab="haircuts" data-element-id="tab-haircuts" role="tab" aria-controls="view-haircuts" aria-selected="false" tabindex="-1">✂ <span>Haircuts</span></button>
+          <button type="button" class="tab" id="tab-gallery" data-tab="gallery" data-element-id="tab-gallery" role="tab" aria-controls="view-gallery" aria-selected="false" tabindex="-1">▧ <span>Growth gallery</span></button>
+        </div>
+      </div>
+      <div class="tab-group" data-group-id="manage">
+        <button type="button" class="group-header" data-action="toggle-group" aria-expanded="true">Manage <span>5</span></button>
+        <div class="group-tabs">
+          <button type="button" class="tab" id="tab-tools" data-tab="tools" data-element-id="tab-tools" role="tab" aria-controls="view-tools" aria-selected="false" tabindex="-1">⌘ <span>Tools</span></button>
+          <button type="button" class="tab" id="tab-integrations" data-tab="integrations" data-element-id="tab-integrations" role="tab" aria-controls="view-integrations" aria-selected="false" tabindex="-1">⇄ <span>Connections</span></button>
+          <button type="button" class="tab" id="tab-settings" data-tab="settings" data-element-id="tab-settings" role="tab" aria-controls="view-settings" aria-selected="false" tabindex="-1">⚙ <span>Settings</span></button>
+          <button type="button" class="tab" id="tab-docs" data-tab="docs" data-element-id="tab-docs" role="tab" aria-controls="view-docs" aria-selected="false" tabindex="-1">? <span>Guide and history</span></button>
+          <button type="button" class="tab" id="tab-status" data-tab="status" data-element-id="tab-status" role="tab" aria-controls="view-status" aria-selected="false" tabindex="-1">● <span>Status</span></button>
+        </div>
+      </div>
+      <div class="tab-strip-footer">
+        <button type="button" class="text-button" id="tab-master-search">Search every tab</button>
+        <button type="button" class="text-button" id="tab-group-search">Search groups</button>
+      </div>
+    </nav>
+
+    <main id="main-content" class="main-content">
+      <section id="time-awareness-banner" class="attention-banner time-awareness" aria-labelledby="time-awareness-title" hidden>
+        <div>
+          <strong id="time-awareness-title">Time awareness</strong>
+          <p><span id="time-awareness-session">Session open for 0 minutes.</span> <span id="time-awareness-change">Last meaningful change was 0 minutes ago.</span></p>
+        </div>
+      </section>
+      <section id="one-thing-banner" class="attention-banner" aria-labelledby="one-thing-title" hidden>
+        <div><strong id="one-thing-title">One thing at a time</strong><p id="one-thing-current"></p></div>
+        <button type="button" class="tonal-button" id="complete-next-action">Mark current action complete</button>
+      </section>
+      <section id="momentum-banner" class="attention-banner momentum" aria-labelledby="momentum-title" hidden>
+        <div><strong id="momentum-title">Momentum</strong><p id="momentum-message"></p></div>
+        <button type="button" class="tonal-button" id="momentum-not-now">Not now for 60 minutes</button>
+      </section>
+
+      <section class="view active" id="view-dashboard" data-view="dashboard" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
+        <header class="view-header">
+          <div>
+            <span class="eyebrow">TODAY</span>
+            <h2>Your growth line</h2>
+            <p>Estimates use your chosen rate. Hair growth varies, and this is not medical advice.</p>
+          </div>
+          <button type="button" class="filled-button" id="quick-haircut" data-element-id="quick-haircut">Record a haircut</button>
+        </header>
+
+        <div class="metrics-grid">
+          <article class="metric-card feature" data-element-id="metric-current">
+            <span>Estimated now</span>
+            <strong id="metric-current-length">0.00 cm</strong>
+            <small id="metric-current-date">Today</small>
+          </article>
+          <article class="metric-card" data-element-id="metric-target">
+            <span>Target</span>
+            <strong id="metric-target-length">0.00 cm</strong>
+            <small id="metric-target-date">Estimate unavailable</small>
+          </article>
+          <article class="metric-card" data-element-id="metric-rate">
+            <span>Your monthly rate</span>
+            <strong id="metric-growth-rate">1.00 cm</strong>
+            <small>Adjustable, not a promise</small>
+          </article>
+          <article class="metric-card" data-element-id="metric-days">
+            <span>Days since baseline</span>
+            <strong id="metric-days-value">0</strong>
+            <small id="metric-since-cut">No haircut logged yet</small>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="surface growth-visual" data-element-id="growth-visual">
+            <div class="surface-heading">
+              <div><span class="eyebrow">ANIMATED ESTIMATE</span><h3 id="visual-stage-label">Buzz cut</h3></div>
+              <button type="button" class="tonal-button" id="play-growth">Play growth</button>
+            </div>
+            <div class="portrait-frame">
+              <img id="growth-portrait" src="../../assets/hair-growth/male-hair-growth-stage-01-buzz-cut-v1.png" alt="Fictional adult man with a buzz cut, estimated hair growth stage">
+              <div class="length-float"><strong id="visual-length">0.30 cm</strong><span id="visual-date">Stage reference</span></div>
+            </div>
+            <label class="range-field">
+              <span>Explore projected length</span>
+              <input id="growth-scrubber" type="range" min="0" max="30" step="0.1" value="0.3">
+            </label>
+            <div id="stage-dots" class="stage-dots" aria-label="Hair length stages"></div>
+          </article>
+
+          <article class="surface estimator-card" data-element-id="estimator-settings">
+            <div class="surface-heading"><div><span class="eyebrow">BASELINE</span><h3>Shape the estimate</h3></div></div>
+            <form id="profile-form" class="form-grid">
+              <label><span>Measurement unit</span><select id="display-unit"><option value="cm">Centimetres</option><option value="in">Inches</option></select></label>
+              <label><span>Baseline date</span><input id="baseline-date" type="date" required></label>
+              <label><span>Baseline length</span><input id="baseline-length" type="number" min="0" max="300" step="0.01" required></label>
+              <label><span>Growth rate per month</span><input id="growth-rate" type="number" min="0.05" max="5" step="0.01" required></label>
+              <label class="wide"><span>Target length</span><input id="target-length" type="number" min="0" max="300" step="0.01" required></label>
+              <div class="form-actions wide"><button type="submit" class="filled-button">Save baseline</button><button type="button" class="text-button" id="reset-profile">Reset fields</button></div>
+            </form>
+          </article>
+        </div>
+
+        <article class="surface chart-card" data-element-id="projection-chart">
+          <div class="surface-heading"><div><span class="eyebrow">NEXT 12 MONTHS</span><h3>Projected length</h3></div><span class="state-chip">Estimate</span></div>
+          <canvas id="projection-canvas" width="1100" height="250" aria-label="Projected hair length over twelve months"></canvas>
+          <div id="projection-table" class="projection-table"></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-haircuts" data-view="haircuts" role="tabpanel" aria-labelledby="tab-haircuts" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">RESET AND REMEMBER</span><h2>Haircut journal</h2><p>Each haircut stores the before and after lengths and becomes the next baseline.</p></div></header>
+        <div class="two-column">
+          <article class="surface">
+            <h3 id="haircut-form-title">Record a haircut</h3>
+            <form id="haircut-form" class="form-grid">
+              <input id="haircut-id" type="hidden">
+              <label><span>Date</span><input id="haircut-date" type="date" required></label>
+              <label><span>Pre-cut length</span><input id="haircut-pre" type="number" min="0" max="300" step="0.01" required></label>
+              <label><span>Post-cut length</span><input id="haircut-post" type="number" min="0" max="300" step="0.01" required></label>
+              <label class="wide"><span>Notes</span><textarea id="haircut-note" maxlength="500" rows="4" placeholder="Style, barber, guard length, or anything worth remembering"></textarea></label>
+              <div class="form-actions wide"><button type="submit" class="filled-button">Save haircut and reset baseline</button><button type="button" class="text-button" id="cancel-haircut-edit">Clear</button></div>
+            </form>
+          </article>
+          <article class="surface">
+            <div class="surface-heading"><div><span class="eyebrow">SUMMARY</span><h3>Journal totals</h3></div></div>
+            <div class="summary-stack"><p><strong id="haircut-count">0</strong><span>haircuts logged</span></p><p><strong id="total-cut">0.00 cm</strong><span>total recorded reduction</span></p><p><strong id="last-haircut">None</strong><span>most recent haircut</span></p></div>
+          </article>
+        </div>
+        <article class="surface list-surface">
+          <div class="collection-toolbar">
+            <label class="search-field"><span class="visually-hidden">Search haircuts</span><input id="haircut-search" type="search" placeholder="Search dates or notes"><button type="button" class="regex-trigger" aria-label="Open regex builder for haircut search">.*</button></label>
+            <div class="toolbar-actions"><button type="button" class="tonal-button" id="select-all-haircuts">Select all matches</button><button type="button" class="tonal-button" data-export="json">JSON</button><button type="button" class="tonal-button" data-export="csv">CSV</button><button type="button" class="tonal-button" data-export="markdown">Markdown</button><button type="button" class="danger-button" id="delete-selected-haircuts">Delete selected</button></div>
+          </div>
+          <div id="haircut-list" class="haircut-list" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-gallery" data-view="gallery" role="tabpanel" aria-labelledby="tab-gallery" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">LOCALLY BUNDLED</span><h2>Male hair growth reference</h2><p>Eight generated photographs show one fictional adult man at deterministic reference lengths. They illustrate estimates, not guaranteed outcomes.</p></div></header>
+        <div id="gallery-grid" class="gallery-grid"></div>
+      </section>
+
+      <section class="view" id="view-tools" data-view="tools" role="tabpanel" aria-labelledby="tab-tools" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">LOCAL TOOLS</span><h2>Workbenches</h2><p>Regex work, local conversion, and authenticators stay on this computer.</p></div></header>
+        <article class="surface regex-workbench" data-element-id="regex-workbench">
+          <div class="surface-heading"><div><span class="eyebrow">ECMASCRIPT ENGINE</span><h3>Advanced regex workbench</h3></div><span class="state-chip">Isolated worker, 250 ms deadline</span></div>
+          <div class="workbench-grid">
+            <label class="wide"><span>Pattern</span><input id="regex-pattern" type="text" value="(?&lt;word&gt;hair)\s+(growth)" spellcheck="false"></label>
+            <label><span>Flags</span><input id="regex-flags" type="text" value="giu" spellcheck="false"></label>
+            <label><span>Replacement template</span><input id="regex-replacement" type="text" value="$&lt;word&gt;-length" spellcheck="false"></label>
+            <label class="wide"><span>Sample text</span><textarea id="regex-sample" rows="6">Hair growth varies. Track hair growth without turning an estimate into a promise.</textarea></label>
+          </div>
+          <div class="form-actions"><button type="button" class="filled-button" id="run-regex">Run bounded analysis</button><button type="button" class="tonal-button" id="export-regex">Export snippet</button></div>
+          <div class="workbench-results"><div><h4>Structured explanation</h4><div id="regex-explanation"></div></div><div><h4>Matches and captures</h4><div id="regex-matches"></div></div><div><h4>Replacement preview</h4><pre id="regex-preview"></pre></div><div><h4>Capability matrix</h4><div id="regex-capabilities"></div></div></div>
+        </article>
+
+        <article class="surface converter" data-element-id="file-converter">
+          <div class="surface-heading"><div><span class="eyebrow">BOUNDED AND OFFLINE</span><h3>Local file converter</h3></div><span id="converter-source-state" class="state-chip">No source</span></div>
+          <p>The enabled adapters are bundled and work without PATH discovery. Known unavailable formats stay visible with their reason.</p>
+          <div class="form-actions"><button type="button" class="filled-button" id="choose-converter-source">Choose source file</button><button type="button" class="tonal-button" id="run-conversion" disabled>Convert with selected adapter</button></div>
+          <div id="converter-categories" class="converter-categories"></div>
+        </article>
+
+        <article class="surface authenticator" data-element-id="authenticator">
+          <div class="surface-heading"><div><span class="eyebrow">RFC 6238</span><h3>Local authenticator</h3></div><span class="state-chip">Vault-backed</span></div>
+          <div class="two-column">
+            <form id="auth-form" class="form-grid">
+              <label><span>Issuer</span><input id="auth-issuer" maxlength="120" required></label>
+              <label><span>Account</span><input id="auth-account" maxlength="160" required></label>
+              <label class="wide"><span>Manual base32 secret</span><input id="auth-secret" autocomplete="off" spellcheck="false" required></label>
+              <label><span>Algorithm</span><select id="auth-algorithm"><option value="sha1">SHA-1</option><option value="sha256">SHA-256</option><option value="sha512">SHA-512</option></select></label>
+              <label><span>Digits</span><select id="auth-digits"><option>6</option><option>7</option><option>8</option></select></label>
+              <div class="form-actions wide"><button type="button" class="tonal-button" id="generate-auth-secret">Generate locally</button><button type="submit" class="filled-button">Add entry</button></div>
+              <p class="plain-disclosure wide">Secrets are stored through the operating-system credential vault. Ordinary exports omit them.</p>
+            </form>
+            <div id="auth-list" class="auth-list"></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-integrations" data-view="integrations" role="tabpanel" aria-labelledby="tab-integrations" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">OPTIONAL CONNECTIONS</span><h2>Private sync and local models</h2><p>Local mode works alone. Direct private-LAN and SSH tunnel modes are explicit choices.</p></div></header>
+        <div class="two-column">
+          <article class="surface" data-element-id="server-sync">
+            <div class="surface-heading"><div><span class="eyebrow">HAIR LENGTH SERVICE</span><h3>Storage connection</h3></div><span id="server-state" class="state-chip">Not checked</span></div>
+            <form id="server-form" class="form-grid">
+              <label><span>Storage mode</span><select id="sync-mode"><option value="local">Local only</option><option value="server">Direct private LAN</option><option value="ssh">SSH tunnel</option></select></label>
+              <label><span>Profile ID</span><input id="server-profile-id" pattern="[A-Za-z0-9_-]{1,64}"></label>
+              <label class="wide"><span>Service URL</span><input id="server-url" type="url"></label>
+              <label class="wide"><span>API key</span><input id="server-api-key" type="password" autocomplete="new-password" placeholder="Stored in the operating-system vault"><small>Stored for this exact service destination. Public health and version checks never include it.</small></label>
+              <div class="form-actions wide"><button type="button" class="filled-button" id="server-test">Test connection</button><button type="button" class="tonal-button" id="server-push">Send local data</button><button type="button" class="tonal-button" id="server-pull">Fetch service data</button></div>
+            </form>
+          </article>
+          <article class="surface" data-element-id="ssh-tunnel">
+            <div class="surface-heading"><div><span class="eyebrow">STRICT HOST KEY</span><h3>SSH tunnel</h3></div><span id="ssh-state" class="state-chip">Disconnected</span></div>
+            <form id="ssh-form" class="form-grid">
+              <label><span>Host</span><input id="ssh-host"></label><label><span>Port</span><input id="ssh-port" type="number" min="1" max="65535"></label>
+              <label><span>Username</span><input id="ssh-username"></label><label><span>Remote API port</span><input id="ssh-remote-port" type="number" min="1" max="65535"></label>
+              <label><span>Local forward port</span><input id="ssh-local-port" type="number" min="1" max="65535"></label>
+              <label><span>Private key file</span><span class="browse-row"><input id="ssh-key-file" readonly><button type="button" class="tonal-button" id="choose-ssh-key">Browse</button></span></label>
+              <p class="plain-disclosure wide">The tunnel invokes ssh.exe directly with BatchMode, a persistent known_hosts file, strict existing-key verification, and no password capture.</p>
+              <div class="form-actions wide"><button type="button" class="filled-button" id="ssh-start">Start tunnel</button><button type="button" class="tonal-button" id="ssh-stop">Stop tunnel</button></div>
+            </form>
+          </article>
+        </div>
+
+        <article class="surface" data-element-id="ollama-manager">
+          <div class="surface-heading"><div><span class="eyebrow">LOOPBACK API ONLY</span><h3>Local model manager</h3></div><span id="ollama-state" class="state-chip">Not checked</span></div>
+          <div class="form-actions"><button type="button" class="filled-button" id="ollama-check">Check local service</button><button type="button" class="tonal-button" id="ollama-refresh">Refresh installed models</button></div>
+          <div class="ollama-grid"><div><h4>Installed models</h4><div id="ollama-models" class="model-list"></div></div><div><h4>Hardware fit evidence</h4><p id="ollama-fit">Unknown until the local service and model metadata are available. A model name alone never determines fit.</p><h4>Batch pull queue</h4><p>Pull controls remain disabled until an exact local tag, free-space estimate, and storage disclosure are available.</p></div><div><h4>Local chat</h4><label><span>Model</span><select id="ollama-chat-model"><option value="">Choose an installed model</option></select></label><label><span>Prompt</span><textarea id="ollama-prompt" rows="4" maxlength="16000"></textarea></label><button type="button" class="filled-button" id="ollama-chat" disabled>Send locally</button><pre id="ollama-response"></pre></div></div>
+          <p class="plain-disclosure">No cloud model service is embedded. Harness launch accepts only committed allowlisted profiles, and the current bounded profile list is empty.</p>
+        </article>
+      </section>
+
+      <section class="view" id="view-settings" data-view="settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">PERSISTED PREFERENCES</span><h2>Settings</h2><p>Search, change, schedule, export, and reset preferences from one tabbed surface.</p></div></header>
+        <label class="search-field settings-search"><span class="visually-hidden">Search settings</span><input id="settings-search" type="search" placeholder="Search settings"><button type="button" class="regex-trigger" aria-label="Open regex builder for settings search">.*</button></label>
+        <div class="settings-grid">
+          <article class="surface settings-card" data-settings-keywords="language funny emoji bilingual Cantonese">
+            <h3>Language and voice</h3>
+            <div data-school-feature="language"><label><span>Language mode</span><select id="setting-language"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="bilingual">Bilingual</option></select></label></div>
+            <div data-school-feature="funny">
+              <label><span>English funny level <output id="funny-en-value">5</output></span><input id="funny-en" type="range" min="1" max="5" step="1"></label>
+              <label><span>Cantonese funny level <output id="funny-yue-value">5</output></span><input id="funny-yue" type="range" min="1" max="5" step="1"></label>
+            </div>
+            <label class="switch-row"><input id="setting-emoji" type="checkbox"><span>Show emojis in dialogs and message boxes</span></label>
+            <p data-school-feature="funny">Both funny levels default to 5 and style every message, including errors and warnings, without changing facts.</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="shared mode rename unlock">
+            <h3 id="school-heading">Shared mode</h3>
+            <label class="switch-row"><input id="school-enabled" type="checkbox"><span id="school-toggle-label">Enable shared mode</span></label>
+            <label><span>Shared display name</span><input id="school-name" maxlength="80"></label>
+            <label><span>Shared unlock method</span><select id="school-credential-kind"><option value="pin">PIN</option><option value="password">Password</option><option value="passkey" disabled>Passkey, unavailable in this build</option></select></label>
+            <label><span>Shared unlock value</span><input id="school-credential" type="password" autocomplete="new-password"></label>
+            <div class="form-actions"><button type="button" class="filled-button" id="school-save">Enable or update shared mode</button><button type="button" class="tonal-button" id="school-unlock">Unlock and turn off</button></div>
+            <p class="plain-disclosure">This is an interface lock, not a security boundary. Delete the shared local record to reset it intentionally.</p>
+            <p id="school-status" aria-live="polite">Reading the shared record…</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="narrator voice speech rate pitch">
+            <h3>Spoken narrator</h3>
+            <label class="switch-row"><input id="narrator-enabled" type="checkbox"><span>Enable narrator</span></label>
+            <label><span>Narrated language</span><select id="narrator-language"><option value="en">English</option><option value="yue" data-school-feature="language.cantonese">Cantonese</option><option value="both" data-school-feature="language.bilingual">Both, serialized</option></select></label>
+            <label><span>English installed voice</span><select id="narrator-en-voice"><option value="auto">Choose automatically</option></select></label>
+            <p id="narrator-en-status" aria-live="polite">Installed English voices have not been enumerated yet.</p>
+            <div data-school-feature="language.cantonese"><label><span>Cantonese installed voice</span><select id="narrator-yue-voice"><option value="auto">Choose automatically</option></select></label>
+            <p id="narrator-yue-status" aria-live="polite">Installed Cantonese voices have not been enumerated yet.</p></div>
+            <label><span>Rate <output id="narrator-rate-value">1</output></span><input id="narrator-rate" type="range" min="0.1" max="10" step="0.1"></label>
+            <label><span>Pitch <output id="narrator-pitch-value">1</output></span><input id="narrator-pitch" type="range" min="0" max="2" step="0.1"></label>
+            <label class="switch-row"><input id="narrator-yield-assistive" type="checkbox" checked disabled><span>Narrator always pauses while assistive technology is active</span></label>
+            <label class="switch-row"><input id="narrator-assistive-active" type="checkbox"><span>Assistive technology is active now</span></label>
+            <p id="narrator-assistive-status" aria-live="polite">Reading operating-system accessibility support.</p>
+            <button type="button" class="tonal-button" id="narrator-test">Speak a test event</button>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="theme density accent tabs dock appearance rainbow font">
+            <h3>Appearance and tabs</h3>
+            <label><span>Theme</span><select id="setting-theme"><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select></label>
+            <label><span>Density</span><select id="setting-density"><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="spacious">Spacious</option></select></label>
+            <label><span>Accent</span><input id="setting-accent" type="color"></label>
+            <label><span>Tab dock</span><select id="setting-tab-dock"><option value="left">Left</option><option value="right">Right</option><option value="top">Top</option><option value="bottom">Bottom</option></select></label>
+            <label><span>Rainbow speed level</span><input id="rainbow-speed" type="range" min="1" max="5" step="1"></label>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="rename app logo custom image upload crop fit background">
+            <h3>Name and logo</h3>
+            <label><span>Display name</span><input id="setting-display-name" maxlength="80"></label>
+            <label><span>Logo preset</span><select id="logo-preset"><option value="growth-arc">Growth arc</option><option value="strand">Single strand</option><option value="minimal">Minimal measure</option></select></label>
+            <label><span>Custom logo fit</span><select id="logo-fit"><option value="contain">Contain</option><option value="cover">Cover</option><option value="fill">Fill</option></select></label>
+            <label><span>Custom logo background</span><input id="logo-background" type="color"></label>
+            <div class="form-actions"><button type="button" class="tonal-button" id="choose-custom-logo">Choose local image</button><button type="button" class="text-button" id="clear-custom-logo">Reset logo</button></div>
+            <p id="logo-state">No custom logo selected.</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="personal vocabulary JSON upload replace clear local private" data-school-feature="vocabulary">
+            <h3 data-vocabulary-owned>Personal vocabulary JSON</h3>
+            <p data-vocabulary-owned>Original shipped wording remains active until a valid private local JSON file is selected. No mappings ship with this application.</p>
+            <div class="form-actions"><button type="button" class="tonal-button" id="choose-vocabulary" data-vocabulary-owned>Choose JSON</button><button type="button" class="text-button" id="clear-vocabulary" data-vocabulary-owned>Clear local cache</button></div>
+            <p id="vocabulary-state" aria-live="polite" data-vocabulary-owned>No file loaded.</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="locks recovery support tickets local help">
+            <h3 data-vocabulary-owned>Lock recovery</h3>
+            <p data-vocabulary-owned>The local Support Tickets desk explains the self-service reset route and never sends data.</p>
+            <button type="button" class="tonal-button" id="open-support-from-settings" data-vocabulary-owned>Open Support Tickets</button>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="ADHD focus stimulation time awareness next action momentum">
+            <h3>Attention accommodations</h3>
+            <label class="switch-row"><input data-adhd="focus" type="checkbox"><span>Focus</span></label>
+            <label class="switch-row"><input data-adhd="lowStimulation" type="checkbox"><span>Low stimulation</span></label>
+            <label class="switch-row"><input data-adhd="timeAwareness" type="checkbox"><span>Time awareness</span></label>
+            <label class="switch-row"><input data-adhd="oneThing" type="checkbox"><span>One thing at a time</span></label>
+            <label class="switch-row"><input data-adhd="momentum" type="checkbox"><span>Momentum</span></label>
+            <label><span>Current next action</span><input id="adhd-next-action" maxlength="240"></label>
+            <p>These are interface accommodations, not diagnosis or medical advice. All are off by default.</p>
+          </article>
+
+          <article class="surface settings-card" data-settings-keywords="schedule date time weekdays theme language timezone">
+            <h3>Scheduled settings</h3>
+            <label><span>Rule label</span><input id="schedule-label" maxlength="120"></label>
+            <label class="switch-row"><input id="schedule-enabled" type="checkbox" checked><span>Rule enabled</span></label>
+            <label><span>Priority</span><input id="schedule-priority" type="number" min="-1000" max="1000" value="0"></label>
+            <label><span>Start date, optional</span><input id="schedule-start-date" type="date"></label>
+            <label><span>End date, optional</span><input id="schedule-end-date" type="date"></label>
+            <label><span>Start time</span><input id="schedule-start" type="time" value="09:00"></label>
+            <label><span>End time</span><input id="schedule-end" type="time" value="17:00"></label>
+            <label><span>Timezone</span><input id="schedule-timezone" maxlength="80" readonly></label>
+            <label class="switch-row"><input id="schedule-every-day" type="checkbox" checked><span>Every day</span></label>
+            <fieldset class="weekday-grid"><legend>Selected weekdays</legend>
+              <label><input type="checkbox" data-schedule-weekday="0"><span>Sunday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="1"><span>Monday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="2"><span>Tuesday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="3"><span>Wednesday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="4"><span>Thursday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="5"><span>Friday</span></label>
+              <label><input type="checkbox" data-schedule-weekday="6"><span>Saturday</span></label>
+            </fieldset>
+            <label><span>Setting</span><select id="schedule-setting"><option value="theme">Theme</option><option value="language" data-school-feature="language">Language</option><option value="density">Density</option><option value="accent">Accent</option><option value="tabDock">Tab dock</option><option value="displayName">Display name</option><option value="funnyEnglish" data-school-feature="funny.english">English funny level</option><option value="funnyCantonese" data-school-feature="funny.cantonese">Cantonese funny level</option><option value="showDialogEmoji">Show dialog emojis</option><option value="reducedMotion">Reduced motion</option><option value="rainbowSpeedLevel">Rainbow speed level</option></select></label>
+            <label><span>Scheduled value</span><input id="schedule-value" maxlength="160" value="dark"></label>
+            <label><span>Value source</span><select id="schedule-source"><option value="local">Local value</option><option value="api">Validated HTTPS API</option><option value="home-assistant">Home Assistant boolean entity</option></select></label>
+            <label class="wide"><span>API URL</span><input id="schedule-api-url" type="url" placeholder="https://example.invalid/settings"></label>
+            <label class="wide"><span>Home Assistant base URL</span><input id="schedule-ha-url" type="url" placeholder="https://home-assistant.example"></label>
+            <label><span>Home Assistant entity</span><input id="schedule-ha-entity" maxlength="128" placeholder="input_boolean.example"></label>
+            <label><span>Home Assistant access token</span><input id="schedule-ha-token" type="password" autocomplete="new-password"></label>
+            <div class="form-actions"><button type="button" class="filled-button" id="add-schedule">Add scheduled rule</button><button type="button" class="tonal-button" id="schedule-delete">Delete selected rule</button><button type="button" class="tonal-button" id="schedule-save-ha-token">Store Home Assistant token</button></div>
+            <p id="schedule-status" aria-live="polite">No schedule evaluation has run yet.</p>
+            <div id="schedule-list">No scheduled rules. Times use the computer's local timezone and follow daylight-saving changes.</div>
+            <p>API sources must return <code>{"schemaVersion":1,"settings":{...}}</code>. Home Assistant sources activate the configured local values only while the selected boolean entity is on. Failures retain the unchanged base settings.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-docs" data-view="docs" role="tabpanel" aria-labelledby="tab-docs" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">OFFLINE</span><h2>Guide, changelog, and local history</h2><p>Bundled help remains available without a network connection.</p></div></header>
+        <div class="two-column docs-layout">
+          <article class="surface">
+            <label class="search-field"><span class="visually-hidden">Search offline guide</span><input id="docs-search" type="search" placeholder="Search guide"><button type="button" class="regex-trigger" aria-label="Open regex builder for guide search">.*</button></label>
+            <div id="docs-list" class="docs-list"></div>
+          </article>
+          <article class="surface docs-reader"><div id="docs-content"><h3>Choose an article</h3><p>Guide articles are bundled with the application.</p></div></article>
+        </div>
+        <div class="two-column">
+          <article class="surface"><h3>Released changes</h3><label><span>From date</span><input id="changelog-date" type="date"></label><label class="search-field"><span class="visually-hidden">Search changelog</span><input id="changelog-search" type="search" placeholder="Search released changes"><button type="button" class="regex-trigger" aria-label="Open regex builder for changelog search">.*</button></label><div id="changelog-list"></div><button type="button" class="tonal-button" id="open-support-from-help">Open Support Tickets help</button></article>
+          <article class="surface history-manager" aria-labelledby="history-manager-title">
+            <h3 id="history-manager-title">Protected local version history</h3>
+            <p class="plain-disclosure">History access uses its own password. Snapshots and exports are redacted, and a restore always adds a new revision.</p>
+            <div class="form-grid">
+              <label class="wide"><span>History password</span><input id="history-password" type="password" autocomplete="current-password"></label>
+              <div class="form-actions wide"><button type="button" class="tonal-button" id="history-set-credential">Set or replace history password</button><button type="button" class="filled-button" id="history-unlock">Unlock history</button></div>
+              <label class="search-field wide"><span class="visually-hidden">Search local history</span><input id="history-search" type="search" placeholder="Search actions and labels"><button type="button" class="regex-trigger" aria-label="Open regex builder for local history search">.*</button></label>
+              <label><span>From date</span><input id="history-date-from" type="date"></label>
+              <label><span>To date</span><input id="history-date-to" type="date"></label>
+              <label class="wide"><span>Action</span><select id="history-action"><option value="">Every action</option></select></label>
+              <label class="wide"><span>Revision label</span><input id="history-label-text" maxlength="80"></label>
+              <label><span>Keep newest revisions</span><input id="history-retention" type="number" min="10" max="1000" value="500"></label>
+            </div>
+            <div class="form-actions"><button type="button" class="tonal-button" id="refresh-history">Refresh history</button><button type="button" class="tonal-button" id="history-diff">Diff selected</button><button type="button" class="tonal-button" id="history-label">Label selected</button><button type="button" class="danger-button" id="history-restore">Restore selected</button><button type="button" class="danger-button" id="history-prune">Prune by retention</button><button type="button" class="tonal-button" id="history-export">Export redacted history</button><button type="button" class="tonal-button" id="open-app-data">Open local application-data folder</button></div>
+            <p id="history-status" aria-live="polite">History is locked.</p>
+            <div id="history-list"></div>
+            <pre id="history-diff-output" aria-label="Selected revision diff"></pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-status" data-view="status" role="tabpanel" aria-labelledby="tab-status" tabindex="0" hidden>
+        <header class="view-header"><div><span class="eyebrow">EVIDENCE FIRST</span><h2>Application status</h2><p>Unrun checks remain unrun. Pending work never appears as verified.</p></div></header>
+        <div class="status-grid">
+          <article class="surface"><h3>Running build</h3><dl id="status-provenance" class="fact-list"></dl></article>
+          <article class="surface"><h3>Automatic updates</h3><p id="update-message">No update check has run.</p><div class="form-actions"><button type="button" class="filled-button" id="check-updates">Check for updates</button><button type="button" class="tonal-button" id="restart-update" disabled>Restart to install update</button></div><p class="plain-disclosure">The update source is fixed by the installed application and cannot be selected by page content. Squirrel.Windows packages are unsigned and may trigger an unknown-publisher or SmartScreen warning.</p></article>
+          <article class="surface"><h3>Status Hub</h3><label><span>Optional HTTPS status URL</span><input id="status-hub-url" type="url" placeholder="https://status.example/"></label><button type="button" class="tonal-button" id="open-status-hub">Open configured status</button><p>No built-in private infrastructure address is shipped.</p></article>
+          <article class="surface"><h3>Privacy posture</h3><ul><li>Hair data stays local unless direct service sync is selected.</li><li>Credentials use operating-system protection.</li><li data-school-feature="personal-vocabulary">Personal vocabulary and custom logos are local-only.</li><li>No analytics or third-party runtime assets.</li></ul></article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-label="Notifications"></div>
+
+  <div id="context-menu" class="context-menu overlay" role="menu" hidden>
+    <label class="search-field compact"><span class="visually-hidden">Filter context menu</span><input id="context-search" type="search" placeholder="Filter actions"><button type="button" class="regex-trigger" aria-label="Open regex builder for context menu">.*</button></label>
+    <button type="button" role="menuitem" data-context-action="appearance" data-command-id="edit-appearance"><span class="command-label">Edit appearance…</span> <kbd>Shift+F10</kbd></button>
+    <button type="button" role="menuitem" data-context-action="lock" data-command-id="lock-element"><span class="command-label">Lock this element…</span> <kbd>Ctrl+L</kbd></button>
+    <button type="button" role="menuitem" data-context-action="copy-label">Copy visible text</button>
+  </div>
+
+  <div id="regex-popover" class="regex-popover overlay" hidden>
+    <div class="popover-header"><strong>Anchored regex builder</strong><button type="button" class="icon-button" id="close-regex-popover" aria-label="Close regex builder">×</button></div>
+    <label><span>Pattern</span><input id="popover-pattern" spellcheck="false"></label>
+    <label><span>Flags</span><input id="popover-flags" value="iu" spellcheck="false"></label>
+    <label class="switch-row"><input id="popover-enabled" type="checkbox"><span>Use regex for this field</span></label>
+    <p id="popover-validation">Plain-text search is active.</p>
+    <div class="form-actions"><button type="button" class="filled-button" id="apply-regex-popover">Apply to this search</button><button type="button" class="text-button" id="open-full-regex">Open full workbench</button></div>
+  </div>
+
+  <dialog id="command-palette" class="palette-dialog" aria-labelledby="command-palette-title">
+    <div class="dialog-header"><div><span class="eyebrow">CTRL+SHIFT+F</span><h3 id="command-palette-title" data-vocabulary-owned>Command palette</h3></div><button type="button" class="icon-button" data-close-dialog="command-palette" aria-label="Close command palette">×</button></div>
+    <label class="search-field"><span class="visually-hidden">Search commands</span><input id="palette-search" type="search" placeholder="Search every destination and setting"><button type="button" class="regex-trigger" aria-label="Open regex builder for command palette">.*</button></label>
+    <div id="palette-results" class="palette-results"></div>
+  </dialog>
+
+  <dialog id="notification-dialog" class="side-dialog" aria-labelledby="notification-dialog-title">
+    <div class="dialog-header"><h3 id="notification-dialog-title" data-vocabulary-owned>Notification history</h3><button type="button" class="icon-button" data-close-dialog="notification-dialog" aria-label="Close notification history">×</button></div>
+    <label class="search-field"><span class="visually-hidden">Search notification history</span><input id="notification-search" type="search" placeholder="Search notifications"><button type="button" class="regex-trigger" aria-label="Open regex builder for notification search">.*</button></label>
+    <div class="form-actions"><button type="button" class="tonal-button" id="select-all-notices">Select all visible</button><button type="button" class="tonal-button" id="invert-notices">Invert visible selection</button><button type="button" class="tonal-button" id="dismiss-selected-notices">Dismiss selected</button><button type="button" class="danger-button" id="delete-selected-notices">Delete selected</button><button type="button" class="tonal-button" id="export-notices">Export visible</button></div>
+    <p id="notification-selection-status" aria-live="polite">0 selected.</p>
+    <div id="notification-list"></div>
+  </dialog>
+
+  <dialog id="appearance-dialog" class="editor-dialog" aria-labelledby="appearance-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">NON-DESTRUCTIVE</span><h3 id="appearance-dialog-title">Edit appearance</h3><p id="appearance-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="appearance-dialog" aria-label="Close appearance editor">×</button></div>
+    <label class="search-field"><span class="visually-hidden">Search appearance properties</span><input id="appearance-search" type="search" placeholder="Search properties"><button type="button" class="regex-trigger" aria-label="Open regex builder for appearance property search">.*</button></label>
+    <div class="editor-layout">
+      <aside><h4>Layers</h4><button type="button" class="layer active">Element surface</button><button type="button" class="layer">Text</button><button type="button" class="layer">Effects</button><button type="button" class="tonal-button" id="duplicate-layer">Duplicate layer</button></aside>
+      <div class="property-grid">
+        <label><span>Text color</span><input id="appearance-color" type="color"></label>
+        <label><span>Background</span><input id="appearance-background" type="color"></label>
+        <label><span>Font family</span><select id="appearance-font"><option value="inherit">Application default</option><option value="system-ui">System UI</option><option value="serif">Serif</option><option value="monospace">Monospace</option></select></label>
+        <label><span>Font size</span><input id="appearance-size" type="number" min="8" max="72" step="1"></label>
+        <label><span>Weight</span><input id="appearance-weight" type="range" min="100" max="900" step="100"></label>
+        <label><span>Corner radius</span><input id="appearance-radius" type="range" min="0" max="48" step="1"></label>
+        <label><span>Opacity</span><input id="appearance-opacity" type="range" min="0.2" max="1" step="0.05"></label>
+        <label><span>Shadow depth</span><input id="appearance-shadow" type="range" min="0" max="5" step="1"></label>
+        <label class="switch-row"><input id="appearance-rainbow" type="checkbox"><span>Animated rainbow sentinel</span></label>
+        <label class="switch-row"><input id="appearance-underline" type="checkbox"><span>Underline</span></label>
+        <label class="switch-row"><input id="appearance-italic" type="checkbox"><span>Italic</span></label>
+      </div>
+    </div>
+    <div class="form-actions"><button type="button" class="filled-button" id="apply-appearance">Apply live</button><button type="button" class="tonal-button" id="reset-appearance">Reset element</button></div>
+    <p class="plain-disclosure">Unsupported image masks, warp, channels, smart objects, and vector paths remain unavailable in this bounded release and are listed in the feature inventory.</p>
+  </dialog>
+
+  <dialog id="lock-dialog" class="lock-dialog" aria-labelledby="lock-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">FOR FUN ONLY</span><h3 id="lock-dialog-title">Lock this element</h3><p id="lock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="lock-dialog" aria-label="Close lock wizard">×</button></div>
+    <p class="plain-disclosure">This is a self-imposed speed bump, not security or encryption. Delete this application's local data folder to reset all locks.</p>
+    <form id="lock-form" class="form-grid">
+      <label class="wide"><span>Credential policy</span><select id="lock-policy"><option value="pin">PIN</option><option value="password">Password</option><option value="pin+password">PIN plus password</option><option value="password+totp">Password plus TOTP</option><option value="pin+totp">PIN plus TOTP</option><option value="password+pin+totp">Password plus PIN plus TOTP</option></select></label>
+      <label id="lock-pin-row"><span>PIN</span><input id="lock-pin" type="password" inputmode="numeric" autocomplete="new-password"></label>
+      <label id="lock-password-row"><span>Password</span><input id="lock-password" type="password" autocomplete="new-password"></label>
+      <label id="lock-totp-row" class="wide" hidden><span>TOTP base32 secret</span><span class="browse-row"><input id="lock-totp" autocomplete="off"><button type="button" class="tonal-button" id="generate-lock-totp">Generate locally</button></span></label>
+      <div class="keypad" id="lock-keypad" aria-label="PIN keypad"><button type="button">1</button><button type="button">2</button><button type="button">3</button><button type="button">4</button><button type="button">5</button><button type="button">6</button><button type="button">7</button><button type="button">8</button><button type="button">9</button><button type="button" data-key="clear">Clear</button><button type="button">0</button><button type="button" data-key="backspace">Backspace</button></div>
+      <div class="form-actions wide"><button type="submit" class="filled-button">Create lock</button><button type="button" class="tonal-button" id="remove-current-lock">Remove existing lock</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="unlock-dialog" class="lock-dialog" aria-labelledby="unlock-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">LOCKED</span><h3 id="unlock-dialog-title">Unlock element</h3><p id="unlock-target-label"></p></div><button type="button" class="icon-button" data-close-dialog="unlock-dialog" aria-label="Cancel unlock">×</button></div>
+    <form id="unlock-form" class="form-grid"><label><span>PIN</span><input id="unlock-pin" type="password" inputmode="numeric"></label><label><span>Password</span><input id="unlock-password" type="password"></label><label class="wide"><span>TOTP code</span><input id="unlock-totp" inputmode="numeric" maxlength="8"></label><div class="form-actions wide"><button type="submit" class="filled-button">Unlock</button><button type="button" class="text-button" id="open-support">Forgotten your password?</button></div></form>
+    <p id="unlock-state">Successful verification unlocks this surface for this application session only.</p>
+  </dialog>
+
+  <dialog id="support-dialog" class="support-dialog" aria-labelledby="support-dialog-title">
+    <div class="dialog-header"><div><span class="eyebrow">FICTIONAL LOCAL DESK</span><h3 id="support-dialog-title">Support Tickets</h3></div><button type="button" class="icon-button" data-close-dialog="support-dialog" aria-label="Close support tickets">×</button></div>
+    <p class="plain-disclosure">Nothing is sent anywhere. No ticket exists outside this computer, no network request is made, no data is collected, and nobody is reading it.</p>
+    <form id="support-form" class="form-grid"><label><span>Category</span><select id="support-category"><option>Locked out</option><option>Forgotten credential</option><option>Authenticator unavailable</option></select></label><label><span>Severity nobody will honour</span><select id="support-severity"><option>Extremely ceremonial</option><option>Formally inconvenient</option><option>Catastrophically local</option></select></label><label class="wide"><span>Description</span><textarea id="support-description" rows="3"></textarea></label><button type="submit" class="filled-button wide">Create local ticket</button></form>
+    <div id="support-result" aria-live="polite"></div>
+    <label class="search-field"><span class="visually-hidden">Search local support tickets</span><input id="support-search" type="search" placeholder="Search local tickets"><button type="button" class="regex-trigger" aria-label="Open regex builder for support ticket search">.*</button></label>
+    <label><span>Ticket status</span><select id="support-status-filter"><option value="">Every status</option><option value="Open">Open</option><option value="In review">In review</option><option value="Resolved">Resolved</option></select></label>
+    <div class="form-actions"><button type="button" class="tonal-button" id="select-all-support">Select all visible</button><button type="button" class="tonal-button" id="invert-support">Invert visible selection</button><button type="button" class="tonal-button" id="advance-support">Advance selected status</button><button type="button" class="tonal-button" id="export-support">Export visible tickets</button><button type="button" class="danger-button" id="delete-support">Delete selected</button></div>
+    <p id="support-selection-status" aria-live="polite">0 selected.</p>
+    <div id="support-list" class="support-list"></div>
+    <button type="button" class="tonal-button" id="support-open-folder">Open application-data folder</button>
+  </dialog>
+
+  <dialog id="super-confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+    <div class="dialog-header"><div><span class="eyebrow">DESTRUCTIVE ACTION</span><h3 id="confirm-title">Confirm deletion</h3></div><button type="button" class="icon-button" id="confirm-emergency" aria-label="Emergency exit">×</button></div>
+    <p id="confirm-description"></p>
+    <div class="two-keys"><button type="button" id="confirm-key-one" aria-pressed="false">Arm key one</button><button type="button" id="confirm-key-two" aria-pressed="false">Arm key two</button></div>
+    <label class="range-field"><span>Slide fully to authorize</span><input id="confirm-slider" type="range" min="0" max="100" value="0" disabled aria-describedby="confirm-status"></label>
+    <div class="confirm-progress" id="confirm-progress" role="progressbar" aria-label="Destructive confirmation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="confirm-progress-fill"></span></div>
+    <p id="confirm-status" aria-live="polite">Arm both keys to enable the slider.</p>
+    <button type="button" class="danger-button" id="confirm-run" disabled>Complete destructive action</button>
+  </dialog>
+
+  <script src="../shared/hair.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

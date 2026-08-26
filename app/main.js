@@ -1,269 +1,1217 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
+'use strict';
+
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, autoUpdater } = require('electron');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
+const dns = require('node:dns/promises');
+const http = require('node:http');
+const https = require('node:https');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const { pathToFileURL } = require('node:url');
+const { atomicWriteFile, atomicWriteJson } = require('./core/atomic');
+const { buildSshArguments } = require('./core/ssh');
+const {
+  createServiceCredentialRecord,
+  isPublicServiceEndpoint,
+  resolveServiceSecurityContext,
+  serviceCredentialHeaders
+} = require('./core/service-security');
+const { validateProvenance } = require('./core/provenance');
+const { StateStore, drainStateAndHistory } = require('./core/state-store');
+const { LocalVault } = require('./core/vault');
+const { LocalHistory } = require('./core/history');
+const { createRegexScheduler } = require('./core/regex-worker');
+const EvidencePaths = require('./core/evidence-paths');
+const { hashSecret, verifySecret } = require('./core/credentials');
+const SchoolMode = require('./core/school-mode');
+const ScheduledSettings = require('./core/scheduled-settings');
+const IpcAuthorization = require('./core/ipc-authorization');
+const NetworkPolicy = require('./core/network-policy');
+const NetworkApprovals = require('./core/network-approvals');
+const { DIM_SUM_RECORD } = require('./core/delight-attention');
+const {
+  CANONICAL_UPDATE_FEED_URL,
+  UpdateRestartAuthorization,
+  createObservedDownloadedUpdate
+} = require('./core/update-security');
+const { LIMITS: VOCABULARY_LIMITS, VocabularyStore, serializeVocabularyCache } = require('./core/vocabulary');
 
-const DEFAULT_STATE = Object.freeze({
-  version: 1,
-  profile: {
-    baselineLengthCm: 1.2,
-    baselineDate: new Date().toISOString().slice(0, 10),
-    growthRateCmPerMonth: 1.25,
-    targetLengthCm: 12,
-    displayUnit: 'cm'
-  },
-  haircuts: [],
-  settings: {
-    language: 'en',
-    theme: 'dark',
-    storageMode: 'local',
-    serverUrl: 'http://127.0.0.1:4782',
-    connectionTimeoutMs: 8000,
-    ssh: {
-      host: '',
-      port: 22,
-      username: '',
-      remoteApiPort: 4782,
-      localForwardPort: 14782,
-      keyFile: ''
-    }
-  }
-});
+const execFileAsync = promisify(execFile);
+const MAX_RESPONSE_BYTES = 512 * 1024;
+const MAX_EXPORT_BYTES = 10 * 1024 * 1024;
+const MAX_CONVERTER_SOURCE_BYTES = 10 * 1024 * 1024;
+const CONVERTER_HANDLES = new Map();
+const OLLAMA_ENDPOINTS = new Set(['/api/version', '/api/tags', '/api/ps', '/api/show', '/api/pull', '/api/chat', '/api/generate', '/api/copy', '/api/delete']);
 
-let mainWindow;
-let sshProcess = null;
-let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
-
-function cloneDefaultState() {
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+function initializeEvidencePathIsolation() {
+  const validation = EvidencePaths.validateEvidencePathArguments(process.argv);
+  if (!validation.active) return Object.freeze({ active: false });
+  fsSync.mkdirSync(validation.paths.appData, { recursive: true, mode: 0o700 });
+  fsSync.mkdirSync(validation.paths.userData, { recursive: true, mode: 0o700 });
+  const activatedValidation = EvidencePaths.validateEvidencePathArguments(process.argv);
+  app.setPath('appData', activatedValidation.paths.appData);
+  app.setPath('userData', activatedValidation.paths.userData);
+  const receipt = EvidencePaths.createEvidenceIsolationReceipt(activatedValidation);
+  fsSync.writeFileSync(
+    path.join(validation.paths.userData, 'evidence-isolation.json'),
+    `${JSON.stringify(receipt, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 }
+  );
+  fsSync.writeFileSync(
+    path.join(validation.paths.appData, 'evidence-app-data-active.json'),
+    `${JSON.stringify({ schemaVersion: 1, appDataPathSha256: receipt.appDataPathSha256 }, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 }
+  );
+  return Object.freeze({ active: true });
 }
 
-function dataPath(file) {
+initializeEvidencePathIsolation();
+
+let mainWindow = null;
+let sshProcess = null;
+let sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
+let localVault = null;
+let localHistory = null;
+let stateStore = null;
+const updateAuthorization = new UpdateRestartAuthorization();
+let activeUpdateCheck = null;
+let lastSchoolRecord = '';
+let lastValidSchoolEffectiveState = null;
+let schoolPoll = null;
+let schoolUnlockFailures = { failures: 0, retryAt: 0 };
+let scheduledNetworkApprovals = null;
+const regexScheduler = createRegexScheduler();
+let shutdownStarted = false;
+let shutdownReady = false;
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function userDataPath(file) {
   return path.join(app.getPath('userData'), file);
 }
 
-async function renameWithRetry(from, to) {
-  const transient = new Set(['EPERM', 'EACCES', 'EBUSY']);
-  let lastError;
-  for (let attempt = 0; attempt < 7; attempt += 1) {
-    try {
-      await fs.rename(from, to);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!transient.has(error.code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
-    }
-  }
-  throw lastError;
+function personalVocabularyCachePath() {
+  return userDataPath('personal-vocabulary.json');
 }
 
-async function atomicWriteJson(file, value) {
-  const destination = dataPath(file);
-  await fs.mkdir(path.dirname(destination), { recursive: true });
-  const temporary = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+function sharedSchoolPath() {
+  return path.join(app.getPath('appData'), 'Ding Ding Projects', 'shared-school-mode.json');
+}
+
+function sharedSchoolCredentialPath() {
+  return path.join(app.getPath('appData'), 'Ding Ding Projects', 'shared-school-mode-credential.bin');
+}
+
+function dimSumPhotoCachePath() {
+  return userDataPath('public-dim-sum-cache', DIM_SUM_RECORD.photoFileName);
+}
+
+function defaultSchoolRecord() {
+  return SchoolMode.createDefaultSchoolRecord();
+}
+
+async function readSharedSchoolCredential() {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system credential protection is unavailable.');
   try {
-    await renameWithRetry(temporary, destination);
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {});
+    const encrypted = await fs.readFile(sharedSchoolCredentialPath());
+    const value = JSON.parse(safeStorage.decryptString(encrypted));
+    if (value?.schemaVersion !== 1 || !['pin', 'password'].includes(value.kind) || !value.record || typeof value.record !== 'object') {
+      throw new Error('The shared mode credential record is invalid.');
+    }
+    return value;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    if (/credential record is invalid|credential protection is unavailable/.test(error.message)) throw error;
+    throw new Error('The shared mode credential record could not be read.');
   }
+}
+
+async function writeSharedSchoolCredential(kind, credential) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system credential protection is unavailable.');
+  const record = {
+    schemaVersion: 1,
+    kind,
+    record: hashSecret(credential, kind),
+    updatedAt: new Date().toISOString()
+  };
+  const encrypted = safeStorage.encryptString(JSON.stringify(record));
+  await atomicWriteFile(sharedSchoolCredentialPath(), encrypted, { mode: 0o600, maxBytes: 16 * 1024 });
+  return record;
+}
+
+function publicSchoolRecord(effectiveState, credential) {
+  const record = effectiveState.record || defaultSchoolRecord();
+  return {
+    ...record,
+    enabled: effectiveState.effectiveEnabled,
+    credentialConfigured: Boolean(credential && record.unlock?.credentialRef === 'vault:shared-school-primary'),
+    credentialKind: credential?.kind || null,
+    status: effectiveState.status,
+    availability: effectiveState.availability,
+    degraded: effectiveState.degraded,
+    degradedReason: effectiveState.reason,
+    verifiedDisable: effectiveState.verifiedDisable
+  };
+}
+
+function reconcileSchoolCandidate(candidate, credential, { availability = 'available', verifiedDisable = false } = {}) {
+  if (lastValidSchoolEffectiveState === null) {
+    lastValidSchoolEffectiveState = availability === 'available'
+      ? SchoolMode.createSchoolEffectiveState(candidate)
+      : SchoolMode.createSchoolEffectiveState();
+  } else {
+    lastValidSchoolEffectiveState = SchoolMode.reconcileSchoolRecordRead({
+      candidate,
+      previous: lastValidSchoolEffectiveState,
+      availability,
+      verifiedDisable
+    });
+  }
+  return publicSchoolRecord(lastValidSchoolEffectiveState, credential);
+}
+
+async function readSchoolRecord({ verifiedDisable = false } = {}) {
+  let raw;
+  let candidate = null;
+  let availability = 'available';
+  let credential = null;
+  try {
+    raw = await fs.readFile(sharedSchoolPath(), 'utf8');
+  } catch (error) {
+    availability = 'unavailable';
+  }
+  if (availability === 'available') {
+    try { candidate = SchoolMode.normalizeSchoolRecord(JSON.parse(raw)); } catch { availability = 'invalid'; }
+  }
+  try { credential = await readSharedSchoolCredential(); } catch { availability = 'unavailable'; }
+  const degraded = availability !== 'available';
+  return reconcileSchoolCandidate(candidate, credential, { availability: degraded ? availability : 'available', verifiedDisable });
+}
+
+function acceptSchoolRecord(record, credential, { verifiedDisable = false } = {}) {
+  return reconcileSchoolCandidate(record, credential, { availability: 'available', verifiedDisable });
+}
+
+async function publishSchoolRecord(next) {
+  lastSchoolRecord = JSON.stringify(next);
+  mainWindow?.webContents.send('school:changed', next);
+  return next;
+}
+
+async function persistSchoolRecord(record) {
+  const normalized = SchoolMode.normalizeSchoolRecord(record);
+  await atomicWriteJson(sharedSchoolPath(), normalized, { maxBytes: 16 * 1024 });
+  return normalized;
+}
+
+function nextSchoolTimestamp(current) {
+  const now = Date.now();
+  const previous = current?.updatedAt ? Date.parse(current.updatedAt) : 0;
+  return new Date(Math.max(now, Number.isFinite(previous) ? previous + 1 : now)).toISOString();
+}
+
+async function configureSchoolMode(input) {
+  const credential = String(input?.credential || '');
+  const requestedKind = ['pin', 'password'].includes(input?.credentialKind) ? input.credentialKind : 'password';
+  const requestedDisplayName = SchoolMode.normalizeSchoolDisplayName(input?.displayName);
+  await readSchoolRecord();
+  const current = lastValidSchoolEffectiveState.record || defaultSchoolRecord();
+  const existing = await readSharedSchoolCredential();
+  let activeCredential = existing;
+  const credentialRef = 'vault:shared-school-primary';
+  const evidence = {};
+  if (existing) {
+    if (!verifySecret(credential, existing.record, existing.kind)) throw new Error('The shared unlock value did not match. No shared change was made.');
+    if (requestedKind !== existing.kind) throw new Error('Choose the configured shared unlock method before changing this mode.');
+    evidence.verifiedCredentialRef = credentialRef;
+  } else {
+    activeCredential = await writeSharedSchoolCredential(requestedKind, credential);
+    evidence.enrolledCredentialRef = credentialRef;
+  }
+  const unlock = { policy: activeCredential.kind, credentialRef };
+  if (!current.unlock || current.unlock.policy !== unlock.policy || current.unlock.credentialRef !== unlock.credentialRef) evidence.enrolledCredentialRef = credentialRef;
+  const next = await persistSchoolRecord(SchoolMode.transitionSchoolMode(current, {
+    enabled: true,
+    displayName: requestedDisplayName,
+    unlock,
+    updatedAt: nextSchoolTimestamp(current)
+  }, evidence));
+  schoolUnlockFailures = { failures: 0, retryAt: 0 };
+  return publishSchoolRecord(acceptSchoolRecord(next, activeCredential));
+}
+
+async function disableSchoolMode(input) {
+  const now = Date.now();
+  if (schoolUnlockFailures.retryAt > now) {
+    return { ...(await readSchoolRecord()), unlocked: false, retryAfterMs: schoolUnlockFailures.retryAt - now };
+  }
+  const existing = await readSharedSchoolCredential();
+  if (!existing) throw new Error('No shared unlock credential is configured. Configure one before changing the shared mode.');
+  if (!verifySecret(String(input?.credential || ''), existing.record, existing.kind)) {
+    const failures = schoolUnlockFailures.failures + 1;
+    const retryAt = failures >= 5 ? now + 30000 : 0;
+    schoolUnlockFailures = { failures: retryAt ? 0 : failures, retryAt };
+    return { ...(await readSchoolRecord()), unlocked: false, retryAfterMs: retryAt ? 30000 : 0, remainingBeforeDelay: retryAt ? 0 : 5 - failures };
+  }
+  schoolUnlockFailures = { failures: 0, retryAt: 0 };
+  await readSchoolRecord();
+  const current = lastValidSchoolEffectiveState.record;
+  if (!current) throw new Error('No valid shared mode record is available to disable. The restricted state remains active.');
+  const next = await persistSchoolRecord(SchoolMode.transitionSchoolMode(current, {
+    enabled: false,
+    updatedAt: nextSchoolTimestamp(current)
+  }, { verifiedCredentialRef: current.unlock.credentialRef }));
+  return publishSchoolRecord({ ...acceptSchoolRecord(next, existing, { verifiedDisable: true }), unlocked: true });
+}
+
+async function pollSchoolRecord() {
+  const record = await readSchoolRecord();
+  const serialized = JSON.stringify(record);
+  if (serialized !== lastSchoolRecord) {
+    lastSchoolRecord = serialized;
+    mainWindow?.webContents.send('school:changed', record);
+  }
+}
+
+function redactedHistoryState(state) {
+  const clone = structuredClone(state);
+  delete clone.revision;
+  delete clone.updatedAt;
+  if (clone.settings?.sync?.ssh?.keyFile) clone.settings.sync.ssh.keyFile = '[omitted from history]';
+  if (clone.settings?.logo?.customDataUrl) clone.settings.logo.customDataUrl = '[local custom image omitted from history]';
+  clone.vocabulary = { loaded: Boolean(clone.vocabulary?.loaded), cacheVersion: clone.vocabulary?.cacheVersion || null };
+  return clone;
 }
 
 async function readState() {
+  return stateStore.read();
+}
+
+async function writeStateWithHistory(input, event = 'Application state updated') {
+  const result = await stateStore.write(input, event);
+  if (result.history.status === 'degraded' || result.history.status === 'unavailable') {
+    mainWindow?.webContents.send('history:error', { message: result.history.message });
+  }
+  return result;
+}
+
+async function writeState(input, event = 'Application state updated') {
+  return (await writeStateWithHistory(input, event)).state;
+}
+
+async function readProvenance() {
+  let raw;
+  let release = null;
   try {
-    const raw = await fs.readFile(dataPath('hair-growth.json'), 'utf8');
-    const parsed = JSON.parse(raw);
-    return { ...cloneDefaultState(), ...parsed, profile: { ...DEFAULT_STATE.profile, ...parsed.profile }, settings: { ...DEFAULT_STATE.settings, ...parsed.settings, ssh: { ...DEFAULT_STATE.settings.ssh, ...parsed.settings?.ssh } } };
-  } catch (error) {
-    if (error.code === 'ENOENT' || error.name === 'SyntaxError') return cloneDefaultState();
-    throw error;
+    raw = JSON.parse(await fs.readFile(path.join(__dirname, 'provenance.json'), 'utf8'));
+  } catch {
+    raw = null;
+  }
+  try {
+    const candidate = JSON.parse(await fs.readFile(path.join(__dirname, 'release-metadata.json'), 'utf8'));
+    if (candidate?.schemaVersion === 1 && candidate.version === app.getVersion() && typeof candidate.codeName === 'string' && typeof candidate.publicPhotoUrl === 'string') {
+      release = candidate;
+    }
+  } catch {}
+  return { ...validateProvenance(raw, app.getVersion()), release };
+}
+
+async function boundedFetch(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1000, Math.min(120000, Number(options.timeoutMs) || 8000));
+  const maxResponseBytes = Math.max(256, Math.min(MAX_RESPONSE_BYTES, Number(options.maxResponseBytes) || MAX_RESPONSE_BYTES));
+  const fetchOptions = { ...options };
+  delete fetchOptions.timeoutMs;
+  delete fetchOptions.maxResponseBytes;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal, redirect: 'error' });
+    const reader = response.body?.getReader();
+    const chunks = [];
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxResponseBytes) {
+          await reader.cancel();
+          throw new RangeError(`Response exceeds the ${maxResponseBytes}-byte limit.`);
+        }
+        chunks.push(Buffer.from(value));
+      }
+    }
+    const text = Buffer.concat(chunks).toString('utf8');
+    let body = null;
+    if (text) {
+      try { body = JSON.parse(text); } catch { throw new Error('The service returned invalid JSON.'); }
+    }
+    return { response, body };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-async function writeState(state) {
-  await atomicWriteJson('hair-growth.json', state);
+function validateDimSumPhoto(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) throw new RangeError('The public catalog photo is outside the supported size bound.');
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (!bytes.subarray(0, 8).equals(pngSignature)) throw new TypeError('The public catalog photo is not a valid PNG payload.');
+  return bytes;
+}
+
+async function fetchBoundedBytes(url, { timeoutMs = 8000, maxBytes = 2 * 1024 * 1024 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1000, Math.min(30000, Number(timeoutMs) || 8000)));
+  try {
+    const response = await fetch(url, { method: 'GET', headers: { accept: 'image/png' }, redirect: 'error', signal: controller.signal });
+    if (!response.ok) throw new Error(`The public catalog returned HTTP ${response.status}.`);
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('The public catalog photo response had no body.');
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new RangeError(`The public catalog photo exceeds ${maxBytes} bytes.`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function dimSumPhotoDataUrl() {
+  let bytes;
+  try {
+    bytes = validateDimSumPhoto(await fs.readFile(dimSumPhotoCachePath()));
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof TypeError) && !(error instanceof RangeError)) throw error;
+    bytes = validateDimSumPhoto(await fetchBoundedBytes(DIM_SUM_RECORD.photoUrl));
+    await atomicWriteFile(dimSumPhotoCachePath(), bytes, { mode: 0o600, maxBytes: 2 * 1024 * 1024 });
+  }
+  return { dataUrl: `data:image/png;base64,${bytes.toString('base64')}`, alt: DIM_SUM_RECORD.alt, id: DIM_SUM_RECORD.id };
+}
+
+function normalizeScheduleRuleInput(input) {
+  return ScheduledSettings.normalizeScheduleRule(input?.rule || input);
+}
+
+function scheduledNetworkSource(rule) {
+  if (rule.source.type === 'api') return { type: 'api', url: rule.source.url };
+  if (rule.source.type === 'home-assistant') {
+    return {
+      type: 'home-assistant',
+      baseUrl: rule.source.baseUrl,
+      entityId: rule.source.entityId,
+      credentialRef: rule.source.credentialRef
+    };
+  }
+  throw new TypeError('Only external schedule sources use the network policy.');
+}
+
+async function resolveScheduledAddresses(requestUrl) {
+  const url = new URL(requestUrl);
+  const host = NetworkPolicy.classifyHost(url.hostname);
+  if (host.kind === 'numeric-alias') throw new TypeError('Noncanonical numeric hostname aliases are not accepted.');
+  if (host.kind === 'ip') return [{ address: host.hostname, family: host.family }];
+  const records = await dns.lookup(host.hostname, { all: true, verbatim: true });
+  return records.map(({ address, family }) => ({ address, family }));
+}
+
+async function readScheduledNetworkApproval(canonicalSourceScope, origin, addresses) {
+  if (!scheduledNetworkApprovals) return null;
+  return scheduledNetworkApprovals.get({ canonicalSourceScope, origin, addresses });
+}
+
+async function resolveAndAuthorizeNetworkPlan(rule) {
+  const source = scheduledNetworkSource(rule);
+  const requestUrl = rule.source.type === 'api'
+    ? rule.source.url
+    : new URL(`api/states/${rule.source.entityId}`, rule.source.baseUrl).href;
+  const resolvedAddresses = await resolveScheduledAddresses(requestUrl);
+  const canonicalSourceScope = NetworkPolicy.canonicalScheduledSourceScope(source);
+  const origin = new URL(requestUrl).origin;
+  const host = NetworkPolicy.classifyHost(new URL(requestUrl).hostname);
+  const classifiedAddresses = resolvedAddresses.map(({ address }) => NetworkPolicy.classifyIpAddress(address));
+  let approvedScope = null;
+
+  if (
+    host.category === 'loopback' &&
+    classifiedAddresses.length > 0 &&
+    classifiedAddresses.every(({ category }) => category === 'loopback')
+  ) {
+    approvedScope = NetworkPolicy.createApprovedNetworkScope({
+      kind: 'loopback',
+      canonicalSourceScope,
+      origin,
+      addresses: classifiedAddresses.map(({ address }) => address)
+    });
+  } else if (
+    rule.source.type === 'home-assistant' &&
+    classifiedAddresses.length > 0 &&
+    classifiedAddresses.every(({ category }) => category === 'private')
+  ) {
+    const stored = await readScheduledNetworkApproval(
+      canonicalSourceScope,
+      origin,
+      classifiedAddresses.map(({ address }) => address)
+    );
+    if (!stored) {
+      const error = new Error('This private LAN source needs an explicit endpoint approval before it can connect.');
+      error.code = 'ERR_NETWORK_APPROVAL_REQUIRED';
+      throw error;
+    }
+    approvedScope = NetworkPolicy.createApprovedNetworkScope({
+      kind: 'private-lan',
+      canonicalSourceScope: stored.canonicalSourceScope,
+      origin: stored.origin,
+      addresses: stored.addresses
+    });
+  }
+
+  return NetworkPolicy.createScheduledSourceNetworkPlan({
+    source,
+    resolvedAddresses,
+    ...(approvedScope ? { approvedScope } : {})
+  });
+}
+
+async function approveHomeAssistantPrivateLanSource(rule) {
+  const source = scheduledNetworkSource(rule);
+  const requestUrl = new URL(`api/states/${rule.source.entityId}`, rule.source.baseUrl).href;
+  const resolvedAddresses = await resolveScheduledAddresses(requestUrl);
+  const classifiedAddresses = resolvedAddresses.map(({ address }) => NetworkPolicy.classifyIpAddress(address));
+  const isPrivateLan = classifiedAddresses.length > 0
+    && classifiedAddresses.every(({ category }) => category === 'private');
+  if (!isPrivateLan) {
+    await resolveAndAuthorizeNetworkPlan(rule);
+    return { approved: false, scope: 'public-or-loopback' };
+  }
+
+  const canonicalSourceScope = NetworkPolicy.canonicalScheduledSourceScope(source);
+  const origin = new URL(requestUrl).origin;
+  const addresses = classifiedAddresses.map(({ address }) => address);
+  const decision = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Approve private LAN destination',
+    message: 'Approve this exact private LAN destination for scheduled Home Assistant requests?',
+    detail: `Origin: ${origin}\nResolved addresses: ${addresses.join(', ')}\nA changed address set requires another approval.`,
+    buttons: ['Approve endpoint', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true
+  });
+  if (decision.response !== 0) {
+    const error = new Error('Private LAN endpoint approval was cancelled. No access token was stored.');
+    error.code = 'ERR_NETWORK_APPROVAL_CANCELLED';
+    throw error;
+  }
+  const approvalDocument = await scheduledNetworkApprovals.read();
+  const prior = approvalDocument.approvals.find((record) => record.canonicalSourceScope === canonicalSourceScope);
+  if (prior && (prior.origin !== origin || prior.addresses.length !== addresses.length || prior.addresses.some((address) => !addresses.includes(address)))) {
+    await scheduledNetworkApprovals.remove({
+      canonicalSourceScope: prior.canonicalSourceScope,
+      origin: prior.origin,
+      addresses: prior.addresses
+    });
+  }
+  await scheduledNetworkApprovals.set({ canonicalSourceScope, origin, addresses });
+  await resolveAndAuthorizeNetworkPlan(rule);
+  return { approved: true, scope: 'private-lan' };
+}
+
+function requestJsonThroughPinnedPlan(plan, descriptor, headers) {
+  return new Promise((resolve, reject) => {
+    const transport = plan.protocol === 'https:' ? https : http;
+    const approvedAddresses = new Set(plan.addresses.map(({ address }) => address));
+    let settled = false;
+    const finish = (handler, value) => {
+      if (settled) return;
+      settled = true;
+      handler(value);
+    };
+    const request = transport.request(new URL(plan.url), {
+      method: descriptor.method,
+      headers,
+      agent: false,
+      lookup: NetworkPolicy.createPinnedLookup(plan),
+      ...(plan.tls ? {
+        rejectUnauthorized: true,
+        servername: plan.tls.servername || undefined
+      } : {})
+    }, (response) => {
+      const statusCode = Number(response.statusCode) || 0;
+      if (statusCode >= 300 && statusCode < 400) {
+        response.resume();
+        finish(reject, new Error('Scheduled source redirects are not accepted.'));
+        return;
+      }
+      const contentLength = Number(response.headers['content-length']);
+      if (Number.isFinite(contentLength) && contentLength > descriptor.maxResponseBytes) {
+        response.destroy();
+        finish(reject, new RangeError(`Response exceeds the ${descriptor.maxResponseBytes}-byte limit.`));
+        return;
+      }
+      const chunks = [];
+      let size = 0;
+      response.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > descriptor.maxResponseBytes) {
+          response.destroy();
+          finish(reject, new RangeError(`Response exceeds the ${descriptor.maxResponseBytes}-byte limit.`));
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.once('error', (error) => finish(reject, error));
+      response.once('end', () => {
+        if (settled) return;
+        const text = Buffer.concat(chunks).toString('utf8');
+        let body = null;
+        if (text) {
+          try { body = JSON.parse(text); } catch {
+            finish(reject, new Error('The scheduled source returned invalid JSON.'));
+            return;
+          }
+        }
+        finish(resolve, { statusCode, body });
+      });
+    });
+    request.once('socket', (socket) => {
+      const verifyConnectedAddress = () => {
+        try {
+          const connected = NetworkPolicy.classifyIpAddress(socket.remoteAddress);
+          if (!approvedAddresses.has(connected.address)) {
+            const error = new Error('The connected address did not match the authorized DNS result.');
+            error.code = 'ERR_NETWORK_CONNECTED_ADDRESS';
+            request.destroy(error);
+          }
+        } catch (error) {
+          request.destroy(error);
+        }
+      };
+      if (socket.connecting) socket.once(plan.tls ? 'secureConnect' : 'connect', verifyConnectedAddress);
+      else verifyConnectedAddress();
+    });
+    request.setTimeout(descriptor.timeoutMs, () => {
+      const error = new Error('The scheduled source request timed out.');
+      error.code = 'ERR_NETWORK_TIMEOUT';
+      request.destroy(error);
+    });
+    request.once('error', (error) => finish(reject, error));
+    request.end();
+  });
+}
+
+async function secureScheduledRequest(rule, descriptor) {
+  const plan = await resolveAndAuthorizeNetworkPlan(rule);
+  if (plan.url !== descriptor.url || plan.redirectPolicy.maxRedirects !== 0) {
+    throw new Error('The authorized request plan does not match the scheduled source.');
+  }
+  const headers = { ...descriptor.headers };
+  if (rule.source.type === 'home-assistant') {
+    const expectedScope = ScheduledSettings.canonicalSourceScope(rule);
+    const binding = plan.credentialBinding;
+    const descriptorUrl = new URL(descriptor.url);
+    if (
+      !binding ||
+      binding.credentialRef !== descriptor.credentialRef ||
+      binding.canonicalSourceScope !== expectedScope ||
+      binding.requestOrigin !== descriptorUrl.origin ||
+      binding.requestUrl !== descriptorUrl.href
+    ) {
+      throw new Error('The Home Assistant credential scope changed before the request was authorized.');
+    }
+    const accessToken = await localVault.externalSettingToken(expectedScope);
+    if (!accessToken) throw new Error('The Home Assistant access token is not stored for this exact rule source.');
+    headers.authorization = `Bearer ${accessToken}`;
+  }
+  return requestJsonThroughPinnedPlan(plan, descriptor, headers);
+}
+
+async function resolveScheduledSource(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  const generation = Number(input?.generation);
+  const receivedAt = new Date().toISOString();
+  if (rule.source.type === 'local') {
+    return ScheduledSettings.validateSourceResult(rule, null, { generation, receivedAt });
+  }
+  const descriptor = ScheduledSettings.createExternalRequestDescriptor(rule);
+  const { statusCode, body } = await secureScheduledRequest(rule, descriptor);
+  if (statusCode < 200 || statusCode >= 300) throw new Error(`The scheduled-settings source returned HTTP ${statusCode}.`);
+  return ScheduledSettings.validateSourceResult(rule, body, { generation, receivedAt });
+}
+
+async function setHomeAssistantScheduleToken(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  if (rule.source.type !== 'home-assistant') throw new TypeError('A Home Assistant rule is required to store this access token.');
+  const token = String(input?.token || '');
+  const networkApproval = token
+    ? await approveHomeAssistantPrivateLanSource(rule)
+    : { approved: false, scope: 'cleared' };
+  const result = await localVault.setExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule), token);
+  return { ...result, networkApproval };
+}
+
+async function hasHomeAssistantScheduleToken(input) {
+  const rule = normalizeScheduleRuleInput(input);
+  if (rule.source.type !== 'home-assistant') return false;
+  return localVault.hasExternalSettingToken(ScheduledSettings.canonicalSourceScope(rule));
+}
+
+async function apiRequest(request) {
+  const policy = resolveServiceSecurityContext(request.sync, sshState);
+  const endpoint = String(request.endpoint || '');
+  if (!/^\/(?:health|version|api\/profiles\/[a-zA-Z0-9_-]{1,64}(?:\/haircuts(?:\/[a-zA-Z0-9-]{8,64})?)?)$/.test(endpoint)) {
+    throw new TypeError('Service endpoint is not allowlisted.');
+  }
+  const url = new URL(endpoint, policy.baseUrl);
+  const bodyText = request.body === undefined ? null : JSON.stringify(request.body);
+  if (bodyText && Buffer.byteLength(bodyText) > 64 * 1024) throw new RangeError('Request body exceeds 64 KiB.');
+  const apiKey = isPublicServiceEndpoint(endpoint) ? '' : await localVault.apiKeyForScope(policy.credentialScope);
+  const credential = apiKey ? createServiceCredentialRecord(policy, apiKey) : null;
+  const { response, body } = await boundedFetch(url, {
+    method: ['GET', 'PUT', 'POST', 'DELETE'].includes(request.method) ? request.method : 'GET',
+    headers: {
+      accept: 'application/json',
+      ...(bodyText ? { 'content-type': 'application/json' } : {}),
+      ...serviceCredentialHeaders(policy, endpoint, credential)
+    },
+    body: bodyText,
+    timeoutMs: request.timeoutMs
+  });
+  if (!response.ok) throw new Error(body?.error || `Service returned HTTP ${response.status}.`);
+  return body;
+}
+
+function sendSshState(state) {
+  sshState = state;
+  mainWindow?.webContents.send('ssh:state', state);
   return state;
 }
 
-async function storeApiKey(apiKey) {
-  if (!apiKey) {
-    await fs.rm(dataPath('server-key.enc'), { force: true });
-    return;
-  }
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('Operating-system encryption is unavailable. The API key was not stored.');
-  const encrypted = safeStorage.encryptString(apiKey);
-  await fs.writeFile(dataPath('server-key.enc'), encrypted, { flag: 'w', mode: 0o600 });
-}
-
-async function readApiKey() {
-  try {
-    if (!safeStorage.isEncryptionAvailable()) return '';
-    return safeStorage.decryptString(await fs.readFile(dataPath('server-key.enc')));
-  } catch {
-    return '';
-  }
-}
-
-function validatedServerUrl(raw) {
-  const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP or HTTPS server URLs are supported.');
-  if (url.username || url.password) throw new Error('Credentials must not be embedded in the server URL.');
-  return url;
-}
-
-async function apiRequest(serverUrl, endpoint, options = {}) {
-  const url = new URL(endpoint, validatedServerUrl(serverUrl));
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.min(Math.max(Number(options.timeoutMs) || 8000, 1000), 30000));
-  try {
-    const apiKey = await readApiKey();
-    const response = await fetch(url, {
-      method: options.method || 'GET',
-      headers: {
-        accept: 'application/json',
-        ...(options.body ? { 'content-type': 'application/json' } : {}),
-        ...(apiKey ? { 'x-api-key': apiKey } : {})
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal
-    });
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : null;
-    if (!response.ok) throw new Error(body?.error || `Server returned HTTP ${response.status}.`);
-    return body;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function sshArguments(config) {
-  const port = Number(config.port);
-  const remoteApiPort = Number(config.remoteApiPort);
-  const localForwardPort = Number(config.localForwardPort);
-  if (!config.host || !/^[a-zA-Z0-9.-]{1,253}$/.test(config.host)) throw new Error('Enter a valid host name or IP address.');
-  if (!config.username || !/^[a-zA-Z0-9._-]{1,64}$/.test(config.username)) throw new Error('Enter a valid SSH username.');
-  for (const [label, value] of [['SSH port', port], ['remote API port', remoteApiPort], ['local forwarded port', localForwardPort]]) {
-    if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${label} must be between 1 and 65535.`);
-  }
-  const knownHosts = path.join(app.getPath('home'), '.ssh', 'known_hosts');
-  const args = [
-    '-N',
-    '-T',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=yes',
-    '-o', 'UpdateHostKeys=no',
-    '-o', `UserKnownHostsFile=${knownHosts}`,
-    '-o', 'ExitOnForwardFailure=yes',
-    '-o', 'ServerAliveInterval=30',
-    '-o', 'ServerAliveCountMax=3',
-    '-p', String(port),
-    '-L', `127.0.0.1:${localForwardPort}:127.0.0.1:${remoteApiPort}`
-  ];
-  if (config.keyFile) args.push('-i', path.resolve(config.keyFile));
-  args.push(`${config.username}@${config.host}`);
-  return args;
-}
-
 async function stopSshTunnel() {
-  if (!sshProcess) {
-    sshState = { status: 'disconnected', message: 'No SSH tunnel is active.' };
-    return sshState;
-  }
-  const processToStop = sshProcess;
+  if (!sshProcess) return sendSshState({ status: 'disconnected', message: 'No SSH tunnel is active.' });
+  const child = sshProcess;
   sshProcess = null;
-  processToStop.kill('SIGTERM');
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  if (!processToStop.killed) processToStop.kill('SIGKILL');
-  sshState = { status: 'disconnected', message: 'SSH tunnel stopped.' };
-  mainWindow?.webContents.send('ssh:state', sshState);
-  return sshState;
+  child.kill('SIGTERM');
+  await Promise.race([
+    new Promise((resolve) => child.once('exit', resolve)),
+    new Promise((resolve) => setTimeout(resolve, 1500))
+  ]);
+  if (child.exitCode === null) child.kill('SIGKILL');
+  return sendSshState({ status: 'disconnected', message: 'SSH tunnel stopped.' });
 }
 
 async function startSshTunnel(config) {
   await stopSshTunnel();
-  const args = sshArguments(config);
-  sshState = { status: 'connecting', message: 'Starting an SSH tunnel with strict host-key verification.' };
-  mainWindow?.webContents.send('ssh:state', sshState);
+  if (config.keyFile) await fs.access(path.resolve(config.keyFile));
+  const args = buildSshArguments(config, app.getPath('home'));
+  sendSshState({ status: 'connecting', message: 'Starting a tunnel with strict host-key verification.' });
   return new Promise((resolve, reject) => {
     const child = spawn('ssh.exe', args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], shell: false });
     sshProcess = child;
     let errorText = '';
-    const readyTimer = setTimeout(() => {
-      if (sshProcess !== child) return;
-      sshState = { status: 'connected', message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.` };
-      mainWindow?.webContents.send('ssh:state', sshState);
-      resolve(sshState);
-    }, 900);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (sshProcess !== child || settled) return;
+      settled = true;
+      const state = sendSshState({
+        status: 'connected',
+        host: String(config.host || '').trim(),
+        port: Number(config.port),
+        remoteApiPort: Number(config.remoteApiPort),
+        localForwardPort: Number(config.localForwardPort),
+        message: `Tunnel ready on 127.0.0.1:${config.localForwardPort}.`
+      });
+      resolve(state);
+    }, 1200);
     child.stderr.on('data', (chunk) => { errorText = `${errorText}${chunk.toString('utf8')}`.slice(-2000); });
     child.once('error', (error) => {
-      clearTimeout(readyTimer);
-      sshProcess = null;
-      sshState = { status: 'error', message: error.code === 'ENOENT' ? 'OpenSSH client was not found on this computer.' : error.message };
-      mainWindow?.webContents.send('ssh:state', sshState);
-      reject(new Error(sshState.message));
+      clearTimeout(timer);
+      if (sshProcess === child) sshProcess = null;
+      if (!settled) {
+        settled = true;
+        const message = error.code === 'ENOENT' ? 'OpenSSH client was not found on this computer.' : error.message;
+        sendSshState({ status: 'error', message });
+        reject(new Error(message));
+      }
     });
     child.once('exit', (code) => {
-      clearTimeout(readyTimer);
+      clearTimeout(timer);
       if (sshProcess === child) sshProcess = null;
-      if (sshState.status === 'connecting') {
-        const detail = errorText.trim().split(/\r?\n/).slice(-1)[0] || `ssh.exe exited with code ${code}.`;
-        sshState = { status: 'error', message: `SSH tunnel could not start: ${detail}` };
-        reject(new Error(sshState.message));
-      } else if (sshState.status === 'connected') {
-        sshState = { status: 'disconnected', message: `SSH tunnel closed with code ${code}.` };
+      const detail = errorText.trim().split(/\r?\n/).at(-1);
+      if (!settled) {
+        settled = true;
+        const message = detail ? `SSH tunnel could not start: ${detail}` : `ssh.exe exited with code ${code}.`;
+        sendSshState({ status: 'error', message });
+        reject(new Error(message));
+      } else {
+        sendSshState({ status: 'disconnected', message: `SSH tunnel closed with code ${code}.` });
       }
-      mainWindow?.webContents.send('ssh:state', sshState);
     });
   });
 }
 
+async function chooseFile(options) {
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  return result.canceled ? null : result.filePaths[0];
+}
+
+function detectImage(bytes) {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+}
+
+async function readBoundedFile(filePath, maxBytes) {
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) throw new TypeError('The selected item is not a file.');
+  if (stat.size > maxBytes) throw new RangeError(`The selected file exceeds ${maxBytes} bytes.`);
+  return fs.readFile(filePath);
+}
+
+async function readVocabularyCacheBytes() {
+  try {
+    return await fs.readFile(personalVocabularyCachePath());
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw new Error('The local personal-vocabulary cache could not be read.');
+  }
+}
+
+function presentVocabularyStatus(result, canceled = false) {
+  return {
+    canceled,
+    status: result.status,
+    loaded: result.loaded,
+    schemaVersion: result.loaded ? 1 : null,
+    entries: result.entries,
+    preservedLastValid: result.preservedLastValid,
+    error: result.error ? { code: result.error.code, message: result.error.message } : null
+  };
+}
+
+async function readVocabularyCache() {
+  const store = new VocabularyStore(await readVocabularyCacheBytes());
+  return presentVocabularyStatus(store.read());
+}
+
+async function replaceVocabularyCache() {
+  const filePath = await chooseFile({ title: 'Choose personal vocabulary JSON', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (!filePath) return { ...(await readVocabularyCache()), canceled: true };
+  const priorBytes = await readVocabularyCacheBytes();
+  const candidateBytes = await readBoundedFile(filePath, VOCABULARY_LIMITS.maxBytes);
+  const store = new VocabularyStore(priorBytes);
+  const result = store.replace(candidateBytes);
+  if (result.status !== 'loaded') {
+    throw new TypeError(result.preservedLastValid
+      ? 'The selected private vocabulary file is invalid. The last valid local cache remains active.'
+      : 'The selected private vocabulary file is invalid. Original shipped wording remains active.');
+  }
+  const serialized = serializeVocabularyCache({ schemaVersion: 1, entries: result.entries });
+  await atomicWriteFile(personalVocabularyCachePath(), serialized, { encoding: 'utf8', mode: 0o600, maxBytes: VOCABULARY_LIMITS.maxBytes });
+  return presentVocabularyStatus(result);
+}
+
+async function clearVocabularyCache() {
+  try {
+    await fs.unlink(personalVocabularyCachePath());
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('The local personal-vocabulary cache could not be cleared.');
+  }
+  return presentVocabularyStatus(new VocabularyStore().clear());
+}
+
+async function chooseLogoFile() {
+  const filePath = await chooseFile({ title: 'Choose a local logo image', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+  if (!filePath) return { canceled: true };
+  const bytes = await readBoundedFile(filePath, 2 * 1024 * 1024);
+  const mimeType = detectImage(bytes);
+  if (!mimeType) throw new TypeError('The selected file is not a supported PNG, JPEG, or WebP image.');
+  return { canceled: false, name: path.basename(filePath), bytes: bytes.length, dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}` };
+}
+
+async function chooseConverterSource() {
+  const filePath = await chooseFile({ title: 'Choose a file to convert', properties: ['openFile'] });
+  if (!filePath) return { canceled: true };
+  const bytes = await readBoundedFile(filePath, MAX_CONVERTER_SOURCE_BYTES);
+  const handle = crypto.randomUUID();
+  CONVERTER_HANDLES.set(handle, { filePath, expiresAt: Date.now() + 15 * 60 * 1000 });
+  return { canceled: false, handle, name: path.basename(filePath), bytes: bytes.length, leadingBytesHex: bytes.subarray(0, 16).toString('hex') };
+}
+
+function converterOutput(bytes, adapter) {
+  if (adapter === 'base64') return { extension: 'txt', content: `${bytes.toString('base64')}\n`, encoding: 'utf8' };
+  if (adapter === 'hex') return { extension: 'txt', content: `${bytes.toString('hex')}\n`, encoding: 'utf8' };
+  const text = bytes.toString('utf8');
+  if (adapter === 'json-pretty') return { extension: 'json', content: `${JSON.stringify(JSON.parse(text), null, 2)}\n`, encoding: 'utf8' };
+  if (adapter === 'normalize-text') return { extension: 'txt', content: `${text.replace(/\r\n|\r|\n/g, '\r\n').replace(/\r\n*$/, '')}\r\n`, encoding: 'utf8' };
+  throw new TypeError('The selected converter adapter is unavailable.');
+}
+
+async function convertFile({ handle, adapter }) {
+  const source = CONVERTER_HANDLES.get(String(handle || ''));
+  if (!source || source.expiresAt <= Date.now()) throw new Error('The local file selection expired. Choose the source again.');
+  const bytes = await readBoundedFile(source.filePath, MAX_CONVERTER_SOURCE_BYTES);
+  const output = converterOutput(bytes, adapter);
+  const baseName = path.basename(source.filePath, path.extname(source.filePath));
+  const save = await dialog.showSaveDialog(mainWindow, { title: 'Save converted file', defaultPath: `${baseName}.${output.extension}`, properties: ['createDirectory', 'showOverwriteConfirmation'] });
+  if (save.canceled || !save.filePath) return { canceled: true };
+  await atomicWriteFile(save.filePath, output.content, { encoding: output.encoding, mode: 0o600 });
+  const written = await fs.readFile(save.filePath, output.encoding);
+  if (written !== output.content) throw new Error('Converted output did not pass post-write validation.');
+  return { canceled: false, name: path.basename(save.filePath), bytes: Buffer.byteLength(output.content) };
+}
+
+async function exportContent({ suggestedName, content }) {
+  const text = String(content || '');
+  if (Buffer.byteLength(text) > MAX_EXPORT_BYTES) throw new RangeError('Export exceeds 10 MiB.');
+  const result = await dialog.showSaveDialog(mainWindow, { title: 'Export data', defaultPath: path.basename(String(suggestedName || 'hair-growth-export.txt')), properties: ['createDirectory', 'showOverwriteConfirmation'] });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  await atomicWriteFile(result.filePath, text, { encoding: 'utf8', mode: 0o600 });
+  return { canceled: false, name: path.basename(result.filePath), bytes: Buffer.byteLength(text) };
+}
+
+async function openInVsCode(targetPath) {
+  const resolved = path.resolve(String(targetPath || app.getPath('documents')));
+  const candidates = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code Insiders', 'bin', 'code-insiders.cmd')
+  ].filter(Boolean);
+  let executable = null;
+  for (const candidate of candidates) {
+    try { await fs.access(candidate); executable = candidate; break; } catch {}
+  }
+  if (!executable) {
+    try {
+      const { stdout } = await execFileAsync('where.exe', ['code.cmd'], { windowsHide: true, timeout: 3000 });
+      executable = stdout.split(/\r?\n/).find(Boolean);
+    } catch {}
+  }
+  if (!executable) return { opened: false, reason: 'Visual Studio Code was not found. The application remains fully usable without it.' };
+  const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${executable}" "${resolved}"`], { windowsHide: true, detached: true, stdio: 'ignore', shell: false });
+  child.unref();
+  return { opened: true };
+}
+
+async function ollamaRequest({ endpoint, method = 'GET', body, timeoutMs = 10000 }) {
+  if (!OLLAMA_ENDPOINTS.has(endpoint)) throw new TypeError('Ollama endpoint is not allowlisted.');
+  const bodyText = body === undefined ? null : JSON.stringify(body);
+  if (bodyText && Buffer.byteLength(bodyText) > 256 * 1024) throw new RangeError('Ollama request exceeds 256 KiB.');
+  const { response, body: responseBody } = await boundedFetch(new URL(endpoint, 'http://127.0.0.1:11434'), {
+    method: ['GET', 'POST', 'DELETE'].includes(method) ? method : 'GET',
+    headers: { accept: 'application/json', ...(bodyText ? { 'content-type': 'application/json' } : {}) },
+    body: bodyText,
+    timeoutMs
+  });
+  if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}.`);
+  return responseBody;
+}
+
+const updateState = { status: 'idle', currentVersion: null, availableVersion: null, message: 'No update check has run.' };
+const rendererApplicationUrl = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
+
+function publishUpdateState(patch) {
+  Object.assign(updateState, patch);
+  mainWindow?.webContents.send('update:state', { ...updateState });
+}
+
+function assertTrustedIpcSender(event) {
+  return IpcAuthorization.assertTrustedMainIpc({
+    event,
+    mainWebContents: mainWindow?.webContents,
+    applicationUrl: rendererApplicationUrl
+  });
+}
+
+function registerIpcHandler(channel, handler) {
+  const policy = IpcAuthorization.getIpcChannelPolicy(channel);
+  ipcMain.handle(channel, (event, ...args) => {
+    if (policy === IpcAuthorization.IPC_CHANNEL_POLICY.TRUSTED_MAIN_FRAME) {
+      assertTrustedIpcSender(event);
+    }
+    return handler(event, ...args);
+  });
+}
+
+function registerUpdaterEvents() {
+  autoUpdater.on('checking-for-update', () => publishUpdateState({ status: 'checking', message: 'Checking the unsigned HTTPS update feed.' }));
+  autoUpdater.on('update-available', (_event, notes, name) => {
+    if (!activeUpdateCheck) return;
+    activeUpdateCheck.availableVersion = typeof name === 'string' ? name.slice(0, 80) : null;
+    publishUpdateState({
+      status: 'available',
+      availableVersion: activeUpdateCheck.availableVersion,
+      message: String(notes || 'An update is available.').slice(0, 4000)
+    });
+  });
+  autoUpdater.on('update-not-available', () => {
+    updateAuthorization.supersede();
+    activeUpdateCheck = null;
+    publishUpdateState({ status: 'current', availableVersion: null, message: 'This version is current.' });
+  });
+  autoUpdater.on('update-downloaded', (_event, notes, name) => {
+    try {
+      if (!activeUpdateCheck) throw new Error('No active update check owns this downloaded update event.');
+      const observedUpdate = createObservedDownloadedUpdate({
+        provider: 'squirrel-windows',
+        releaseName: name,
+        downloadedEvent: true
+      });
+      const ready = updateAuthorization.markReady({
+        version: observedUpdate.releaseName,
+        feedUrl: activeUpdateCheck.feedUrl,
+        generation: activeUpdateCheck.generation,
+        observedUpdate
+      });
+      activeUpdateCheck = null;
+      publishUpdateState({
+        status: 'ready',
+        availableVersion: ready.version,
+        message: `${String(notes || 'Update downloaded.').slice(0, 3800)} The package is unsigned. Restart only after saving work.`
+      });
+    } catch (error) {
+      activeUpdateCheck = null;
+      updateAuthorization.recordError();
+      publishUpdateState({
+        status: 'error',
+        availableVersion: null,
+        message: `The downloaded update could not be authorized: ${error.message}`
+      });
+    }
+  });
+  autoUpdater.on('error', (error) => {
+    activeUpdateCheck = null;
+    updateAuthorization.recordError();
+    publishUpdateState({ status: 'error', availableVersion: null, message: error.message });
+  });
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged) {
+    updateAuthorization.supersede();
+    activeUpdateCheck = null;
+    publishUpdateState({ status: 'unavailable', availableVersion: null, message: 'Update checks are available in packaged builds.' });
+    return { ...updateState };
+  }
+  if (activeUpdateCheck) throw new Error('An update check is already active.');
+  updateAuthorization.applyMainProcessFeed(CANONICAL_UPDATE_FEED_URL);
+  autoUpdater.setFeedURL({ url: CANONICAL_UPDATE_FEED_URL });
+  activeUpdateCheck = { ...updateAuthorization.beginCheck(), availableVersion: null };
+  publishUpdateState({ status: 'checking', currentVersion: app.getVersion(), message: 'Checking the unsigned HTTPS update feed.' });
+  try {
+    autoUpdater.checkForUpdates();
+  } catch (error) {
+    activeUpdateCheck = null;
+    updateAuthorization.recordError();
+    publishUpdateState({ status: 'error', availableVersion: null, message: error.message });
+    throw error;
+  }
+  return { ...updateState };
+}
+
+async function restartVerifiedUpdate() {
+  const ready = updateAuthorization.snapshot().ready;
+  if (!ready) throw new Error('No verified downloaded update is ready to install.');
+  await drainStateAndHistory(stateStore, localHistory);
+  await stopSshTunnel();
+  updateAuthorization.consumeRestart(ready);
+  shutdownStarted = true;
+  shutdownReady = true;
+  try {
+    autoUpdater.quitAndInstall();
+  } catch (error) {
+    shutdownStarted = false;
+    shutdownReady = false;
+    throw error;
+  }
+  return { restarting: true, version: ready.version };
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 900,
-    minHeight: 650,
+    width: 1380,
+    height: 900,
+    minWidth: 880,
+    minHeight: 640,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#101415',
+    title: 'Hair Growth Estimator',
+    icon: path.join(__dirname, '..', 'assets', 'app-icon.ico'),
+    backgroundColor: '#0c1513',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webSecurity: true,
+      spellcheck: true
     }
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) event.preventDefault();
+  });
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    regexScheduler.releaseOwner(`web-contents:${mainWindow.webContents.id}`);
+    mainWindow = null;
+  });
 }
 
-ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-ipcMain.handle('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
-ipcMain.handle('window:close', () => mainWindow?.close());
-ipcMain.handle('state:read', readState);
-ipcMain.handle('state:write', (_event, state) => writeState(state));
-ipcMain.handle('secret:setApiKey', (_event, value) => storeApiKey(String(value || '')));
-ipcMain.handle('secret:hasApiKey', async () => Boolean(await readApiKey()));
-ipcMain.handle('file:chooseKey', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
-  return result.canceled ? '' : result.filePaths[0];
-});
-ipcMain.handle('file:export', async (_event, { suggestedName, content }) => {
-  const result = await dialog.showSaveDialog(mainWindow, { defaultPath: suggestedName, properties: ['createDirectory', 'showOverwriteConfirmation'] });
-  if (result.canceled || !result.filePath) return { canceled: true };
-  await fs.writeFile(result.filePath, content, 'utf8');
-  return { canceled: false, filePath: result.filePath };
-});
-ipcMain.handle('server:request', (_event, request) => apiRequest(request.serverUrl, request.endpoint, request));
-ipcMain.handle('ssh:start', (_event, config) => startSshTunnel(config));
-ipcMain.handle('ssh:stop', stopSshTunnel);
-ipcMain.handle('ssh:state', () => sshState);
+function registerIpc() {
+  registerIpcHandler('window:minimize', () => mainWindow?.minimize());
+  registerIpcHandler('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize());
+  registerIpcHandler('window:close', () => mainWindow?.close());
+  registerIpcHandler('window:setTitle', (_event, value) => { mainWindow?.setTitle(String(value || 'Hair Growth Estimator').slice(0, 80)); });
+  registerIpcHandler('provenance:read', readProvenance);
+  registerIpcHandler('state:read', readState);
+  registerIpcHandler('state:write', (_event, { state, event }) => writeState(state, event));
+  registerIpcHandler('school:read', (_event) => readSchoolRecord());
+  registerIpcHandler('school:configure', (_event, value) => configureSchoolMode(value));
+  registerIpcHandler('school:disable', (_event, value) => disableSchoolMode(value));
+  registerIpcHandler('accessibility:status', () => Boolean(app.accessibilitySupportEnabled));
+  registerIpcHandler('delight:photo', () => dimSumPhotoDataUrl());
+  registerIpcHandler('schedule:resolve', (_event, value) => resolveScheduledSource(value));
+  registerIpcHandler('schedule:setHomeAssistantToken', (_event, value) => setHomeAssistantScheduleToken(value));
+  registerIpcHandler('schedule:hasHomeAssistantToken', (_event, value) => hasHomeAssistantScheduleToken(value));
+  registerIpcHandler('secret:setApiKey', (_event, { sync, value }) => {
+    const policy = resolveServiceSecurityContext(sync, sshState);
+    return localVault.setApiKeyForScope(policy.credentialScope, value);
+  });
+  registerIpcHandler('secret:hasApiKey', (_event, sync) => {
+    const policy = resolveServiceSecurityContext(sync, sshState);
+    return localVault.hasApiKeyForScope(policy.credentialScope);
+  });
+  registerIpcHandler('lock:set', (_event, value) => localVault.setLock(value));
+  registerIpcHandler('lock:list', () => localVault.listLocks());
+  registerIpcHandler('lock:verify', (_event, value) => localVault.verifyLock(value));
+  registerIpcHandler('lock:remove', (_event, value) => localVault.removeLock(value));
+  registerIpcHandler('auth:createSecret', () => localVault.createTotpSecret());
+  registerIpcHandler('auth:add', (_event, value) => localVault.addAuthenticator(value));
+  registerIpcHandler('auth:list', () => localVault.listAuthenticators());
+  registerIpcHandler('auth:remove', (_event, id) => localVault.removeAuthenticator(id));
+  registerIpcHandler('file:chooseKey', async () => {
+    const filePath = await chooseFile({ title: 'Choose an SSH private key', properties: ['openFile'], filters: [{ name: 'Private keys', extensions: ['pem', 'key', 'ppk'] }, { name: 'All files', extensions: ['*'] }] });
+    return filePath || '';
+  });
+  registerIpcHandler('vocabulary:read', readVocabularyCache);
+  registerIpcHandler('vocabulary:replace', replaceVocabularyCache);
+  registerIpcHandler('vocabulary:clear', clearVocabularyCache);
+  registerIpcHandler('file:chooseLogo', chooseLogoFile);
+  registerIpcHandler('file:chooseConverterSource', chooseConverterSource);
+  registerIpcHandler('file:convert', (_event, value) => convertFile(value));
+  registerIpcHandler('file:export', (_event, value) => exportContent(value));
+  registerIpcHandler('file:showAppData', async () => { await shell.openPath(app.getPath('userData')); return app.getPath('userData'); });
+  registerIpcHandler('external:openVsCode', (_event, target) => openInVsCode(target));
+  registerIpcHandler('external:openUrl', async (_event, raw) => {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') throw new TypeError('Only HTTPS links can be opened.');
+    await shell.openExternal(url.href);
+    return true;
+  });
+  registerIpcHandler('history:setCredential', (_event, credential) => localVault.setHistoryPassword(credential));
+  registerIpcHandler('history:list', (_event, options) => localHistory.list(options));
+  registerIpcHandler('history:read', (_event, commit, credential) => localHistory.read(commit, { credential }));
+  registerIpcHandler('history:diff', async (_event, fromCommit, toCommit, credential) => {
+    const result = await localHistory.diff(fromCommit, toCommit, { credential });
+    return `${JSON.stringify(result, null, 2)}\n`;
+  });
+  registerIpcHandler('history:restore', async (_event, commit, credential) => {
+    const historySnapshot = await localHistory.read(commit, { credential });
+    const current = await stateStore.read();
+    const restored = historySnapshot.state && typeof historySnapshot.state === 'object' ? structuredClone(historySnapshot.state) : {};
+    restored.revision = current.revision;
+    restored.settings = restored.settings && typeof restored.settings === 'object' ? restored.settings : {};
+    restored.settings.sync = restored.settings.sync && typeof restored.settings.sync === 'object' ? restored.settings.sync : {};
+    restored.settings.sync.ssh = restored.settings.sync.ssh && typeof restored.settings.sync.ssh === 'object' ? restored.settings.sync.ssh : {};
+    restored.settings.sync.ssh.keyFile = current.settings.sync.ssh.keyFile;
+    restored.settings.logo = restored.settings.logo && typeof restored.settings.logo === 'object' ? restored.settings.logo : {};
+    restored.settings.logo.customDataUrl = current.settings.logo.customDataUrl;
+    restored.vocabulary = current.vocabulary;
+    const result = await writeStateWithHistory(restored, 'Restored local history revision');
+    return {
+      recorded: result.history.recorded,
+      commit: result.history.commit || null,
+      restoredFrom: String(commit).toLowerCase(),
+      state: result.state
+    };
+  });
+  registerIpcHandler('history:label', (_event, commit, label, credential) => localHistory.label(commit, label, { credential }));
+  registerIpcHandler('history:prune', (_event, maxEntries, credential) => localHistory.prune({ maxEntries, credential }));
+  registerIpcHandler('history:export', async (_event, options) => `${JSON.stringify(await localHistory.exportRedacted(options), null, 2)}\n`);
+  registerIpcHandler('server:request', (_event, request) => apiRequest(request));
+  registerIpcHandler('ssh:start', (_event, config) => startSshTunnel(config));
+  registerIpcHandler('ssh:stop', stopSshTunnel);
+  registerIpcHandler('ssh:state', () => sshState);
+  registerIpcHandler('ollama:request', (_event, request) => ollamaRequest(request));
+  registerIpcHandler('regex:evaluate', (event, envelope) => regexScheduler.schedule({
+    ownerId: `web-contents:${event.sender.id}`,
+    coalescingKey: envelope.coalescingKey,
+    generation: envelope.generation,
+    request: envelope.request
+  }));
+  registerIpcHandler('update:state', () => ({ ...updateState, currentVersion: app.getVersion() }));
+  registerIpcHandler('update:check', () => checkForUpdates());
+  registerIpcHandler('update:restart', () => restartVerifiedUpdate());
+}
 
-app.whenReady().then(createWindow);
-app.on('before-quit', () => { if (sshProcess) sshProcess.kill('SIGTERM'); });
+app.whenReady().then(async () => {
+  localVault = new LocalVault({ filePath: userDataPath('credentials.bin'), safeStorage });
+  scheduledNetworkApprovals = NetworkApprovals.createNetworkApprovalStore({
+    filePath: userDataPath('scheduled-network-approvals.json')
+  });
+  localHistory = new LocalHistory(userDataPath('history'), {
+    authenticate: ({ credential }) => localVault.verifyHistoryPassword(credential)
+  });
+  stateStore = new StateStore({
+    filePath: userDataPath('hair-growth.json'),
+    history: localHistory,
+    today: todayIso,
+    redact: redactedHistoryState
+  });
+  registerUpdaterEvents();
+  registerIpc();
+  app.on('accessibility-support-changed', (_event, enabled) => {
+    mainWindow?.webContents.send('accessibility:changed', Boolean(enabled));
+  });
+  createWindow();
+  lastSchoolRecord = JSON.stringify(await readSchoolRecord());
+  schoolPoll = setInterval(() => { pollSchoolRecord().catch(() => {}); }, 1500);
+});
+
+app.on('before-quit', (event) => {
+  if (schoolPoll) clearInterval(schoolPoll);
+  schoolPoll = null;
+  if (shutdownReady) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  Promise.resolve()
+    .then(() => drainStateAndHistory(stateStore, localHistory))
+    .then(() => stopSshTunnel())
+    .catch((error) => {
+      mainWindow?.webContents.send('shutdown:error', { message: error?.message || String(error) });
+    })
+    .finally(() => {
+      shutdownReady = true;
+      app.quit();
+    });
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

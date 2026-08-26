@@ -357,15 +357,19 @@ test('installer manifest and canonical hair images fail closed on incomplete or 
 });
 
 test('static CSP and integrated service guidance bind the website to reviewed counterparts', async () => {
-  const [template, app, security, server, compose, dockerfile, packageJson] = await Promise.all([
+  const [template, app, security, serverEntry, serverService, compose, dockerfile, packageJson] = await Promise.all([
     readFile(join(root, 'site', 'index.template.html'), 'utf8'),
     readFile(join(root, 'site', 'app.js'), 'utf8'),
     readFile(join(root, 'site', 'security-contract.js'), 'utf8'),
     readFile(join(root, 'server', 'index.js'), 'utf8'),
+    readFile(join(root, 'server', 'service.js'), 'utf8'),
     readFile(join(root, 'docker-compose.yml'), 'utf8'),
     readFile(join(root, 'Dockerfile'), 'utf8'),
     readFile(join(root, 'package.json'), 'utf8')
   ]);
+  const server = `${serverEntry}\n${serverService}`;
+  assert.match(serverEntry, /^const service = require\('\.\/service'\);$/m);
+  assert.match(serverEntry, /^\s*service\.startFromEnvironment\(\)\.catch\(\(error\) => \{$/m);
   assert.match(template, /http-equiv="Content-Security-Policy"/);
   assert.match(template, /default-src 'self'/);
   assert.match(template, /script-src 'self'/);
@@ -375,7 +379,8 @@ test('static CSP and integrated service guidance bind the website to reviewed co
   assert.ok(security.includes(String.raw`pattern: /^http:\/\/(?:127\.0\.0\.1|localhost):11434`));
   assert.match(app, /function quarantineInvalidStoredState\(/);
   assert.match(app, /validateBrowserState/);
-  assert.match(server, /url\.pathname === '\/health'/);
+  assert.match(serverService, /^\s*const route = routeFor\(url\.pathname\);$/m);
+  assert.match(serverService, /^\s*if \(pathname === '\/health'\)/m);
   assert.match(server, /\^\\\/api\\\/profiles\\\//);
   assert.match(compose, /hair-growth-api:/);
   assert.match(compose, /127\.0\.0\.1.*4782.*4782/);
@@ -385,15 +390,20 @@ test('static CSP and integrated service guidance bind the website to reviewed co
   const audit = (sources) => {
     const required = [
       [sources.template, 'docker compose up --build -d', 'container command'],
-      [sources.server, "url.pathname === '/health'", 'health route'],
-      [sources.server, '^\\/api\\/profiles\\/', 'profile route'],
+      [sources.serverEntry, "const service = require('./service');", 'service delegation'],
+      [sources.serverEntry, 'service.startFromEnvironment().catch(', 'service startup'],
+      [sources.serverService, 'routeFor(url.pathname)', 'URL path routing'],
+      [sources.serverService, "if (pathname === '/health')", 'health route'],
+      [sources.serverService, '^\\/api\\/profiles\\/', 'profile route'],
       [sources.compose, 'hair-growth-api:', 'compose service'],
       [sources.dockerfile, 'CMD ["node", "server/index.js"]', 'container entry point']
     ];
     for (const [source, token, label] of required) if (!source.includes(token)) throw new Error(`Missing reviewed ${label} counterpart.`);
   };
-  const sources = { template, server, compose, dockerfile };
+  const sources = { template, serverEntry, serverService, compose, dockerfile };
   assert.doesNotThrow(() => audit(sources));
-  assert.throws(() => audit({ ...sources, server: server.replace("url.pathname === '/health'", "url.pathname === '/stale-health'") }), /health route/);
+  assert.throws(() => audit({ ...sources, serverEntry: serverEntry.replace("const service = require('./service');", "// service delegation removed") }), /service delegation/);
+  assert.throws(() => audit({ ...sources, serverService: serverService.replace('routeFor(url.pathname)', 'routeFor(url.href)') }), /URL path routing/);
+  assert.throws(() => audit({ ...sources, serverService: serverService.replace("if (pathname === '/health')", "if (pathname === '/stale-health')") }), /health route/);
   assert.doesNotThrow(() => audit(sources));
 });

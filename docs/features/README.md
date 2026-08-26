@@ -4,6 +4,12 @@ These articles describe product behavior visible in the inspected source and ide
 
 ## Feature articles
 
+- [Attention accommodations](attention-accommodations.md)
+- [Language modes and funny levels](language-and-funny-levels.md)
+- [Narrator voices and pacing](narrator.md)
+- [Scheduled settings](scheduled-settings.md)
+- [Shared School mode](shared-school-mode.md)
+- [Startup surprise](startup-surprise.md)
 - [Hair growth estimation](hair-growth-estimation.md)
 - [Haircut history and reset behavior](haircut-history.md)
 - [Centimetres and inches](measurements.md)
