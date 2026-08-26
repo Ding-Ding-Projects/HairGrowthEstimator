@@ -23,7 +23,7 @@ import {
   toPublicFailure
 } from './common.mjs';
 import { assertSingleCdpTarget, connectExactCdp } from './cdp-client.mjs';
-import { captureWindow, connectMcp, discoverWindow, performBackgroundInput, preflight } from './mcp-client.mjs';
+import { assertWindowCaptureEnvelope, captureWindow, connectMcp, discoverWindow, performBackgroundInput, preflight } from './mcp-client.mjs';
 import { loadPlan, validateSemanticProbe, verifyPackagedReceipt, verifyRunOwnership } from './plan.mjs';
 import { assertCdpListenerOwned, revalidateProcessTree, windowsTcpListenerInventory } from './process-identity.mjs';
 import { withRunLock } from './run-lock.mjs';
@@ -275,9 +275,7 @@ async function assertRecordingBoundary(plan, state, client, cdp, processTree, ex
     classPattern: plan.window.classPattern
   });
   if (expectedWindow) assertSameRecordingWindow(expectedWindow, windowValue);
-  if (windowValue.width !== plan.tuple.capturePixelSize.width || windowValue.height !== plan.tuple.capturePixelSize.height) {
-    fail('VIEWPORT_MISMATCH', 'Recording window dimensions do not match the pinned viewport and scale.');
-  }
+  assertWindowCaptureEnvelope(windowValue, plan.tuple);
   return { processTree: tree, listener, privacy, window: windowValue };
 }
 

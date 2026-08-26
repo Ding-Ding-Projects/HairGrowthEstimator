@@ -203,6 +203,27 @@ export function resolveOwnedWindow(windows, { ownedProcessIds, titlePattern, cla
   };
 }
 
+export function assertWindowCaptureEnvelope(windowValue, tuple) {
+  assertObject(windowValue, 'owned window geometry');
+  assertObject(tuple, 'capture tuple');
+  assertObject(tuple.capturePixelSize, 'capture pixel size');
+  const width = windowValue.width;
+  const height = windowValue.height;
+  const captureWidth = tuple.capturePixelSize.width;
+  const captureHeight = tuple.capturePixelSize.height;
+  const scale = tuple.scale;
+  if (![width, height, captureWidth, captureHeight].every((value) => Number.isInteger(value) && value > 0) || typeof scale !== 'number' || scale <= 0) {
+    fail('INVALID_WINDOW_GEOMETRY', 'Owned window and capture dimensions must be positive and bounded by a valid scale.');
+  }
+  const extraWidth = width - captureWidth;
+  const extraHeight = height - captureHeight;
+  const maximumNonClientExtent = Math.ceil(64 * scale);
+  if (extraWidth < 0 || extraHeight < 0 || extraWidth > maximumNonClientExtent || extraHeight > maximumNonClientExtent) {
+    fail('VIEWPORT_MISMATCH', 'Owned outer-window geometry is not a plausible envelope for the pinned client capture tuple.');
+  }
+  return { outerWidth: width, outerHeight: height, captureWidth, captureHeight, extraWidth, extraHeight };
+}
+
 export async function discoverWindow(client, desktopName, criteria) {
   boundedString(desktopName, 'desktop name', { max: 64, pattern: /^[A-Za-z0-9._-]+$/ });
   const result = await client.callTool('list_headless_windows', { name: desktopName });

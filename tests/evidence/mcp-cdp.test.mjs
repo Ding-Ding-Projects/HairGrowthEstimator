@@ -8,6 +8,7 @@ import { EvidenceError } from '../../scripts/evidence/common.mjs';
 import { CdpClient, assertSingleCdpTarget } from '../../scripts/evidence/cdp-client.mjs';
 import {
   REQUIRED_TOOLS,
+  assertWindowCaptureEnvelope,
   captureWindow,
   connectMcp,
   preflight,
@@ -96,6 +97,34 @@ test('window discovery rejects unowned and ambiguous visible windows', () => {
   assert.deepEqual({ hwnd: match.hwnd, processId: match.processId, width: match.width, height: match.height }, { hwnd: 100, processId: 10, width: 320, height: 240 });
   assert.throws(() => resolveOwnedWindow([base, { ...base, handle: 101 }], criteria), (error) => error instanceof EvidenceError && error.code === 'AMBIGUOUS_WINDOW');
   assert.throws(() => resolveOwnedWindow([base, { ...base, handle: 102, process_id: 99, title: 'Unrelated' }], criteria), (error) => error instanceof EvidenceError && error.code === 'UNRELATED_WINDOW');
+});
+
+test('outer Windows resize borders envelope the exact client capture tuple', () => {
+  const tuple = { capturePixelSize: { width: 1380, height: 900 }, scale: 1 };
+  assert.deepEqual(assertWindowCaptureEnvelope({ width: 1380, height: 900 }, tuple), {
+    outerWidth: 1380,
+    outerHeight: 900,
+    captureWidth: 1380,
+    captureHeight: 900,
+    extraWidth: 0,
+    extraHeight: 0
+  });
+  assert.deepEqual(assertWindowCaptureEnvelope({ width: 1396, height: 916 }, tuple), {
+    outerWidth: 1396,
+    outerHeight: 916,
+    captureWidth: 1380,
+    captureHeight: 900,
+    extraWidth: 16,
+    extraHeight: 16
+  });
+  assert.throws(
+    () => assertWindowCaptureEnvelope({ width: 1379, height: 900 }, tuple),
+    (error) => error instanceof EvidenceError && error.code === 'VIEWPORT_MISMATCH'
+  );
+  assert.throws(
+    () => assertWindowCaptureEnvelope({ width: 1500, height: 1050 }, tuple),
+    (error) => error instanceof EvidenceError && error.code === 'VIEWPORT_MISMATCH'
+  );
 });
 
 test('window capture helper refuses a monitor-mode result', async (t) => {

@@ -190,7 +190,7 @@ Store the plan in a task-owned temporary directory, not in source control. The p
 }
 ```
 
-`tuple.viewport` is the renderer viewport in CSS pixels. `tuple.scale` is the live `window.devicePixelRatio`. The helper derives `capturePixelSize` as `viewport × scale`, rounded to whole pixels, and requires every captured PNG and the live Win32 client to match it. The live theme comes from `document.body.dataset.theme`. The live language comes from `document.documentElement.lang`.
+`tuple.viewport` is the renderer viewport in CSS pixels. `tuple.scale` is the live `window.devicePixelRatio`. The helper derives `capturePixelSize` as `viewport × scale`, rounded to whole pixels, and requires every client-only captured PNG to match it. The live renderer independently proves the CSS viewport, scale, theme, and language. The Win32 window inventory reports the outer rectangle, which may include bounded invisible resize borders around a frameless window. The harness therefore requires that outer rectangle to be a small non-negative envelope around the exact client capture instead of incorrectly requiring both rectangles to have identical dimensions. The live theme comes from `document.body.dataset.theme`. The live language comes from `document.documentElement.lang`.
 
 The plan cannot predeclare evidence, data-root, user-data, or debugging switches. The harness owns those switches and appends each exactly once. Semantic checks are declarative read-only probes, never caller-authored JavaScript. Supported probes read one allowlisted state attribute, one allowlisted primitive state property, visibility, or a selector count. Text content, form values, markup, object properties, and arbitrary attributes are not semantic-probe surfaces.
 

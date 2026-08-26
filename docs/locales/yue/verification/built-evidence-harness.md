@@ -190,7 +190,7 @@
 }
 ```
 
-`tuple.viewport` 係以 CSS 像素計嘅渲染器視口。`tuple.scale` 係即時 `window.devicePixelRatio`。輔助程式會將 `capturePixelSize` 推導為 `viewport × scale`，四捨五入成完整像素，並要求每張已擷取 PNG 同即時 Win32 用戶端都要一致。即時主題來自 `document.body.dataset.theme`，即時語言來自 `document.documentElement.lang`。
+`tuple.viewport` 係以 CSS 像素計嘅渲染器視口。`tuple.scale` 係即時 `window.devicePixelRatio`。輔助程式會將 `capturePixelSize` 推導為 `viewport × scale`，四捨五入成完整像素，並要求每張 client-only PNG 都要一致。即時 renderer 會獨立證明 CSS viewport、scale、theme 同 language。Win32 window inventory 會回報 outer rectangle，而 frameless window 外圍可以有 bounded invisible resize borders。所以 harness 會要求 outer rectangle 係 exact client capture 外圍一個細小、非負數嘅 envelope，唔會再錯誤要求兩個 rectangles 尺寸完全相同。即時主題來自 `document.body.dataset.theme`，即時語言來自 `document.documentElement.lang`。
 
 計劃唔可以預先宣告證據、資料根目錄、使用者資料，或者偵錯開關。工具擁有呢啲開關，並將每個開關精確附加一次。語意檢查係宣告式唯讀探查，絕對唔係由呼叫者撰寫嘅 JavaScript。支援嘅探查只會讀取一個允許清單內嘅狀態屬性、一個允許清單內嘅原始狀態屬性、可見性，或者選擇器數量。文字內容、表單值、標記、物件屬性，同任意屬性都唔係語意探查範圍。
 

@@ -33,6 +33,7 @@ import {
   startStep
 } from './ledger.mjs';
 import {
+  assertWindowCaptureEnvelope,
   captureWindow,
   connectMcp,
   discoverWindow,
@@ -325,9 +326,7 @@ async function prepareLocked(plan, client, desktop, paths, baselineProcesses, fr
     await atomicWriteJson(runtimePath(plan), state);
     let windowValue;
     ({ window: windowValue, processTree } = await waitForWindow(client, plan, launched.pid, processTree, frozen.executablePath));
-    if (windowValue.width !== plan.tuple.capturePixelSize.width || windowValue.height !== plan.tuple.capturePixelSize.height) {
-      fail('VIEWPORT_MISMATCH', 'Live window dimensions do not match the pinned viewport and scale.');
-    }
+    assertWindowCaptureEnvelope(windowValue, plan.tuple);
     state.processTree = processTree;
     state.hwnd = windowValue.hwnd;
     state.window = {
@@ -463,9 +462,7 @@ async function revalidateEvidenceBoundary({ plan, state, client, cdp, processTre
     classPattern: plan.window.classPattern
   });
   if (expectedWindow) assertSameWindow(expectedWindow, windowValue);
-  if (windowValue.width !== plan.tuple.capturePixelSize.width || windowValue.height !== plan.tuple.capturePixelSize.height) {
-    fail('VIEWPORT_MISMATCH', 'Live window dimensions do not match the pinned capture tuple.');
-  }
+  assertWindowCaptureEnvelope(windowValue, plan.tuple);
   return { processTree: tree, listener, privacy, window: windowValue };
 }
 
@@ -493,7 +490,7 @@ async function runStep(plan, stepId) {
     if (state.hwnd !== windowValue.hwnd || state.window?.processId !== windowValue.processId) {
       fail('WINDOW_IDENTITY_CHANGED', 'The prepared window no longer matches the exact dynamically resolved HWND and process.');
     }
-    if (step.input.method === 'mouse_click' && (step.input.x >= windowValue.width || step.input.y >= windowValue.height)) fail('INVALID_INPUT', 'Mouse target lies outside the live client bounds.');
+    if (step.input.method === 'mouse_click' && (step.input.x >= plan.tuple.capturePixelSize.width || step.input.y >= plan.tuple.capturePixelSize.height)) fail('INVALID_INPUT', 'Mouse target lies outside the live client bounds.');
     const accessible = await cdp.accessibleTarget(step.target.selector);
     if (accessible.name !== step.target.accessibleName) fail('ACCESSIBLE_NAME_MISMATCH', 'Live target accessible name does not match the registered step.');
     await cdp.assertInputTarget(step.target.selector, step.input, plan.tuple.scale);
