@@ -38,7 +38,7 @@ The candidate includes:
 | Website, external private vocabulary supplied | 55 passed, 0 failed, 0 skipped | Complete source suite with value-free external currentness |
 | Evidence harness | 30 passed, 0 failed | Plan, identity, process, ledger, recovery, capture, and recording contracts |
 | Evidence JavaScript syntax | 18 of 18 passed | Every evidence JavaScript file |
-| Release packaging | 85 passed, 0 failed | Windows, Squirrel.Windows, OCI, workflow, provenance, source-binding, safe-output, and publication contracts |
+| Release packaging | 86 passed, 0 failed | Windows, Squirrel.Windows, staged updater provenance, OCI, workflow, source-binding, safe-output, and publication contracts |
 
 Additional accepted facts:
 

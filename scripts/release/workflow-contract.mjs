@@ -102,11 +102,14 @@ export function validateIconScriptContract(packageJson, generatorSource) {
   if (scripts['verify:icons'] !== 'node scripts/core/generate-icons.mjs --verify') {
     throw new TypeError('Automatic paths require the read-only committed-icon verifier.');
   }
+  if (scripts['stage:squirrel-vendor'] !== 'node scripts/release/stage-squirrel-vendor.mjs') {
+    throw new TypeError('Automatic package paths require the verified staged Squirrel vendor command.');
+  }
   if (scripts.pretest !== 'npm run verify:icons') {
     throw new TypeError('The test preparation path must not rewrite tracked icons.');
   }
   const prepackCommands = String(scripts.prepack || '').split('&&').map((command) => command.trim());
-  if (!prepackCommands.includes('npm run verify:icons') || prepackCommands.includes('npm run generate:icons')) {
+  if (!prepackCommands.includes('npm run verify:icons') || !prepackCommands.includes('npm run stage:squirrel-vendor') || prepackCommands.includes('npm run generate:icons')) {
     throw new TypeError('The package preparation path must not rewrite tracked icons.');
   }
   const generator = normalized(generatorSource);

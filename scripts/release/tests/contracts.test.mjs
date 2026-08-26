@@ -93,6 +93,7 @@ test('builder configuration uses an immutable icon URL and exact source identity
   assert.doesNotThrow(() => validateBuilderConfig(config, { commit, version: '1.0.37' }));
   assert.equal(config.extraMetadata.version, '1.0.37');
   assert.match(config.squirrelWindows.iconUrl, new RegExp(`/${commit}/assets/icons/app-icon\\.ico$`));
+  assert.equal(config.squirrelWindows.customSquirrelVendorDir, 'dist/build-input/squirrel-vendor');
   const staged = config.files.find((entry) => entry.from === 'dist/package-input');
   assert.ok(staged.filter.includes('app/provenance.json'));
   assert.ok(config.files.find((entry) => entry.from === 'dist/package-source').filter.includes('!app/provenance.json'));
@@ -101,6 +102,9 @@ test('builder configuration uses an immutable icon URL and exact source identity
   const broken = structuredClone(config);
   broken.squirrelWindows.iconUrl = 'https://raw.githubusercontent.com/Ding-Ding-Projects/HairGrowthEstimator/main/assets/icons/app-icon.ico';
   assert.throws(() => validateBuilderConfig(broken, { commit, version: '1.0.37' }), /immutable commit/);
+  const defaultVendor = structuredClone(config);
+  delete defaultVendor.squirrelWindows.customSquirrelVendorDir;
+  assert.throws(() => validateBuilderConfig(defaultVendor, { commit, version: '1.0.37' }), /verified staged Squirrel vendor directory/);
   const sourceMutating = structuredClone(config);
   sourceMutating.files.find((entry) => entry.from === 'dist/package-input').filter = ['package.json'];
   assert.throws(() => validateBuilderConfig(sourceMutating, { commit, version: '1.0.37' }), /output-only release transformation/);
@@ -116,6 +120,9 @@ test('automatic package paths verify committed icons without rewriting tracked s
   const mutatingPackage = structuredClone(packageJson);
   mutatingPackage.scripts.prepack = mutatingPackage.scripts.prepack.replace('npm run verify:icons', 'npm run generate:icons');
   assert.throws(() => validateIconScriptContract(mutatingPackage, generator), /must not rewrite tracked icons/);
+  const unstagedUpdater = structuredClone(packageJson);
+  unstagedUpdater.scripts.prepack = unstagedUpdater.scripts.prepack.replace(' && npm run stage:squirrel-vendor', '');
+  assert.throws(() => validateIconScriptContract(unstagedUpdater, generator), /package preparation path/);
 });
 
 test('container source contract requires network binding, provenance labels, and read-only runtime settings', () => {

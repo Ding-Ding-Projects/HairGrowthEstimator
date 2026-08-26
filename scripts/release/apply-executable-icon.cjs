@@ -121,12 +121,12 @@ function assertEmbeddedIcon(executableBuffer, iconBuffer) {
   return actual;
 }
 
-async function applyExecutableIcon(executablePath, iconPath) {
-  const before = fs.readFileSync(executablePath);
+function transformExecutableIconBytes(before, iconBuffer) {
+  if (!Buffer.isBuffer(before) || !Buffer.isBuffer(iconBuffer)) throw new TypeError('Executable icon transformation requires executable and icon byte buffers.');
   const beforeAuxiliary = auxiliaryIconGroups(before);
   const executable = NtExecutable.from(before);
   const resources = NtExecutableResource.from(executable);
-  const iconFile = Data.IconFile.from(fs.readFileSync(iconPath));
+  const iconFile = Data.IconFile.from(iconBuffer);
   Resource.IconGroupEntry.replaceIconsForResource(resources.entries, 1, 1033, iconFile.icons.map((item) => item.data));
   resources.outputResource(executable);
   const generated = Buffer.from(executable.generate());
@@ -134,11 +134,18 @@ async function applyExecutableIcon(executablePath, iconPath) {
   if (JSON.stringify(afterAuxiliary) !== JSON.stringify(beforeAuxiliary)) {
     throw new TypeError('Executable icon replacement changed an auxiliary installer icon group.');
   }
-  assertEmbeddedIcon(generated, fs.readFileSync(iconPath));
+  assertEmbeddedIcon(generated, iconBuffer);
+  return generated;
+}
+
+async function applyExecutableIcon(executablePath, iconPath) {
+  const before = fs.readFileSync(executablePath);
+  const icon = fs.readFileSync(iconPath);
+  const generated = transformExecutableIconBytes(before, icon);
   const { atomicWriteFileSync } = await import('./atomic-file.mjs');
   atomicWriteFileSync(executablePath, generated);
   const after = fs.readFileSync(executablePath);
-  const records = assertEmbeddedIcon(after, fs.readFileSync(iconPath));
+  const records = assertEmbeddedIcon(after, icon);
   return { beforeSha256: sha256(before), afterSha256: sha256(after), records };
 }
 
@@ -167,3 +174,4 @@ module.exports.executableIconRecords = executableIconRecords;
 module.exports.iconGroupRecords = iconGroupRecords;
 module.exports.iconFileRecords = iconFileRecords;
 module.exports.manifestContext = manifestContext;
+module.exports.transformExecutableIconBytes = transformExecutableIconBytes;

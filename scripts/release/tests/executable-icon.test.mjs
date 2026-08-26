@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { stageSquirrelVendor } from '../stage-squirrel-vendor.mjs';
 
 const require = createRequire(import.meta.url);
 const { Data, NtExecutable, NtExecutableResource, Resource } = require('resedit');
@@ -13,7 +15,8 @@ const {
   assertEmbeddedIcon,
   auxiliaryIconGroups,
   executableIconRecords,
-  manifestContext
+  manifestContext,
+  transformExecutableIconBytes
 } = require('../apply-executable-icon.cjs');
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(testDirectory, '..', '..', '..');
@@ -63,6 +66,29 @@ test('canonical primary icon validation permits additional installer resource gr
     target.bin = canonicalBytes.buffer.slice(canonicalBytes.byteOffset, canonicalBytes.byteOffset + canonicalBytes.byteLength);
     corruptedResources.outputResource(corruptedExecutable);
     assert.throws(() => auxiliaryIconGroups(Buffer.from(corruptedExecutable.generate())), /inconsistent data size/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('staged Squirrel vendor changes only the updater icon and preserves installed package bytes', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hair-growth-squirrel-vendor-'));
+  const sourceDirectory = path.join(root, 'node_modules', 'electron-winstaller', 'vendor');
+  const sourceUpdater = path.join(sourceDirectory, 'Squirrel.exe');
+  const before = fs.readFileSync(sourceUpdater);
+  try {
+    const result = await stageSquirrelVendor({
+      sourceDirectory,
+      destinationDirectory: path.join(directory, 'vendor'),
+      receiptPath: path.join(directory, 'receipt.json')
+    });
+    const staged = fs.readFileSync(path.join(result.destinationDirectory, 'Squirrel.exe'));
+    assert.notDeepEqual(staged, before);
+    assert.deepEqual(fs.readFileSync(sourceUpdater), before);
+    assert.equal(result.receipt.transformedSquirrelSha256, crypto.createHash('sha256').update(staged).digest('hex'));
+    assert.ok(result.receipt.iconResourceCount > 0);
+    assert.equal(result.receipt.sourceInventory.fileCount, result.receipt.stagedInventory.fileCount);
+    assert.deepEqual(staged, transformExecutableIconBytes(before, fs.readFileSync(path.join(root, 'assets', 'icons', 'app-icon.ico'))));
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

@@ -65,6 +65,8 @@ The first release has no prior full package, so it must contain exactly one full
 
 The package maps the canonical generated files into the application asset paths. Squirrel update metadata uses an immutable raw GitHub URL containing the exact source commit. Because `signAndEditExecutable` remains disabled under the no-signing policy, a separate post-pack step uses the pinned in-process `resedit` library to replace primary icon group `1` with language `1033` through collision-free icon ids. It validates every group descriptor, referenced icon id, byte count, dimension, plane, bit depth, and payload digest before an atomic replacement. The same verified step updates `Setup.exe` while preserving the additional internal groups required by the Squirrel bootstrapper byte for byte.
 
+Before Squirrel packaging begins, the build copies the complete installed vendor directory into `dist/build-input/squirrel-vendor`, verifies the pinned original executables and supporting tools, and applies the canonical icon only to the staged `Squirrel.exe`. The builder is required to use that task-local directory. A receipt proves that the installed dependency bytes did not change and every unrelated staged file stayed byte-identical. Final validation independently repeats the deterministic transformation from the pinned original, then requires the staged updater, the full package's `lib/net45/squirrel.exe`, and Setup's `Update.exe` to be byte-identical.
+
 ## Installer integrity
 
 The installer validator checks:

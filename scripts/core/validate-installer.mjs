@@ -15,7 +15,7 @@ import { releaseIdentity, releaseIdentitySha256 } from '../release/release-ident
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '..', '..');
 const require = createRequire(import.meta.url);
-const { assertEmbeddedIcon } = require('../release/apply-executable-icon.cjs');
+const { assertEmbeddedIcon, transformExecutableIconBytes } = require('../release/apply-executable-icon.cjs');
 const { NtExecutable, NtExecutableResource } = require('resedit');
 const fatalUtf8Decoder = new TextDecoder('utf-8', { fatal: true });
 const MAX_ZIP_EXTRA_BYTES = 4096;
@@ -667,10 +667,15 @@ function inspectFullPackage(packageInfo, expected) {
   const entries = readZipEntries(fs.readFileSync(packageInfo.path));
   const asarEntry = findOne(entries, (name) => /\/resources\/app\.asar$/i.test(name), 'resources/app.asar');
   const applicationExecutableEntry = findOne(entries, (name) => /\/Hair Growth Estimator\.exe$/i.test(name), 'application executable');
+  const packageUpdaterEntry = findOne(entries, (name) => /(^|\/)lib\/net45\/squirrel\.exe$/i.test(name), 'lib/net45/squirrel.exe');
+  if ([...entries.keys()].some((name) => /(^|\/)Update\.exe$/i.test(name))) {
+    throw new TypeError('Full Squirrel package must not contain a terminal Update.exe entry.');
+  }
   const nuspecEntry = findOne(entries, (name) => /\.nuspec$/i.test(name), 'NuGet specification');
   const nuspec = parseNuspecMetadata(entries.get(nuspecEntry), nuspecEntry, packageInfo.name);
   if (nuspec.version !== expected.version) throw new TypeError('Full Squirrel package NuGet version does not match package.json.');
   const applicationExecutable = entries.get(applicationExecutableEntry);
+  const packageUpdaterBuffer = entries.get(packageUpdaterEntry);
   if (readPeSecurityDirectory(applicationExecutable).size !== 0) throw new TypeError('Signing policy violated: packaged application executable is signed.');
 
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hair-growth-asar-'));
@@ -694,6 +699,7 @@ function inspectFullPackage(packageInfo, expected) {
       throw new TypeError('Full Squirrel package icon does not match its SVG master and generated manifest.');
     }
     const executableIconRecords = assertEmbeddedIcon(applicationExecutable, icon);
+    const packageUpdater = validateUpdaterExecutable(packageUpdaterBuffer, icon, 'Full package Squirrel updater');
     const sourceBinding = {
       appAsar: validateAsarSourceBinding(asarPath, expected),
       server: validateServerZipSourceBinding(entries, asarEntry, expected.commit)
@@ -706,6 +712,8 @@ function inspectFullPackage(packageInfo, expected) {
         sha256: digest('sha256', applicationExecutable),
         signing: 'NotSigned'
       },
+      packageUpdater: { entry: packageUpdaterEntry, ...packageUpdater },
+      packageUpdaterBuffer,
       nuget: { entry: nuspecEntry, id: nuspec.id, version: nuspec.version },
       icon: { masterSha256: iconManifest.masterSha256, icoSha256: iconManifest.ico.sha256, sizes: iconManifest.ico.sizes, executableResourceCount: executableIconRecords.length },
       iconBuffer: icon,
@@ -717,6 +725,48 @@ function inspectFullPackage(packageInfo, expected) {
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
+}
+
+function validateStagedUpdaterReceipt(setupPayload, setupUpdaterBuffer, packageUpdater, packageUpdaterBuffer, iconBuffer, expectedSourceSha256) {
+  const receiptPath = path.join(repositoryRoot, 'dist', 'release', 'squirrel-vendor-receipt.json');
+  const stagedUpdaterPath = path.join(repositoryRoot, 'dist', 'build-input', 'squirrel-vendor', 'Squirrel.exe');
+  const receipt = readJson(fs.readFileSync(receiptPath), 'Squirrel vendor receipt');
+  if (receipt.schemaVersion !== 1 || !receipt.sourceInventory || !receipt.stagedInventory) {
+    throw new TypeError('Squirrel vendor receipt has an unsupported or incomplete schema.');
+  }
+  if (!/^[0-9a-f]{64}$/.test(receipt.sourceSquirrelSha256 || '') || !/^[0-9a-f]{64}$/.test(receipt.transformedSquirrelSha256 || '')) {
+    throw new TypeError('Squirrel vendor receipt contains an invalid updater identity.');
+  }
+  if (receipt.transformedSquirrelSha256 === receipt.sourceSquirrelSha256) {
+    throw new TypeError('Squirrel vendor receipt does not prove a transformed updater.');
+  }
+  if (receipt.sourceSquirrelSha256 !== expectedSourceSha256) {
+    throw new TypeError('Squirrel vendor receipt source updater disagrees with the pinned dependency digest.');
+  }
+  const stagedUpdater = fs.readFileSync(stagedUpdaterPath);
+  const staged = validateUpdaterExecutable(stagedUpdater, iconBuffer, 'Staged Squirrel updater');
+  const pinnedUpdater = fs.readFileSync(path.join(repositoryRoot, 'node_modules', 'electron-winstaller', 'vendor', 'Squirrel.exe'));
+  if (digest('sha256', pinnedUpdater) !== expectedSourceSha256) {
+    throw new TypeError('Installed Squirrel updater disagrees with the pinned dependency digest.');
+  }
+  const expectedTransformedUpdater = transformExecutableIconBytes(pinnedUpdater, iconBuffer);
+  if (staged.sha256 !== receipt.transformedSquirrelSha256
+    || setupPayload.updateSha256 !== staged.sha256
+    || setupPayload.updateBytes !== staged.bytes
+    || packageUpdater.sha256 !== staged.sha256
+    || packageUpdater.bytes !== staged.bytes
+    || !expectedTransformedUpdater.equals(stagedUpdater)
+    || !setupUpdaterBuffer.equals(stagedUpdater)
+    || !packageUpdaterBuffer.equals(stagedUpdater)) {
+    throw new TypeError('Final Setup payload updater disagrees with the verified staged Squirrel updater.');
+  }
+  return {
+    receipt: path.relative(repositoryRoot, receiptPath).replaceAll(path.sep, '/'),
+    sourceSha256: receipt.sourceSquirrelSha256,
+    transformedSha256: receipt.transformedSquirrelSha256,
+    iconSha256: receipt.iconSha256,
+    iconResourceCount: staged.iconResourceCount
+  };
 }
 
 function fileRecord(filePath) {
@@ -761,9 +811,18 @@ export function validateInstallerDirectory(directory, options = {}) {
   if (!fullPackages[0].name.includes(`-${expected.version}-full.nupkg`)) throw new TypeError('Full Squirrel package filename does not contain the intended version.');
   const fullPackageBytes = fs.readFileSync(fullPackages[0].path);
   const inspected = inspectFullPackage(fullPackages[0], expected);
-  const setupPayload = assertSetupPayloadEntries(setupPayloadEntries(setup), fullPackages[0].name, fullPackageBytes, inspected.iconBuffer);
+  const setupEntries = setupPayloadEntries(setup);
+  const setupPayload = assertSetupPayloadEntries(setupEntries, fullPackages[0].name, fullPackageBytes, inspected.iconBuffer);
+  const stagedUpdater = validateStagedUpdaterReceipt(
+    setupPayload,
+    setupEntries.get('Update.exe'),
+    inspected.packageUpdater,
+    inspected.packageUpdaterBuffer,
+    inspected.iconBuffer,
+    squirrelExecutableTools['Squirrel.exe']
+  );
   const packageSet = validateSquirrelPackageSet(packages, inspected.deltaFeed);
-  const { iconBuffer, deltaFeed, ...embedded } = inspected;
+  const { iconBuffer, packageUpdaterBuffer, deltaFeed, ...embedded } = inspected;
   const setupIconRecords = assertEmbeddedIcon(setup, iconBuffer);
   const releaseIndex = fileRecord(releasesPath);
   const setupRecord = { ...fileRecord(setupPath), signing: 'NotSigned' };
@@ -783,7 +842,8 @@ export function validateInstallerDirectory(directory, options = {}) {
     packages: packages.map(({ name, bytes, sha1, sha256 }) => ({ file: name, bytes, sha1, sha256, type: /-full\.nupkg$/i.test(name) ? 'full' : 'delta' })),
     squirrelToolProvenance: {
       vendorExecutables: squirrelExecutableTools,
-      transformedUpdaterSha256: setupPayload.updateSha256
+      transformedUpdaterSha256: setupPayload.updateSha256,
+      stagedUpdater
     },
     embedded
   };

@@ -14,6 +14,7 @@
     "generate:provenance": "node scripts/core/generate-provenance.mjs",
     "generate:icons": "node scripts/core/generate-icons.mjs",
     "verify:icons": "node scripts/core/generate-icons.mjs --verify",
+    "stage:squirrel-vendor": "node scripts/release/stage-squirrel-vendor.mjs",
     "stage:package-source": "node scripts/release/stage-package-source.mjs",
     "generate:build-config": "node scripts/release/build-config.mjs",
     "start": "electron .",
@@ -30,7 +31,7 @@
     "validate:container": "node scripts/release/container-contract.mjs",
     "build:container": "node scripts/release/build-container.mjs",
     "test:packaging": "node --test scripts/release/tests/*.test.mjs",
-    "prepack": "npm run prepare:release && npm run generate:provenance && npm run verify:icons && npm run stage:package-source && npm run generate:build-config",
+    "prepack": "npm run prepare:release && npm run generate:provenance && npm run verify:icons && npm run stage:squirrel-vendor && npm run stage:package-source && npm run generate:build-config",
     "package:dir": "npm run prepack && electron-builder --dir --win --x64 --config dist/build-config/electron-builder.json",
     "dist": "npm run prepack && electron-builder --win squirrel --x64 --config dist/build-config/electron-builder.json"
   },

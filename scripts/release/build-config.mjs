@@ -54,6 +54,7 @@ export function createBuilderConfig(packageJson, provenance) {
   config.win = { ...config.win, forceCodeSigning: false, signExecutable: false, signAndEditExecutable: false };
   config.squirrelWindows = {
     ...config.squirrelWindows,
+    customSquirrelVendorDir: 'dist/build-input/squirrel-vendor',
     iconUrl: `https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${provenance.commit}/assets/icons/app-icon.ico`,
     artifactName: 'HairGrowthEstimator-Setup-${version}-${arch}.${ext}',
     msi: false
@@ -69,6 +70,9 @@ export function validateBuilderConfig(config, expected) {
     throw new TypeError('Builder release version must match the exact staged release provenance.');
   }
   if (config.squirrelWindows?.msi !== false) throw new TypeError('Builder configuration must produce only the Squirrel.Windows release family.');
+  if (config.squirrelWindows?.customSquirrelVendorDir !== 'dist/build-input/squirrel-vendor') {
+    throw new TypeError('Builder configuration must use the verified staged Squirrel vendor directory.');
+  }
   const expectedUrl = `https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${expected.commit}/assets/icons/app-icon.ico`;
   if (config.squirrelWindows?.iconUrl !== expectedUrl) throw new TypeError('Squirrel icon URL must bind to the immutable commit being packaged.');
   if (JSON.stringify(config).includes('/main/') || JSON.stringify(config).includes('/master/')) {

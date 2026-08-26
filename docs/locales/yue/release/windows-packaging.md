@@ -65,6 +65,8 @@ Portable-only、ZIP-only、MSI-only、NSIS、MSIX 同其他 installer family 都
 
 Package 會將 canonical generated file 對應到 application asset path。Squirrel update metadata 會用一條包含 exact source commit 嘅 immutable raw GitHub URL。由於 no-signing policy 之下 `signAndEditExecutable` 會保持 disabled，獨立 post-pack step 會用已鎖定嘅 in-process `resedit` library，以無碰撞 icon ids 取代 language `1033` 嘅 primary icon group `1`。Atomic replacement 之前會驗證每個 group descriptor、referenced icon id、byte count、dimension、plane、bit depth 同 payload digest。同一個 verified step 亦會更新 `Setup.exe`，並逐 byte 保留 Squirrel bootstrapper 必需嘅額外 internal groups。
 
+Squirrel packaging 開始之前，build 會將 complete installed vendor directory 複製去 `dist/build-input/squirrel-vendor`，驗證 pinned original executables 同 supporting tools，然後只對 staged `Squirrel.exe` 套用 canonical icon。Builder 必須使用呢個 task-local directory。Receipt 會證明 installed dependency bytes 冇變，而且每一個 unrelated staged file 都逐 byte 保持一致。Final validation 會由 pinned original 獨立重做 deterministic transformation，然後要求 staged updater、full package 嘅 `lib/net45/squirrel.exe`，同 Setup 嘅 `Update.exe` 逐 byte 完全一致，今次隻松鼠終於戴啱帽又冇偷換衫。
+
 ## Installer integrity
 
 Installer validator 會檢查：

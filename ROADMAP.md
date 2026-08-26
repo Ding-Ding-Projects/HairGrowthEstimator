@@ -71,7 +71,7 @@ Checkboxes are complete only when the named work is implemented and locally veri
 - [x] Validate explicit Squirrel ZIP directory records without weakening extraction safety.
 - [x] Implement the four-job release workflow for every push and manual dispatch, without test or lint jobs.
 - [x] Implement the fixed four-file terminal transfer and split context and terminal run-attempt validation.
-- [x] Pass all 85 release-packaging checks.
+- [x] Pass all 86 release-packaging checks.
 - [ ] Build the final runnable Windows application from the final clean commit.
 - [ ] Build and validate the final unsigned Squirrel.Windows installer family.
 - [ ] Build and validate the final deterministic OCI archive.
