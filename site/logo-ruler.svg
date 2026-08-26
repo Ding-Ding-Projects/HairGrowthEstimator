@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">Hair Growth Estimator ruler logo</title>
+  <desc id="desc">A vertical ruler with a flowing strand</desc>
+  <rect width="96" height="96" rx="28" fill="#2c3557"/>
+  <rect x="55" y="18" width="18" height="60" rx="7" fill="#c4c8ed"/>
+  <path d="M55 29h9M55 40h13M55 51h9M55 62h13" stroke="#2c3557" stroke-width="3"/>
+  <path d="M23 69c0-30 12-47 33-49-10 9-15 23-15 41 0 11-4 17-10 17-5 0-8-3-8-9Z" fill="#a7f3d0"/>
+</svg>

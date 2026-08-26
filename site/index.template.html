@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://objects.githubusercontent.com; font-src 'self'; connect-src 'self' http://127.0.0.1:11434 http://localhost:11434 http://127.0.0.1:8123 http://localhost:8123 http://[::1]:8123; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#a7f3d0">
+  <meta name="description" content="Hair Growth Estimator documentation, downloads, status, privacy details, and browser-local planning tools.">
+  <meta property="og:title" content="Hair Growth Estimator">
+  <meta property="og:description" content="Estimate hair growth, log haircut resets, use centimetres or inches, and connect to an optional private service.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Hair Growth Estimator">
+  <meta property="og:url" content="https://ding-ding-projects.github.io/HairGrowthEstimator/">
+  <meta property="og:image" content="https://ding-ding-projects.github.io/HairGrowthEstimator/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Hair Growth Estimator logo with a curved hair strand and measurement marks">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>Hair Growth Estimator</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <section class="provenance-banner" id="front-provenance" aria-labelledby="provenance-heading" data-feature="provenance">
+    <img class="brand-mark" id="brand-mark" src="logo.svg" alt="Hair Growth Estimator logo" width="56" height="56">
+    <div>
+      <p class="eyebrow" id="provenance-heading">Running website artifact</p>
+      <h1 id="display-name" data-vocabulary-exempt>Hair Growth Estimator</h1>
+      <p class="provenance-line">
+        <span>Version <strong id="running-version">Unavailable</strong></span>
+        <span aria-hidden="true">•</span>
+        <span>Updated <strong id="running-updated-at">Unavailable</strong></span>
+        <span aria-hidden="true">•</span>
+        <span class="school-hidden" data-school-sensitive>Release code name <a data-vocabulary-exempt href="https://github.com/Ding-Ding-Projects/dim-sum-photos/releases/download/catalog-v1/hk-dish-0001-classic-har-gow.png">Classic Har Gow · 蝦餃</a></span>
+      </p>
+    </div>
+    <button class="icon-button" type="button" data-action="open-command-palette" aria-label="Open command palette" title="Open command palette, Ctrl+Shift+F">⌕</button>
+  </section>
+
+  <noscript>
+    <section class="noscript-card" aria-label="JavaScript requirement">
+      This documentation remains readable as source files, but interactive planning controls require JavaScript. No analytics or trackers are used.
+    </section>
+  </noscript>
+
+  <div class="app-shell" id="app-shell" data-feature="tabs">
+    <nav class="tab-rail" id="tab-rail" aria-label="Primary navigation">
+      <div class="tab-rail-heading">
+        <span>Explore</span>
+        <button class="icon-button" type="button" data-action="open-overflow" aria-label="Open tab overflow">⋯</button>
+      </div>
+      <div class="nav-search-stack">
+        <div class="search-row">
+          <label class="sr-only" for="strip-search">Search the current tab strip</label>
+          <input id="strip-search" type="search" placeholder="Search this strip" data-search-owner="current-strip" autocomplete="off">
+          <button type="button" class="builder-button" data-open-regex-for="strip-search" aria-label="Open regex builder for current strip search">.*</button>
+        </div>
+        <details>
+          <summary>More tab searches</summary>
+          <div class="search-row">
+            <label class="sr-only" for="group-tab-search">Search tabs in selected group</label>
+            <input id="group-tab-search" type="search" placeholder="Search selected group" data-search-owner="group-tabs" autocomplete="off">
+            <button type="button" class="builder-button" data-open-regex-for="group-tab-search" aria-label="Open regex builder for group tab search">.*</button>
+          </div>
+          <div class="search-row">
+            <label class="sr-only" for="group-name-search">Search tab groups</label>
+            <input id="group-name-search" type="search" placeholder="Search groups" data-search-owner="group-names" autocomplete="off">
+            <button type="button" class="builder-button" data-open-regex-for="group-name-search" aria-label="Open regex builder for group name search">.*</button>
+          </div>
+          <div class="search-row">
+            <label class="sr-only" for="master-tab-search">Search every tab</label>
+            <input id="master-tab-search" type="search" placeholder="Search every tab" data-search-owner="master-tabs" autocomplete="off">
+            <button type="button" class="builder-button" data-open-regex-for="master-tab-search" aria-label="Open regex builder for master tab search">.*</button>
+          </div>
+        </details>
+      </div>
+      <div class="tab-list" id="tab-list" role="tablist" aria-orientation="vertical"></div>
+      <div class="rail-actions">
+        <button type="button" class="tonal-button" data-action="open-bulk-tabs">Bulk close</button>
+        <button type="button" class="text-button" data-action="restore-tabs">Restore tabs</button>
+      </div>
+    </nav>
+
+    <main id="main-content" tabindex="-1">
+      <section class="page-panel active" id="panel-home" role="tabpanel" aria-labelledby="tab-home" data-panel="home" data-feature="home">
+        <div class="hero-grid">
+          <article class="hero-copy">
+            <p class="eyebrow">Private-by-default planning</p>
+            <h2>See where your hair could be next month, then reset the estimate when you get a haircut.</h2>
+            <p>This website is a landing, documentation, download, status, settings, and link surface. It is not the primary desktop application, it does not embed the installed application, and it does not replace the local service.</p>
+            <div class="button-row">
+              <button class="filled-button" type="button" data-go-tab="estimator">Try the browser-local estimator</button>
+              <button class="tonal-button" type="button" data-go-tab="downloads">Check installer status</button>
+            </div>
+            <div class="status-pills" aria-label="Key properties">
+              <span>Exact 1 in = 2.54 cm</span>
+              <span>Local-first records</span>
+              <span>Optional private service</span>
+            </div>
+          </article>
+          <article class="growth-visual" aria-labelledby="growth-visual-title" data-feature="hair-images">
+            <div class="visual-heading">
+              <div>
+                <p class="eyebrow">Illustrated growth timeline</p>
+                <h3 id="growth-visual-title">Real male hair reference stages</h3>
+              </div>
+              <button class="icon-button" type="button" data-action="toggle-animation" aria-label="Pause hair growth animation">Ⅱ</button>
+            </div>
+            <div class="hair-stage" id="hero-hair-stage" aria-live="polite">
+              <div class="image-placeholder" role="img" aria-label="Hair reference photographs will appear after generated assets are integrated">
+                <span>Reference photographs are being prepared</span>
+              </div>
+            </div>
+            <div class="timeline-track" aria-hidden="true"><span id="timeline-progress"></span></div>
+            <p id="hero-stage-caption">Stage references animate only when local image assets are present.</p>
+          </article>
+        </div>
+
+        <div class="feature-card-grid" id="feature-card-grid">
+          <article class="feature-card" data-feature="estimator">
+            <span class="feature-icon" aria-hidden="true">↗</span>
+            <h3>Growth estimator</h3>
+            <p>Project from a dated baseline using a configurable monthly rate and a target length.</p>
+            <button class="text-button" type="button" data-go-tab="estimator">Open estimator</button>
+          </article>
+          <article class="feature-card" data-feature="haircuts">
+            <span class="feature-icon" aria-hidden="true">✂</span>
+            <h3>Haircut resets</h3>
+            <p>Record the post-cut length and date. The newest valid haircut becomes the active baseline while the manual fallback remains available.</p>
+            <button class="text-button" type="button" data-go-tab="haircuts">Open haircut log</button>
+          </article>
+          <article class="feature-card" data-feature="service">
+            <span class="feature-icon" aria-hidden="true">⌁</span>
+            <h3>Optional private service</h3>
+            <p>Run locally, on a private LAN host, or behind a strict SSH tunnel. Public exposure is not a supported default.</p>
+            <button class="text-button" type="button" data-go-tab="service">Read connection guide</button>
+          </article>
+          <article class="feature-card" data-feature="exports">
+            <span class="feature-icon" aria-hidden="true">⇩</span>
+            <h3>Portable records</h3>
+            <p>Export browser-local planning state in JSON, CSV, Markdown, HTML, YAML, TOML, XML, SQL, and source-code forms.</p>
+            <button class="text-button" type="button" data-go-tab="tools">Open tools</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="page-panel" id="panel-estimator" role="tabpanel" aria-labelledby="tab-estimator" data-panel="estimator" data-feature="estimator">
+        <header class="page-header">
+          <p class="eyebrow">Browser-local planner</p>
+          <h2>Hair growth estimator</h2>
+          <p>These values stay in this browser. They do not write to the desktop application or service.</p>
+          <p>The adjustable 1.0 cm/month starting estimate is informed by the general scalp-hair figure in <a href="https://www.ncbi.nlm.nih.gov/books/NBK499948/">NCBI Bookshelf</a>. Individual growth varies meaningfully. This planner is not medical advice and cannot predict an individual's actual growth.</p>
+        </header>
+        <div class="two-column">
+          <form class="surface-card form-grid" id="estimator-form">
+            <label>Manual fallback date<input id="baseline-date" type="date" required aria-describedby="baseline-date-help baseline-date-error"><small id="baseline-date-help">Used when no valid haircut record remains. Future dates are not accepted.</small><span class="field-error" id="baseline-date-error" role="alert"></span></label>
+            <label>Manual fallback length<span class="unit-input"><input id="baseline-length" type="number" min="0" max="300" step="0.01" required><span data-unit-label>cm</span></span></label>
+            <label>Monthly growth rate<span class="unit-input"><input id="growth-rate" type="number" min="0" max="10" step="0.01" required><span data-unit-label>cm</span></span></label>
+            <label>Target length<span class="unit-input"><input id="target-length" type="number" min="0" max="300" step="0.01" required><span data-unit-label>cm</span></span></label>
+            <fieldset class="segmented-field">
+              <legend>Measurement unit</legend>
+              <label><input type="radio" name="unit" value="cm" checked> Centimetres</label>
+              <label><input type="radio" name="unit" value="in"> Inches</label>
+            </fieldset>
+            <button class="filled-button" type="submit">Update estimate</button>
+          </form>
+          <article class="surface-card estimate-result" aria-live="polite">
+            <p class="eyebrow">Estimated today</p>
+            <p id="baseline-source">The manual fallback is the active baseline.</p>
+            <strong class="metric" id="current-length-result">0.00 cm</strong>
+            <p id="estimate-summary">Enter a factual baseline to calculate a projection.</p>
+            <dl class="metric-list">
+              <div><dt>Elapsed</dt><dd id="elapsed-result">0 days</dd></div>
+              <div><dt>Target date</dt><dd id="target-date-result">Unavailable</dd></div>
+              <div><dt>Exact conversion</dt><dd>1 in = 2.54 cm</dd></div>
+            </dl>
+            <div class="progress-track" aria-label="Progress toward target"><span id="target-progress"></span></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="page-panel" id="panel-haircuts" role="tabpanel" aria-labelledby="tab-haircuts" data-panel="haircuts" data-feature="haircuts">
+        <header class="page-header">
+          <p class="eyebrow">Dated reset history</p>
+          <h2>Haircut log</h2>
+          <p>The newest valid haircut is the active browser-local baseline. Editing or deleting records recalculates that choice, and the retained manual fallback resumes when no valid haircut remains. Desktop and server records remain separate.</p>
+        </header>
+        <form class="surface-card inline-form" id="haircut-form">
+          <label>Date<input id="haircut-date" type="date" required aria-describedby="haircut-date-help haircut-date-error"><small id="haircut-date-help">Choose today or an earlier date.</small><span class="field-error" id="haircut-date-error" role="alert"></span></label>
+          <label>Post-cut length<input id="haircut-length" type="number" min="0" max="300" step="0.01" required></label>
+          <label>Note<input id="haircut-note" type="text" maxlength="500" placeholder="Optional"></label>
+          <button class="filled-button" type="submit">Record haircut</button>
+        </form>
+        <section class="collection-toolbar" aria-label="Haircut log controls">
+          <div class="search-row">
+            <label class="sr-only" for="haircut-search">Search haircut log</label>
+            <input id="haircut-search" type="search" placeholder="Search haircut log" data-search-owner="haircuts" autocomplete="off">
+            <button type="button" class="builder-button" data-open-regex-for="haircut-search" aria-label="Open regex builder for haircut search">.*</button>
+          </div>
+          <button class="tonal-button" type="button" data-action="select-all-haircuts">Select every match</button>
+          <button class="tonal-button" type="button" data-action="export-haircuts">Export filtered</button>
+          <button class="danger-button" type="button" data-action="delete-haircuts">Delete selected</button>
+        </section>
+        <div class="collection-list" id="haircut-list" aria-live="polite"></div>
+      </section>
+
+      <section class="page-panel" id="panel-service" role="tabpanel" aria-labelledby="tab-service" data-panel="service" data-feature="service">
+        <header class="page-header">
+          <p class="eyebrow">Optional synchronization</p>
+          <h2>Local service and private connectivity</h2>
+          <p>The service binds to loopback by default. Non-loopback binding requires a strong API key and an explicit private-network decision.</p>
+        </header>
+        <div class="feature-card-grid">
+          <article class="feature-card"><h3>Local only</h3><p>Use <code>127.0.0.1</code> for the smallest network surface. Data remains on one computer.</p></article>
+          <article class="feature-card"><h3>Private LAN</h3><p>Bind deliberately, require an API key, restrict firewall access, and never forward the port from a public router.</p></article>
+          <article class="feature-card"><h3>SSH tunnel</h3><p>Forward a loopback service through OpenSSH with persistent known-host verification. A changed key stops the connection.</p></article>
+        </div>
+        <article class="surface-card code-card">
+          <div class="visual-heading"><h3>Container launch</h3><button class="text-button" type="button" data-copy="#service-command">Copy</button></div>
+          <pre id="service-command"><code>docker compose up --build -d</code></pre>
+          <p>Set <code>HAIR_API_KEY</code> through a private environment source before any non-loopback deployment. Do not commit it.</p>
+        </article>
+        <details class="surface-card"><summary>Security boundaries</summary><ul><li>HTTP is suitable only for loopback or a separately protected private network.</li><li>SSH passwords are not accepted by the desktop connection workflow. Use a key and persistent known-host verification.</li><li>This website cannot connect to or control the installed service without an explicit browser request and compatible local CORS settings.</li></ul></details>
+      </section>
+
+      <section class="page-panel" id="panel-downloads" role="tabpanel" aria-labelledby="tab-downloads" data-panel="downloads" data-feature="downloads">
+        <header class="page-header"><p class="eyebrow">Release channel</p><h2>Downloads and updates</h2><p>A download appears only after an immutable release manifest is built and verified.</p></header>
+        <article class="download-card" id="download-card">
+          <div><p class="eyebrow">Windows installer</p><h3 id="download-version">Pending first verified release</h3><p id="download-detail">No installer URL has been verified for this website artifact.</p></div>
+          <button class="filled-button" id="download-button" type="button" disabled aria-describedby="download-disabled-reason">Download unavailable</button>
+          <p id="download-disabled-reason">The button remains disabled until build provenance includes an immutable HTTPS release asset and SHA-256 digest.</p>
+        </article>
+        <article class="surface-card" data-feature="updates"><h3>Automatic updates</h3><p>The installed application checks an unsigned Squirrel.Windows HTTPS feed, validates metadata and package hashes, and asks before restart. It does not claim a publisher signature. The website reports release facts but does not install updates.</p></article>
+      </section>
+
+      <section class="page-panel" id="panel-docs" role="tabpanel" aria-labelledby="tab-docs" data-panel="docs" data-feature="documentation">
+        <header class="page-header"><p class="eyebrow">Bundled documentation</p><h2>Documentation browser</h2><p>Articles are compiled into this website artifact. Searching and reading them works offline after the page has loaded.</p></header>
+        <div class="docs-layout">
+          <aside class="surface-card docs-index">
+            <div class="search-row"><label class="sr-only" for="docs-search">Search documentation</label><input id="docs-search" type="search" placeholder="Search titles and text" data-search-owner="documentation" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="docs-search" aria-label="Open regex builder for documentation search">.*</button></div>
+            <div id="docs-list" role="listbox" tabindex="0" aria-activedescendant="" aria-label="Documentation articles"></div>
+          </aside>
+          <article class="surface-card markdown-body" id="docs-article" tabindex="-1" aria-live="polite"><h3>Choose an article</h3><p>The article list will appear after build composition.</p></article>
+        </div>
+      </section>
+
+      <section class="page-panel" id="panel-tools" role="tabpanel" aria-labelledby="tab-tools" data-panel="tools" data-feature="tools">
+        <header class="page-header"><p class="eyebrow">Browser-local utilities</p><h2>Tools</h2><p>These utilities operate on user-selected local data. They do not upload files.</p></header>
+        <div class="subtab-bar" role="tablist" aria-label="Tools">
+          <button id="tool-tab-regex" role="tab" aria-controls="tool-panel-regex" tabindex="0" aria-selected="true" data-subtab="regex">Regex workbench</button>
+          <button id="tool-tab-converter" role="tab" aria-controls="tool-panel-converter" tabindex="-1" aria-selected="false" data-subtab="converter">File converter</button>
+          <button id="tool-tab-ollama" role="tab" aria-controls="tool-panel-ollama" tabindex="-1" aria-selected="false" data-subtab="ollama">Local model manager</button>
+          <button id="tool-tab-authenticator" role="tab" aria-controls="tool-panel-authenticator" tabindex="-1" aria-selected="false" data-subtab="authenticator">Authenticator</button>
+          <button id="tool-tab-exports" role="tab" aria-controls="tool-panel-exports" tabindex="-1" aria-selected="false" data-subtab="exports">Export center</button>
+        </div>
+
+        <section id="tool-panel-regex" class="tool-panel active" role="tabpanel" aria-labelledby="tool-tab-regex" tabindex="0" data-tool-panel="regex" data-feature="regex-workbench">
+          <div id="regex-workbench-host"></div>
+        </section>
+
+        <section id="tool-panel-converter" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-converter" tabindex="0" data-tool-panel="converter" data-feature="file-converter">
+          <article class="surface-card form-grid">
+            <h3>Local file converter</h3>
+            <label>Source file<input id="converter-file" type="file"></label>
+            <label>Category<select id="converter-category" data-search-owner="converter-category"><option>Structured Data/Spreadsheets</option><option>Code/Text</option><option>Binary Encodings</option><option disabled>Documents/PDF, adapter unavailable in this browser build</option><option disabled>Images, adapter unavailable in this browser build</option><option disabled>Audio, adapter unavailable in this browser build</option><option disabled>Video, adapter unavailable in this browser build</option><option disabled>Archives, adapter unavailable in this browser build</option></select><button type="button" class="builder-button" data-open-regex-for="converter-category" aria-label="Open regex builder for converter category">.*</button></label>
+            <label>Adapter<select id="converter-adapter" data-search-owner="converter-adapter"><option value="json-pretty">JSON to formatted JSON</option><option value="csv-tsv">CSV to TSV</option><option value="tsv-csv">TSV to CSV</option><option value="text-base64">Text to Base64</option><option value="base64-text">Base64 to text</option><option value="markdown-html">Markdown to safe HTML</option></select><button type="button" class="builder-button" data-open-regex-for="converter-adapter" aria-label="Open regex builder for converter adapter">.*</button></label>
+            <p id="converter-limits">Maximum source size is 1 MiB. Processing is local, bounded to one file in this browser surface, cancellable before download, and never overwrites the source.</p>
+            <button class="filled-button" type="button" id="convert-button">Convert</button>
+            <button class="text-button" type="button" id="cancel-convert">Cancel</button>
+            <progress id="converter-progress" max="100" value="0">0%</progress>
+            <label>Preview<textarea id="converter-preview" rows="10" readonly></textarea></label>
+            <button class="tonal-button" type="button" id="download-conversion" disabled>Download validated output</button>
+          </article>
+        </section>
+
+        <section id="tool-panel-ollama" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-ollama" tabindex="0" data-tool-panel="ollama" data-feature="ollama-manager">
+          <article class="surface-card form-grid">
+            <h3>Local Ollama mediation</h3>
+            <p>A public HTTPS page cannot start local processes, inspect hardware, bypass browser mixed-content rules, or promise CORS access. This browser-local equivalent can make an explicit user-requested loopback API call, store local profiles, and report the exact browser refusal.</p>
+            <label>Local API URL<input id="ollama-url" type="url" value="http://127.0.0.1:11434" spellcheck="false"></label>
+            <button class="filled-button" type="button" id="ollama-connect">Check local API</button>
+            <p id="ollama-status" role="status">Not checked.</p>
+            <div class="search-row"><label class="sr-only" for="ollama-search">Search local models</label><input id="ollama-search" type="search" placeholder="Search installed models" data-search-owner="ollama-models" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="ollama-search" aria-label="Open regex builder for local model search">.*</button></div>
+            <div id="ollama-model-list" class="collection-list"></div>
+            <details><summary>Unavailable on this website</summary><ul><li>Exhaustive remote store refresh is disabled because the site has no trusted catalog proxy.</li><li>Hardware-fit verdicts remain Unknown because a browser cannot reliably inspect RAM, VRAM, drivers, and blob metadata.</li><li>Batch pull, deletion, and harness launch require the installed application and explicit local process controls.</li></ul></details>
+          </article>
+        </section>
+
+        <section id="tool-panel-authenticator" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-authenticator" tabindex="0" data-tool-panel="authenticator" data-feature="authenticator">
+          <article class="surface-card form-grid">
+            <h3>Browser-local TOTP authenticator</h3>
+            <p class="warning-callout">This website uses localStorage rather than an operating-system credential vault. That is not suitable for valuable account secrets. Prefer a dedicated authenticator. Clearing this site's storage removes entries.</p>
+            <label>otpauth URI or Base32 secret<input id="totp-input" type="password" autocomplete="off"></label>
+            <label>Entry label<input id="totp-label" type="text" maxlength="120"></label>
+            <div class="button-row"><button class="filled-button" type="button" id="totp-add">Add local entry</button><button class="text-button" type="button" id="totp-clear">Clear fields</button></div>
+            <div class="search-row"><label class="sr-only" for="totp-search">Search authenticator entries</label><input id="totp-search" type="search" placeholder="Search entries" data-search-owner="authenticator" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="totp-search" aria-label="Open regex builder for authenticator search">.*</button></div>
+            <div id="totp-list" class="collection-list" aria-live="polite"></div>
+            <p>QR image decoding and camera access are visible but unavailable in this static build because no verified local decoder is bundled.</p>
+            <button class="tonal-button" type="button" disabled aria-describedby="qr-unavailable">Read QR from image</button>
+            <span id="qr-unavailable">Unavailable: no bundled QR decoder has packaged-artifact proof.</span>
+          </article>
+        </section>
+
+        <section id="tool-panel-exports" class="tool-panel" role="tabpanel" aria-labelledby="tool-tab-exports" tabindex="0" data-tool-panel="exports" data-feature="exports">
+          <article class="surface-card form-grid"><h3>Export center</h3><p>Exports include browser-local settings, estimates, haircut records, notifications, and redacted history. Authenticator secrets, lock credentials, private vocabulary mappings, and custom-logo bytes are omitted and identified as omitted. CSV and TSV use normalized long-form rows with JSON Pointer paths, JSON values, representation metadata, and the same explicit privacy omissions.</p><label>Format<select id="export-format" data-search-owner="export-format"><option>JSON</option><option>JSONL</option><option>YAML</option><option>TOML</option><option>XML</option><option>CSV</option><option>TSV</option><option>Markdown</option><option>HTML</option><option>SQL</option><option>TypeScript</option><option>JavaScript</option><option>Python</option><option>Go</option><option>Rust</option><option>JSON Schema</option><option>Protobuf</option></select><button type="button" class="builder-button" data-open-regex-for="export-format" aria-label="Open regex builder for export format">.*</button></label><button class="filled-button" type="button" id="export-state">Export redacted browser state</button><button class="tonal-button" type="button" id="import-state">Import compatible state</button><input id="import-file" type="file" accept="application/json" hidden></article>
+        </section>
+      </section>
+
+      <section class="page-panel" id="panel-status" role="tabpanel" aria-labelledby="tab-status" data-panel="status" data-feature="status-hub">
+        <header class="page-header"><p class="eyebrow">Artifact evidence</p><h2>Status</h2><p>Every claim is tied to the provenance embedded in this built website artifact.</p></header>
+        <div class="status-dashboard">
+          <article class="status-card"><span class="state pending">Pending</span><h3>Desktop installer</h3><p>No immutable installer manifest is embedded yet.</p></article>
+          <article class="status-card"><span class="state local">Local</span><h3>Website build</h3><p id="status-build-evidence">Waiting for provenance validation.</p></article>
+          <article class="status-card"><span class="state unverified">Unverified</span><h3>Interactive capture evidence</h3><p>Built-artifact screenshots and per-click evidence are recorded separately during release verification.</p></article>
+          <article class="status-card"><span class="state unavailable">Unavailable</span><h3>Shared status service</h3><p>This static website has no authenticated session bridge, so it cannot send answers or mutate project status.</p></article>
+        </div>
+        <details class="surface-card"><summary>Artifact provenance JSON</summary><pre id="provenance-json"></pre></details>
+      </section>
+
+      <section class="page-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history" data-panel="history" data-feature="history">
+        <header class="page-header"><p class="eyebrow">Append-only browser record</p><h2>Local history and notifications</h2><p>History is stored in this browser only. Same-origin tabs reconcile monotonic revisions through an exclusive browser transaction and refuse stale writes. Nothing synchronizes to another device or server, and clearing site storage removes it.</p><p id="storage-revision-status" role="status">Browser revision unavailable until local state initializes.</p></header>
+        <div class="two-column">
+          <section class="surface-card"><h3>Version history</h3><div class="filter-row"><label>From<input id="history-from" type="date"></label><label>To<input id="history-to" type="date"></label><div class="search-row"><label class="sr-only" for="history-search">Search history</label><input id="history-search" type="search" placeholder="Search history" data-search-owner="history" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="history-search" aria-label="Open regex builder for history search">.*</button></div></div><div id="history-list" class="collection-list"></div><button class="tonal-button" type="button" data-action="export-history">Export redacted history</button></section>
+          <section class="surface-card"><h3>Notification center</h3><div class="search-row"><label class="sr-only" for="notification-search">Search notifications</label><input id="notification-search" type="search" placeholder="Search notifications" data-search-owner="notifications" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="notification-search" aria-label="Open regex builder for notification search">.*</button></div><div id="notification-list" class="collection-list"></div><div class="button-row"><button class="tonal-button" type="button" data-action="select-all-notifications">Select every match</button><button class="danger-button" type="button" data-action="delete-notifications">Delete selected</button></div></section>
+        </div>
+      </section>
+
+      <section class="page-panel" id="panel-changelog" role="tabpanel" aria-labelledby="tab-changelog" data-panel="changelog" data-feature="changelog">
+        <header class="page-header"><p class="eyebrow">Traceable releases</p><h2>Changelog</h2><p>Entries are compiled from the repository record. Unknown commit links stay visibly unavailable rather than being guessed.</p></header>
+        <div class="filter-row"><label>From<input id="changelog-from" type="date"></label><label>To<input id="changelog-to" type="date"></label><div class="search-row"><label class="sr-only" for="changelog-search">Search changelog</label><input id="changelog-search" type="search" placeholder="Search changelog" data-search-owner="changelog" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="changelog-search" aria-label="Open regex builder for changelog search">.*</button></div><button class="tonal-button" type="button" data-action="export-changelog">Export filtered</button></div><div id="changelog-list" class="collection-list"></div>
+      </section>
+
+      <section class="page-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" data-feature="settings">
+        <header class="page-header"><p class="eyebrow">Per-visitor preferences</p><h2>Settings</h2><p>Settings apply to this website only and persist in local browser storage.</p></header>
+        <div class="search-row settings-search"><label class="sr-only" for="settings-search">Search settings</label><input id="settings-search" type="search" placeholder="Search settings" data-search-owner="settings" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="settings-search" aria-label="Open regex builder for settings search">.*</button></div>
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections"><button id="settings-tab-language" role="tab" aria-controls="settings-panel-language" tabindex="0" aria-selected="true" data-settings-tab="language">Language</button><button id="settings-tab-appearance" role="tab" aria-controls="settings-panel-appearance" tabindex="-1" aria-selected="false" data-settings-tab="appearance">Appearance</button><button id="settings-tab-accessibility" role="tab" aria-controls="settings-panel-accessibility" tabindex="-1" aria-selected="false" data-settings-tab="accessibility">Accessibility</button><button id="settings-tab-privacy" role="tab" aria-controls="settings-panel-privacy" tabindex="-1" aria-selected="false" data-settings-tab="privacy">Privacy</button><button id="settings-tab-schedule" role="tab" aria-controls="settings-panel-schedule" tabindex="-1" aria-selected="false" data-settings-tab="schedule">Schedule</button><button id="settings-tab-attention" role="tab" aria-controls="settings-panel-attention" tabindex="-1" aria-selected="false" data-settings-tab="attention">Attention</button></div>
+
+        <section id="settings-panel-language" class="settings-panel active" role="tabpanel" aria-labelledby="settings-tab-language" tabindex="0" data-settings-panel="language">
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="language English Cantonese bilingual"><div><h3>Language mode</h3><p>Choose English, playful Hong Kong-style Cantonese, or compact bilingual presentation.</p><small data-provenance-for="language">Compiled default: English</small></div><select id="language-mode" data-search-owner="language-mode"><option value="en">English</option><option value="yue">Playful Hong Kong-style Cantonese</option><option value="both">Bilingual</option></select><button type="button" class="builder-button" data-open-regex-for="language-mode" aria-label="Open regex builder for language mode">.*</button></article>
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="funny playful English"><div><h3>English funny level</h3><p>Level 1 is fully serious. Level 5 is most playful. Facts remain unchanged.</p><small data-provenance-for="funnyEn">Compiled default: 5</small></div><input id="funny-en" type="range" min="1" max="5" value="5"><output for="funny-en">5</output></article>
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="funny playful Cantonese"><div><h3>Cantonese funny level</h3><p>Level 1 is fully serious. Level 5 is most playful. Facts remain unchanged.</p><small data-provenance-for="funnyYue">Compiled default: 5</small></div><input id="funny-yue" type="range" min="1" max="5" value="5"><output for="funny-yue">5</output></article>
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="message fact parity informational success progress warning error destructive security accessibility"><div><h3>Message presentation preview</h3><p>Each category preserves the same factual placeholders in both languages at every funny level.</p></div><div id="message-parity-preview" class="message-parity-preview" role="status" aria-live="polite"></div></article>
+          <article class="setting-card" data-setting-keywords="emoji dialog message"><div><h3>Show emojis in dialogs and message boxes</h3><p>Decorative emoji never changes an action label or accessible name.</p><small data-provenance-for="dialogEmoji">Compiled default: on</small></div><input id="dialog-emoji" type="checkbox" checked></article>
+          <article class="setting-card" data-setting-keywords="school focus language lock rename shared"><div><h3 id="school-mode-label" data-vocabulary-exempt>School mode</h3><p>Uses one same-origin browser record, forces English, and removes Cantonese, funny-level, vocabulary, and dim-sum capabilities until turned off.</p><small id="school-mode-status" role="status" aria-live="polite">Shared browser presentation is off.</small><small data-provenance-for="schoolMode">Compiled default: off</small></div><label>Mode name<input id="school-mode-name" type="text" maxlength="80" value="School mode"></label><button class="text-button" type="button" id="reset-school-mode-name">Reset name</button><input id="school-mode" type="checkbox"></article>
+        </section>
+
+        <section id="settings-panel-appearance" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0" data-settings-panel="appearance">
+          <article class="setting-card" data-setting-keywords="theme light dark contrast"><div><h3>Theme</h3><p>Applies color roles, contrast, surfaces, and status layers.</p><small data-provenance-for="theme">Compiled default: dark</small></div><select id="theme-select" data-search-owner="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select><button type="button" class="builder-button" data-open-regex-for="theme-select" aria-label="Open regex builder for theme">.*</button></article>
+          <article class="setting-card" data-setting-keywords="density compact comfortable spacious"><div><h3>Density</h3><p>Changes spacing and target presentation while preserving minimum interactive sizes.</p><small data-provenance-for="density">Compiled default: comfortable</small></div><select id="density-select" data-search-owner="density"><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="spacious">Spacious</option></select><button type="button" class="builder-button" data-open-regex-for="density-select" aria-label="Open regex builder for density">.*</button></article>
+          <article class="setting-card" data-setting-keywords="accent seed color rainbow"><div><h3>Accent color</h3><p>Choose any color or the animated rainbow sentinel. Reduced motion settles the rainbow on one hue.</p><small data-provenance-for="accent">Compiled default: #a7f3d0</small></div><input id="accent-color" type="color" value="#a7f3d0"><button type="button" class="tonal-button" id="accent-rainbow">Rainbow</button></article>
+          <article class="setting-card" data-setting-keywords="rainbow speed"><div><h3>Rainbow speed</h3><p>One global level controls all animated rainbow surfaces.</p><small data-provenance-for="rainbowSpeed">Compiled default: 3</small></div><input id="rainbow-speed" type="range" min="1" max="5" value="3"><output for="rainbow-speed">3</output></article>
+          <article class="setting-card" data-setting-keywords="font family size weight"><div><h3>Interface font</h3><p>Uses a local system font with a CJK-safe fallback and live preview.</p><small data-provenance-for="font">Compiled default: system sans</small></div><select id="font-family" data-search-owner="font-family"><option value="system-ui">System UI</option><option value="Arial, sans-serif">Arial</option><option value="Georgia, serif">Georgia</option><option value="'Microsoft JhengHei', sans-serif">Microsoft JhengHei</option></select><button type="button" class="builder-button" data-open-regex-for="font-family" aria-label="Open regex builder for font family">.*</button><input id="font-scale" type="range" min="0.8" max="1.4" step="0.05" value="1"></article>
+          <article class="setting-card" data-setting-keywords="tab dock left right top bottom"><div><h3>Tab-strip docking</h3><p>Dock left, right, top, or bottom. Left is the default.</p><small data-provenance-for="dock">Compiled default: left</small></div><select id="dock-select" data-search-owner="dock"><option value="left">Left</option><option value="right">Right</option><option value="top">Top</option><option value="bottom">Bottom</option></select><button type="button" class="builder-button" data-open-regex-for="dock-select" aria-label="Open regex builder for docking">.*</button></article>
+          <article class="setting-card" data-setting-keywords="logo preset custom upload crop fit focal background"><div><h3>Logo customization</h3><p>Choose a shipped preset or a bounded local image. Custom bytes remain in this browser and never change package identity.</p><small data-provenance-for="logo">Compiled default: growth strand</small></div><select id="logo-preset" data-search-owner="logo-preset"><option value="strand">Growth strand</option><option value="ruler">Ruler mark</option><option value="monogram">HGE monogram</option></select><button type="button" class="builder-button" data-open-regex-for="logo-preset" aria-label="Open regex builder for logo preset">.*</button><input id="custom-logo" type="file" accept="image/png,image/jpeg,image/webp"><select id="logo-fit"><option value="contain">Contain</option><option value="cover">Fill</option></select><input id="logo-background" type="color" value="#101415"><button type="button" class="text-button" id="reset-logo">Reset</button></article>
+          <article class="setting-card" data-setting-keywords="display name rename"><div><h3>Display name</h3><p>Changes the website label only. Package identity, data keys, downloads, and diagnostics keep the shipped name.</p><small data-provenance-for="displayName">Compiled default: Hair Growth Estimator</small></div><input id="display-name-input" type="text" maxlength="80"><button class="text-button" type="button" id="reset-display-name">Reset</button></article>
+          <button class="tonal-button" type="button" data-action="open-appearance-editor">Open global appearance editor</button><button class="danger-button" type="button" data-action="reset-appearance">Reset all appearance</button>
+        </section>
+
+        <section id="settings-panel-accessibility" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-accessibility" tabindex="0" data-settings-panel="accessibility">
+          <article class="setting-card" data-setting-keywords="narrator speech voice English Cantonese"><div><h3>Narrator</h3><p>Off by default. Events are serialized and yield when the visitor reports active assistive technology.</p><small data-provenance-for="narrator">Compiled default: off</small></div><input id="narrator-enabled" type="checkbox"></article>
+          <article class="setting-card school-hidden" data-school-sensitive><div><h3>Narrated language</h3><p>Both speaks English first and Cantonese second, without overlap.</p></div><select id="narrator-language" data-search-owner="narrator-language"><option value="en">English</option><option value="yue">Cantonese</option><option value="both">Both</option></select><button type="button" class="builder-button" data-open-regex-for="narrator-language" aria-label="Open regex builder for narrated language">.*</button></article>
+          <article class="setting-card"><div><h3>English narrator voice</h3><p id="voice-en-status">Choose automatically. Waiting for browser voice enumeration.</p></div><select id="voice-en" data-search-owner="voice-en"><option value="auto">Choose automatically</option></select><button type="button" class="builder-button" data-open-regex-for="voice-en" aria-label="Open regex builder for English voice">.*</button></article>
+          <article class="setting-card school-hidden" data-school-sensitive><div><h3>Cantonese narrator voice</h3><p id="voice-yue-status">Choose automatically. Waiting for browser voice enumeration.</p></div><select id="voice-yue" data-search-owner="voice-yue"><option value="auto">Choose automatically</option></select><button type="button" class="builder-button" data-open-regex-for="voice-yue" aria-label="Open regex builder for Cantonese voice">.*</button></article>
+          <article class="setting-card"><div><h3>Narrator rate and pitch</h3><p>Uses the browser's documented speech synthesis ranges.</p></div><label>Rate<input id="narrator-rate" type="range" min="0.5" max="2" step="0.1" value="1"></label><label>Pitch<input id="narrator-pitch" type="range" min="0" max="2" step="0.1" value="1"></label></article>
+          <article class="setting-card"><div><h3>Assistive-technology yielding</h3><p>Browsers cannot reliably detect a running screen reader. Turn this on when assistive speech is active and the narrator will cancel and remain quiet.</p></div><input id="assistive-tech-active" type="checkbox"></article>
+          <article class="setting-card"><div><h3>Reduced motion</h3><p>The operating-system preference always wins. This switch can request even less motion.</p></div><input id="reduced-motion" type="checkbox"></article>
+        </section>
+
+        <section id="settings-panel-privacy" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-privacy" tabindex="0" data-settings-panel="privacy">
+          <article class="setting-card school-hidden" data-school-sensitive data-setting-keywords="vocabulary JSON upload replace clear local"><div><h3>Local personal-vocabulary JSON</h3><p>Original wording remains active until a complete bounded file validates. No mapping is bundled.</p><small id="vocabulary-status" role="status" aria-live="polite" aria-atomic="true">No local cache is active.</small></div><input id="vocabulary-file" type="file" accept="application/json"><button class="text-button" type="button" id="replace-vocabulary">Choose local file</button><button class="text-button" type="button" id="clear-vocabulary" disabled>Clear local cache</button></article>
+          <article class="setting-card"><div><h3>Browser storage</h3><p>Settings, haircut planning, locks, tickets, notifications, and history stay in a revisioned localStorage envelope. Same-origin tabs use Web Locks or an IndexedDB transaction to serialize writes, reconcile storage events, and visibly refuse stale changes. This is convenience storage, not a security boundary.</p></div><button class="danger-button" type="button" data-action="clear-site-data">Clear all local data</button></article>
+          <article class="setting-card"><div><h3>Support Tickets</h3><p>A fictional, local-only recovery desk that sends nothing anywhere and cannot delete storage for you.</p></div><button class="tonal-button" type="button" data-action="open-support">Open Support Tickets</button></article>
+        </section>
+
+        <section id="settings-panel-schedule" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-schedule" tabindex="0" data-settings-panel="schedule">
+          <article class="surface-card form-grid"><h3>Scheduled settings</h3><p>Rules use the displayed browser timezone. Higher priority wins, then the later rule in the list. Equal start and end means all day, and cross-midnight windows continue into the next day.</p><label>Rule label<input id="schedule-label" type="text" maxlength="80"></label><label>Priority<input id="schedule-priority" type="number" min="-1000" max="1000" step="1" value="0"></label><label>Optional start date<input id="schedule-start-date" type="date"></label><label>Optional end date<input id="schedule-end-date" type="date"></label><label>Start time<input id="schedule-start" type="time" value="00:00"></label><label>End time<input id="schedule-end" type="time" value="00:00"></label><label><input id="schedule-every-day" type="checkbox" checked>Every day</label><fieldset id="schedule-weekdays"><legend>Selected weekdays</legend><label><input type="checkbox" name="schedule-day" value="1" checked>Mon</label><label><input type="checkbox" name="schedule-day" value="2" checked>Tue</label><label><input type="checkbox" name="schedule-day" value="3" checked>Wed</label><label><input type="checkbox" name="schedule-day" value="4" checked>Thu</label><label><input type="checkbox" name="schedule-day" value="5" checked>Fri</label><label><input type="checkbox" name="schedule-day" value="6" checked>Sat</label><label><input type="checkbox" name="schedule-day" value="0" checked>Sun</label></fieldset><label>Language<select id="schedule-language" data-search-owner="schedule-language"><option value="unchanged">Unchanged</option><option value="en">English</option><option value="yue">Cantonese</option><option value="both">Bilingual</option></select><button type="button" class="builder-button" data-open-regex-for="schedule-language" aria-label="Open regex builder for scheduled language">.*</button></label><label>Theme<select id="schedule-theme" data-search-owner="schedule-theme"><option value="unchanged">Unchanged</option><option value="dark">Dark</option><option value="light">Light</option><option value="contrast">High contrast</option></select><button type="button" class="builder-button" data-open-regex-for="schedule-theme" aria-label="Open regex builder for scheduled theme">.*</button></label><label>Density<select id="schedule-density" data-search-owner="schedule-density"><option value="unchanged">Unchanged</option><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="spacious">Spacious</option></select><button type="button" class="builder-button" data-open-regex-for="schedule-density" aria-label="Open regex builder for scheduled density">.*</button></label><label>Accent color<input id="schedule-accent" type="color" value="#a7f3d0"></label><label>Font scale<input id="schedule-font-scale" type="number" min="0.75" max="2" step="0.05" value="1"></label><label>Motion<select id="schedule-motion"><option value="unchanged">Unchanged</option><option value="full">Full</option><option value="reduced">Reduced</option></select></label><label>Source<select id="schedule-source"><option value="local">Local rule</option><option value="api">Versioned HTTPS API</option><option value="homeAssistant">Home Assistant boolean entity</option></select></label><label>Source URL<input id="schedule-source-url" type="url" maxlength="512" placeholder="https://example.invalid/settings"></label><label>Home Assistant entity<input id="schedule-entity-id" type="text" maxlength="160" placeholder="input_boolean.study_mode"></label><label>Session-only access token<input id="schedule-session-token" type="password" maxlength="2048" autocomplete="off" aria-describedby="schedule-token-note"></label><small id="schedule-token-note">The token stays only in this tab's memory and is never written to browser storage, history, exports, logs, or documentation. Reloading requires it again.</small><button class="filled-button" type="button" id="add-schedule">Add rule</button><p id="schedule-timezone"></p><p id="schedule-source-status" role="status" aria-live="polite"></p><div id="schedule-list" class="collection-list"></div></article>
+        </section>
+
+        <section id="settings-panel-attention" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-attention" tabindex="0" data-settings-panel="attention" data-feature="adhd-modes">
+          <article class="setting-card"><div><h3>Focus</h3><p>De-emphasizes inactive sections without hiding them.</p></div><input id="adhd-focus" type="checkbox"></article>
+          <article class="setting-card"><div><h3>Low stimulation</h3><p>Reduces non-essential motion, contrast shifts, and informational interruptions.</p></div><input id="adhd-low-stim" type="checkbox"></article>
+          <article class="setting-card"><div><h3>Time awareness</h3><p>Shows session elapsed time and time since the last browser-local change.</p></div><input id="adhd-time" type="checkbox"></article>
+          <article class="setting-card"><div><h3>One thing at a time</h3><p>Stores one user-chosen next action across reloads.</p></div><input id="adhd-one" type="checkbox"><input id="next-action" type="text" maxlength="160" placeholder="Choose the next action"></article>
+          <article class="setting-card"><div><h3>Momentum</h3><p>Offers a factual, dismissible prompt after inactivity. It does not score or judge.</p></div><input id="adhd-momentum" type="checkbox"></article>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <aside class="attention-bar" id="attention-bar" hidden><span id="session-elapsed">Session 0 min</span><span id="last-change">Last change just now</span><span id="next-action-display" data-vocabulary-exempt></span><button class="text-button" type="button" id="momentum-snooze" hidden>Not now for one hour</button></aside>
+
+  <div class="snackbar-region" id="snackbar-region" aria-live="polite" aria-relevant="additions"></div>
+
+  <dialog id="command-palette" class="palette-dialog" data-feature="command-palette">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">Ctrl+Shift+F</p><h2><span class="dialog-emoji" aria-hidden="true">⌕</span> Command palette</h2></div><button class="icon-button" value="cancel" aria-label="Close command palette">×</button></form>
+    <div class="search-row"><label class="sr-only" for="palette-search">Search commands and settings</label><input id="palette-search" type="search" placeholder="Search every destination and control" data-search-owner="command-palette" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="palette-search" aria-label="Open regex builder for command palette">.*</button></div>
+    <div id="palette-results" class="palette-results" role="listbox"></div>
+    <div class="dialog-footer"><label>Size<select id="palette-size" data-search-owner="palette-size"><option value="card">Card</option><option value="full">Full window</option></select><button type="button" class="builder-button" data-open-regex-for="palette-size" aria-label="Open regex builder for palette size">.*</button></label></div>
+  </dialog>
+
+  <dialog id="regex-dialog" class="workbench-dialog" data-feature="regex-workbench">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">Anchored search owner: <span id="regex-owner-name">Standalone</span></p><h2><span class="dialog-emoji" aria-hidden="true">.*</span> Regex workbench</h2></div><button class="icon-button" value="cancel" aria-label="Close regex workbench">×</button></form>
+    <div id="regex-dialog-host"></div>
+  </dialog>
+
+  <dialog id="appearance-dialog" class="appearance-dialog" data-feature="appearance-editor">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">Target: <span id="appearance-target-name">Global</span></p><h2><span class="dialog-emoji" aria-hidden="true">◩</span> Layered appearance editor</h2></div><button class="icon-button" value="cancel" aria-label="Close appearance editor">×</button></form>
+    <div id="appearance-editor-host"></div>
+  </dialog>
+
+  <dialog id="lock-dialog" class="lock-dialog" data-feature="element-locks">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">For-fun browser lock</p><h2><span class="dialog-emoji" aria-hidden="true">🔒</span> Lock <span id="lock-target-name">this element</span></h2></div><button class="icon-button" value="cancel" aria-label="Close lock wizard">×</button></form>
+    <p class="warning-callout">This is a self-imposed speed bump, not security or encryption. Clear this website's local storage to reset every lock.</p>
+    <label>Policy<select id="lock-policy" data-search-owner="lock-policy"><option value="pin">PIN</option><option value="password">Password</option><option value="pin-password">PIN plus password</option><option value="password-totp">Password plus TOTP</option><option value="pin-totp">PIN plus TOTP</option><option value="password-pin-totp">Password plus PIN plus TOTP</option></select><button type="button" class="builder-button" data-open-regex-for="lock-policy" aria-label="Open regex builder for lock policy">.*</button></label>
+    <label data-lock-factor="pin">PIN<input id="lock-pin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="16"></label>
+    <div class="pin-pad" data-lock-factor="pin" aria-label="PIN keypad"></div>
+    <label data-lock-factor="password">Password<input id="lock-password" type="password" autocomplete="new-password" maxlength="128"></label>
+    <label data-lock-factor="totp">TOTP Base32 secret<input id="lock-totp" type="password" autocomplete="off" maxlength="128"></label>
+    <label>Unlock duration<select id="lock-duration" data-search-owner="lock-duration"><option value="surface">This surface only</option><option value="5">5 minutes</option><option value="30">30 minutes</option><option value="session">Until this page closes</option></select><button type="button" class="builder-button" data-open-regex-for="lock-duration" aria-label="Open regex builder for lock duration">.*</button></label>
+    <div class="dialog-footer"><button class="text-button" type="button" data-action="open-support">Forgotten your password?</button><button class="filled-button" type="button" id="save-lock">Create lock</button></div>
+  </dialog>
+
+  <dialog id="unlock-dialog" class="lock-dialog">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">Locked element</p><h2>Unlock <span id="unlock-target-name">this element</span></h2></div><button class="icon-button" value="cancel" aria-label="Cancel unlock">×</button></form>
+    <p>This lock clears access to the element only. It does not sign in, create an account session, or protect data from someone with browser access.</p>
+    <div id="unlock-factors"></div>
+    <div class="dialog-footer"><button class="text-button" type="button" data-action="open-support">Forgotten your password?</button><button class="filled-button" type="button" id="submit-unlock">Unlock</button></div>
+  </dialog>
+
+  <dialog id="super-confirm-dialog" class="confirm-dialog" data-feature="super-confirmation">
+    <div class="dialog-header"><div><p class="eyebrow">Destructive action</p><h2><span class="dialog-emoji" aria-hidden="true">⚠</span> Confirm <span id="confirm-action-name">this action</span></h2></div><button class="icon-button" type="button" data-action="cancel-confirm" aria-label="Emergency exit">×</button></div>
+    <p id="confirm-impact">Review the exact affected data before continuing.</p>
+    <label class="key-control"><input id="confirm-key-a" type="checkbox"> Key one: I reviewed the affected data</label>
+    <label class="key-control"><input id="confirm-key-b" type="checkbox"> Key two: I understand this cannot be undone here</label>
+    <label>Confirmation slider<input id="confirm-slider" type="range" min="0" max="100" value="0" disabled></label>
+    <progress id="confirm-progress" max="100" value="0">0%</progress>
+    <div class="dialog-footer"><button class="text-button" type="button" data-action="cancel-confirm">Emergency exit</button><button class="danger-button" id="complete-confirm" type="button" disabled>Complete destructive action</button></div>
+  </dialog>
+
+  <dialog id="support-dialog" class="support-dialog" data-feature="support-tickets">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">Fictional local desk</p><h2><span class="dialog-emoji" aria-hidden="true">🎫</span> Support Tickets</h2></div><button class="icon-button" value="cancel" aria-label="Close Support Tickets">×</button></form>
+    <p class="plain-disclosure">Nothing is sent anywhere. No ticket exists outside this browser, no network request is made, no data is collected, and nobody is reading it.</p>
+    <label>Category<select id="ticket-category" data-search-owner="ticket-category"><option>Locked element</option><option>Lost browser state</option><option>Appearance reset</option><option>Other local issue</option></select><button type="button" class="builder-button" data-open-regex-for="ticket-category" aria-label="Open regex builder for ticket category">.*</button></label>
+    <label>Description<textarea id="ticket-description" rows="4" maxlength="1000"></textarea></label>
+    <button class="filled-button" type="button" id="create-ticket">Create local ticket</button>
+    <div class="search-row"><label class="sr-only" for="ticket-search">Search tickets</label><input id="ticket-search" type="search" placeholder="Search tickets" data-search-owner="support-tickets" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="ticket-search" aria-label="Open regex builder for ticket search">.*</button></div>
+    <div id="ticket-list" class="collection-list"></div>
+    <p>Resolution: open browser settings, find site data for this address, and delete it yourself. This static website cannot open an application-data folder or delete browser storage outside its own clear-data control.</p>
+  </dialog>
+
+  <dialog id="tab-overflow-dialog" class="menu-dialog">
+    <form method="dialog" class="dialog-header"><h2>Tab overflow</h2><button class="icon-button" value="cancel" aria-label="Close tab overflow">×</button></form>
+    <div class="search-row"><label class="sr-only" for="overflow-search">Filter overflow tabs</label><input id="overflow-search" type="search" placeholder="Filter tabs" data-search-owner="tab-overflow" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="overflow-search" aria-label="Open regex builder for overflow tab search">.*</button></div><div id="overflow-list"></div>
+  </dialog>
+
+  <dialog id="bulk-tabs-dialog" class="menu-dialog">
+    <form method="dialog" class="dialog-header"><h2>Bulk close tabs</h2><button class="icon-button" value="cancel" aria-label="Close bulk tab actions">×</button></form>
+    <label>Match text<input id="bulk-tab-query" type="text"><button type="button" class="builder-button" data-open-regex-for="bulk-tab-query" aria-label="Open regex builder for bulk tab query">.*</button></label><label><input type="radio" name="bulk-mode" value="contains" checked> Close tabs containing text</label><label><input type="radio" name="bulk-mode" value="not-contains"> Close tabs not containing text</label><label><input id="bulk-include-pinned" type="checkbox"> Include pinned tabs</label><p id="bulk-tab-preview">Enter text to preview affected tabs.</p><button class="danger-button" type="button" id="run-bulk-tabs" disabled>Review and close</button>
+  </dialog>
+
+  <div class="context-menu" id="context-menu" role="menu" hidden aria-label="Element actions">
+    <div class="search-row"><label class="sr-only" for="context-search">Filter element actions</label><input id="context-search" type="search" placeholder="Filter actions" data-search-owner="element-context-menu" autocomplete="off"><button type="button" class="builder-button" data-open-regex-for="context-search" aria-label="Open regex builder for context menu">.*</button></div>
+    <button role="menuitem" type="button" data-context-action="activate">Activate <kbd>Enter</kbd></button>
+    <button role="menuitem" type="button" data-context-action="appearance">Edit appearance… <kbd>Shift+A</kbd></button>
+    <button role="menuitem" type="button" data-context-action="lock">Lock this element… <kbd>Shift+L</kbd></button>
+    <button role="menuitem" type="button" data-context-action="copy">Copy visible text <kbd>Ctrl+C</kbd></button>
+  </div>
+
+  <script id="build-provenance" type="application/json">__BUILD_PROVENANCE__</script>
+  <script id="locale-catalog" type="application/json">__LOCALE_CATALOG_JSON__</script>
+  <script id="bundled-docs" type="application/json">__DOCS_JSON__</script>
+  <script id="bundled-changelog" type="application/json">__CHANGELOG_JSON__</script>
+  <script id="bundled-hair-assets" type="application/json">__HAIR_ASSETS_JSON__</script>
+  <script src="security-contract.js" defer></script>
+  <script src="regex-client.js" defer></script>
+  <script src="state-contract.js" defer></script>
+  <script src="presentation-contract.js" defer></script>
+  <script src="localization-contract.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

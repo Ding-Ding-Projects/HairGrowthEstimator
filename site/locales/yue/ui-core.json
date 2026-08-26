@@ -1,0 +1,1257 @@
+{
+  "schemaVersion": 1,
+  "locale": "yue-HK",
+  "scope": "ui-core",
+  "entries": [
+    {
+      "id": "ui.core.c001.product_name",
+      "en": "Hair Growth Estimator",
+      "yue": "頭髮生長估算器"
+    },
+    {
+      "id": "ui.core.c002.skip_to_content",
+      "en": "Skip to content",
+      "yue": "跳到主要內容"
+    },
+    {
+      "id": "ui.core.c003.running_artifact",
+      "en": "Running website artifact",
+      "yue": "正在執行嘅網站成品"
+    },
+    {
+      "id": "ui.core.c004.version",
+      "en": "Version",
+      "yue": "版本"
+    },
+    {
+      "id": "ui.core.c005.unavailable",
+      "en": "Unavailable",
+      "yue": "暫時未有"
+    },
+    {
+      "id": "ui.core.c007.updated",
+      "en": "Updated",
+      "yue": "更新時間"
+    },
+    {
+      "id": "ui.core.c008.release_code_name",
+      "en": "Release code name",
+      "yue": "發行代號"
+    },
+    {
+      "id": "ui.core.c009.release_dish",
+      "en": "Classic Har Gow · 蝦餃",
+      "yue": "Classic Har Gow · 蝦餃"
+    },
+    {
+      "id": "ui.core.c011.javascript_notice",
+      "en": "This documentation remains readable as source files, but interactive planning controls require JavaScript. No analytics or trackers are used.",
+      "yue": "呢份文件即使當原始檔睇都仲讀得到，不過互動規劃控制需要 JavaScript。冇使用分析工具或者追蹤器。"
+    },
+    {
+      "id": "ui.core.c012.explore",
+      "en": "Explore",
+      "yue": "探索"
+    },
+    {
+      "id": "ui.core.c014.search_current_tab_strip",
+      "en": "Search the current tab strip",
+      "yue": "搜尋目前分頁列"
+    },
+    {
+      "id": "ui.core.c016.more_tab_searches",
+      "en": "More tab searches",
+      "yue": "更多分頁搜尋"
+    },
+    {
+      "id": "ui.core.c017.search_selected_group_tabs",
+      "en": "Search tabs in selected group",
+      "yue": "搜尋所選群組入面嘅分頁"
+    },
+    {
+      "id": "ui.core.c018.search_tab_groups",
+      "en": "Search tab groups",
+      "yue": "搜尋分頁群組"
+    },
+    {
+      "id": "ui.core.c019.search_every_tab",
+      "en": "Search every tab",
+      "yue": "搜尋所有分頁"
+    },
+    {
+      "id": "ui.core.c020.bulk_close",
+      "en": "Bulk close",
+      "yue": "批量關閉"
+    },
+    {
+      "id": "ui.core.c021.restore_tabs",
+      "en": "Restore tabs",
+      "yue": "還原分頁"
+    },
+    {
+      "id": "ui.core.c022.private_planning",
+      "en": "Private-by-default planning",
+      "yue": "預設私密嘅規劃"
+    },
+    {
+      "id": "ui.core.c023.hero_summary",
+      "en": "See where your hair could be next month, then reset the estimate when you get a haircut.",
+      "yue": "睇吓下個月頭髮可能去到邊，剪完髮再重設估算，一剪一算好清楚。"
+    },
+    {
+      "id": "ui.core.c024.website_boundary",
+      "en": "This website is a landing, documentation, download, status, settings, and link surface. It is not the primary desktop application, it does not embed the installed application, and it does not replace the local service.",
+      "yue": "呢個網站提供介紹、文件、下載、狀態、設定同連結。佢唔係主要桌面應用程式，唔會嵌入已安裝嘅應用程式，亦唔會取代本機服務。"
+    },
+    {
+      "id": "ui.core.c025.try_estimator",
+      "en": "Try the browser-local estimator",
+      "yue": "試用瀏覽器本機估算器"
+    },
+    {
+      "id": "ui.core.c026.check_installer_status",
+      "en": "Check installer status",
+      "yue": "查看安裝程式狀態"
+    },
+    {
+      "id": "ui.core.c027.exact_conversion_summary",
+      "en": "Exact 1 in = 2.54 cm",
+      "yue": "精確換算 1 in = 2.54 cm"
+    },
+    {
+      "id": "ui.core.c028.local_first_records",
+      "en": "Local-first records",
+      "yue": "本機優先記錄"
+    },
+    {
+      "id": "ui.core.c029.optional_private_service",
+      "en": "Optional private service",
+      "yue": "選用私密服務"
+    },
+    {
+      "id": "ui.core.c030.illustrated_timeline",
+      "en": "Illustrated growth timeline",
+      "yue": "圖像化生長時間線"
+    },
+    {
+      "id": "ui.core.c031.male_reference_stages",
+      "en": "Real male hair reference stages",
+      "yue": "真實男士頭髮參考階段"
+    },
+    {
+      "id": "ui.core.c033.reference_photos_preparing",
+      "en": "Reference photographs are being prepared",
+      "yue": "參考相片準備中，頭髮未行入鏡住"
+    },
+    {
+      "id": "ui.core.c034.stage_animation_condition",
+      "en": "Stage references animate only when local image assets are present.",
+      "yue": "只有本機圖像素材齊備時，階段參考先會郁。"
+    },
+    {
+      "id": "ui.core.c036.growth_estimator",
+      "en": "Growth estimator",
+      "yue": "生長估算器"
+    },
+    {
+      "id": "ui.core.hair_growth_estimator_heading",
+      "en": "Hair growth estimator",
+      "yue": "頭髮生長估算器"
+    },
+    {
+      "id": "ui.core.c037.estimator_description",
+      "en": "Project from a dated baseline using a configurable monthly rate and a target length.",
+      "yue": "由有日期嘅基準開始，配合可調每月生長率同目標長度去推算。"
+    },
+    {
+      "id": "ui.core.c038.open_estimator",
+      "en": "Open estimator",
+      "yue": "開啟估算器"
+    },
+    {
+      "id": "ui.core.c040.haircut_resets",
+      "en": "Haircut resets",
+      "yue": "剪髮重設"
+    },
+    {
+      "id": "ui.core.c041.haircut_reset_description",
+      "en": "Record the post-cut length and date. The newest valid haircut becomes the active baseline while the manual fallback remains available.",
+      "yue": "記低剪髮後長度同日期。最新有效剪髮會成為目前基準，手動後備基準亦會繼續保留。"
+    },
+    {
+      "id": "ui.core.c042.open_haircut_log",
+      "en": "Open haircut log",
+      "yue": "開啟剪髮記錄"
+    },
+    {
+      "id": "ui.core.c044.service_connection_summary",
+      "en": "Run locally, on a private LAN host, or behind a strict SSH tunnel. Public exposure is not a supported default.",
+      "yue": "可以喺本機、私密 LAN 主機，或者嚴格 SSH 隧道後面執行。預設唔支援公開暴露。"
+    },
+    {
+      "id": "ui.core.c045.read_connection_guide",
+      "en": "Read connection guide",
+      "yue": "閱讀連線指南"
+    },
+    {
+      "id": "ui.core.c047.portable_records",
+      "en": "Portable records",
+      "yue": "可攜記錄"
+    },
+    {
+      "id": "ui.core.c048.export_formats_summary",
+      "en": "Export browser-local planning state in JSON, CSV, Markdown, HTML, YAML, TOML, XML, SQL, and source-code forms.",
+      "yue": "將瀏覽器本機規劃狀態匯出成 JSON、CSV、Markdown、HTML、YAML、TOML、XML、SQL 同原始碼格式。"
+    },
+    {
+      "id": "ui.core.c049.open_tools",
+      "en": "Open tools",
+      "yue": "開啟工具"
+    },
+    {
+      "id": "ui.core.c050.browser_local_planner",
+      "en": "Browser-local planner",
+      "yue": "瀏覽器本機規劃器"
+    },
+    {
+      "id": "ui.core.c051.browser_storage_boundary",
+      "en": "These values stay in this browser. They do not write to the desktop application or service.",
+      "yue": "呢啲數值只會留喺呢個瀏覽器，唔會寫入桌面應用程式或者服務。"
+    },
+    {
+      "id": "ui.core.c052.growth_rate_source_intro",
+      "en": "The adjustable 1.0 cm/month starting estimate is informed by the general scalp-hair figure in",
+      "yue": "可調嘅 1.0 cm/month 起始估算，參考咗以下來源嘅一般頭皮頭髮數字："
+    },
+    {
+      "id": "ui.core.c053.ncbi_bookshelf",
+      "en": "NCBI Bookshelf",
+      "yue": "NCBI Bookshelf"
+    },
+    {
+      "id": "ui.core.c054.medical_disclaimer",
+      "en": ". Individual growth varies meaningfully. This planner is not medical advice and cannot predict an individual's actual growth.",
+      "yue": "。每個人嘅生長速度可以相差好多。呢個規劃器唔係醫療建議，亦無法預測個別人士嘅實際生長。"
+    },
+    {
+      "id": "ui.core.c055.manual_fallback_date",
+      "en": "Manual fallback date",
+      "yue": "手動後備日期"
+    },
+    {
+      "id": "ui.core.c056.manual_date_help",
+      "en": "Used when no valid haircut record remains. Future dates are not accepted.",
+      "yue": "冇有效剪髮記錄剩低時使用。唔接受未來日期，時光機未包。"
+    },
+    {
+      "id": "ui.core.c057.manual_fallback_length",
+      "en": "Manual fallback length",
+      "yue": "手動後備長度"
+    },
+    {
+      "id": "ui.core.c058.centimetre_unit",
+      "en": "cm",
+      "yue": "cm"
+    },
+    {
+      "id": "ui.core.c059.monthly_growth_rate",
+      "en": "Monthly growth rate",
+      "yue": "每月生長率"
+    },
+    {
+      "id": "ui.core.c060.target_length",
+      "en": "Target length",
+      "yue": "目標長度"
+    },
+    {
+      "id": "ui.core.c061.measurement_unit",
+      "en": "Measurement unit",
+      "yue": "量度單位"
+    },
+    {
+      "id": "ui.core.c062.centimetres",
+      "en": "Centimetres",
+      "yue": "厘米"
+    },
+    {
+      "id": "ui.core.c063.inches",
+      "en": "Inches",
+      "yue": "英寸"
+    },
+    {
+      "id": "ui.core.c064.update_estimate",
+      "en": "Update estimate",
+      "yue": "更新估算"
+    },
+    {
+      "id": "ui.core.c065.estimated_today",
+      "en": "Estimated today",
+      "yue": "今日估算"
+    },
+    {
+      "id": "ui.core.c066.manual_baseline_active",
+      "en": "The manual fallback is the active baseline.",
+      "yue": "目前使用手動後備基準。"
+    },
+    {
+      "id": "ui.core.c067.zero_length",
+      "en": "0.00 cm",
+      "yue": "0.00 cm"
+    },
+    {
+      "id": "ui.core.c068.enter_baseline",
+      "en": "Enter a factual baseline to calculate a projection.",
+      "yue": "輸入有根有據嘅基準，先可以計算推算結果。"
+    },
+    {
+      "id": "ui.core.c069.elapsed",
+      "en": "Elapsed",
+      "yue": "已過時間"
+    },
+    {
+      "id": "ui.core.c070.zero_days",
+      "en": "0 days",
+      "yue": "0 日"
+    },
+    {
+      "id": "ui.core.c071.target_date",
+      "en": "Target date",
+      "yue": "目標日期"
+    },
+    {
+      "id": "ui.core.c072.exact_conversion",
+      "en": "Exact conversion",
+      "yue": "精確換算"
+    },
+    {
+      "id": "ui.core.c073.conversion_equation",
+      "en": "1 in = 2.54 cm",
+      "yue": "1 in = 2.54 cm"
+    },
+    {
+      "id": "ui.core.c074.dated_reset_history",
+      "en": "Dated reset history",
+      "yue": "有日期嘅重設記錄"
+    },
+    {
+      "id": "ui.core.c075.haircut_log",
+      "en": "Haircut log",
+      "yue": "剪髮記錄"
+    },
+    {
+      "id": "ui.core.c076.haircut_baseline_rules",
+      "en": "The newest valid haircut is the active browser-local baseline. Editing or deleting records recalculates that choice, and the retained manual fallback resumes when no valid haircut remains. Desktop and server records remain separate.",
+      "yue": "最新有效剪髮會成為目前瀏覽器本機基準。編輯或者刪除記錄會重新計算呢個選擇，冇有效剪髮記錄時就會恢復保留嘅手動後備基準。桌面同伺服器記錄繼續分開。"
+    },
+    {
+      "id": "ui.core.c077.date",
+      "en": "Date",
+      "yue": "日期"
+    },
+    {
+      "id": "ui.core.c078.haircut_date_help",
+      "en": "Choose today or an earlier date.",
+      "yue": "選擇今日或者更早嘅日期。"
+    },
+    {
+      "id": "ui.core.c079.post_cut_length",
+      "en": "Post-cut length",
+      "yue": "剪髮後長度"
+    },
+    {
+      "id": "ui.core.c080.note",
+      "en": "Note",
+      "yue": "備註"
+    },
+    {
+      "id": "ui.core.c081.record_haircut",
+      "en": "Record haircut",
+      "yue": "記錄剪髮"
+    },
+    {
+      "id": "ui.core.c082.search_haircut_log",
+      "en": "Search haircut log",
+      "yue": "搜尋剪髮記錄"
+    },
+    {
+      "id": "ui.core.c083.select_every_match",
+      "en": "Select every match",
+      "yue": "揀選全部相符項目"
+    },
+    {
+      "id": "ui.core.c084.export_filtered",
+      "en": "Export filtered",
+      "yue": "匯出篩選結果"
+    },
+    {
+      "id": "ui.core.c085.delete_selected",
+      "en": "Delete selected",
+      "yue": "刪除所選項目"
+    },
+    {
+      "id": "ui.core.c086.optional_synchronization",
+      "en": "Optional synchronization",
+      "yue": "選用同步"
+    },
+    {
+      "id": "ui.core.c087.local_service_connectivity",
+      "en": "Local service and private connectivity",
+      "yue": "本機服務同私密連線"
+    },
+    {
+      "id": "ui.core.c088.loopback_binding_rule",
+      "en": "The service binds to loopback by default. Non-loopback binding requires a strong API key and an explicit private-network decision.",
+      "yue": "服務預設只綁定 loopback。非 loopback 綁定需要高強度 API key，同埋明確嘅私密網絡決定。"
+    },
+    {
+      "id": "ui.core.c089.local_only",
+      "en": "Local only",
+      "yue": "只限本機"
+    },
+    {
+      "id": "ui.core.c090.use",
+      "en": "Use",
+      "yue": "使用"
+    },
+    {
+      "id": "ui.core.c092.local_only_detail",
+      "en": "for the smallest network surface. Data remains on one computer.",
+      "yue": "，令網絡暴露面最細。資料只留喺一部電腦。"
+    },
+    {
+      "id": "ui.core.c093.private_lan",
+      "en": "Private LAN",
+      "yue": "私密 LAN"
+    },
+    {
+      "id": "ui.core.c094.private_lan_detail",
+      "en": "Bind deliberately, require an API key, restrict firewall access, and never forward the port from a public router.",
+      "yue": "要明確綁定、要求 API key、限制防火牆存取，而且永遠唔好由公共路由器轉送連接埠。"
+    },
+    {
+      "id": "ui.core.c095.ssh_tunnel",
+      "en": "SSH tunnel",
+      "yue": "SSH 隧道"
+    },
+    {
+      "id": "ui.core.c096.ssh_tunnel_detail",
+      "en": "Forward a loopback service through OpenSSH with persistent known-host verification. A changed key stops the connection.",
+      "yue": "透過 OpenSSH 轉送 loopback 服務，並使用持久 known-host 驗證。金鑰一有變更，連線就會停止。"
+    },
+    {
+      "id": "ui.core.c097.container_launch",
+      "en": "Container launch",
+      "yue": "容器啟動"
+    },
+    {
+      "id": "ui.core.c098.copy",
+      "en": "Copy",
+      "yue": "複製"
+    },
+    {
+      "id": "ui.core.c100.set",
+      "en": "Set",
+      "yue": "設定"
+    },
+    {
+      "id": "ui.core.c102.api_key_environment_detail",
+      "en": "through a private environment source before any non-loopback deployment. Do not commit it.",
+      "yue": "，並喺任何非 loopback 部署之前透過私密環境來源提供。唔好提交入版本庫。"
+    },
+    {
+      "id": "ui.core.c103.security_boundaries",
+      "en": "Security boundaries",
+      "yue": "安全界線"
+    },
+    {
+      "id": "ui.core.c104.http_boundary",
+      "en": "HTTP is suitable only for loopback or a separately protected private network.",
+      "yue": "HTTP 只適合 loopback，或者另有保護嘅私密網絡。"
+    },
+    {
+      "id": "ui.core.c105.ssh_authentication_rule",
+      "en": "SSH passwords are not accepted by the desktop connection workflow. Use a key and persistent known-host verification.",
+      "yue": "桌面連線流程唔接受 SSH 密碼。請使用金鑰同持久 known-host 驗證。"
+    },
+    {
+      "id": "ui.core.c106.website_service_boundary",
+      "en": "This website cannot connect to or control the installed service without an explicit browser request and compatible local CORS settings.",
+      "yue": "如果冇明確瀏覽器請求同相容嘅本機 CORS 設定，呢個網站就無法連接或者控制已安裝服務。"
+    },
+    {
+      "id": "ui.core.c107.release_channel",
+      "en": "Release channel",
+      "yue": "發行頻道"
+    },
+    {
+      "id": "ui.core.c108.downloads_updates",
+      "en": "Downloads and updates",
+      "yue": "下載同更新"
+    },
+    {
+      "id": "ui.core.c109.download_manifest_rule",
+      "en": "A download appears only after an immutable release manifest is built and verified.",
+      "yue": "只有建立同驗證不可變發行清單之後，下載先會出現。"
+    },
+    {
+      "id": "ui.core.c110.windows_installer",
+      "en": "Windows installer",
+      "yue": "Windows 安裝程式"
+    },
+    {
+      "id": "ui.core.c111.pending_first_release",
+      "en": "Pending first verified release",
+      "yue": "等緊第一個已驗證發行"
+    },
+    {
+      "id": "ui.core.c112.no_verified_installer",
+      "en": "No installer URL has been verified for this website artifact.",
+      "yue": "呢個網站成品仲未有經驗證嘅安裝程式 URL。"
+    },
+    {
+      "id": "ui.core.c113.download_unavailable",
+      "en": "Download unavailable",
+      "yue": "暫時未能下載"
+    },
+    {
+      "id": "ui.core.c114.download_disabled_reason",
+      "en": "The button remains disabled until build provenance includes an immutable HTTPS release asset and SHA-256 digest.",
+      "yue": "按鈕會保持停用，直至建置來源資料包含不可變 HTTPS 發行素材同 SHA-256 摘要。"
+    },
+    {
+      "id": "ui.core.c115.automatic_updates",
+      "en": "Automatic updates",
+      "yue": "自動更新"
+    },
+    {
+      "id": "ui.core.c116.update_behavior",
+      "en": "The installed application checks an unsigned Squirrel.Windows HTTPS feed, validates metadata and package hashes, and asks before restart. It does not claim a publisher signature. The website reports release facts but does not install updates.",
+      "yue": "已安裝應用程式會檢查未簽署嘅 Squirrel.Windows HTTPS feed，驗證中繼資料同套件雜湊，並喺重新啟動前詢問。佢唔會聲稱有發行者簽署。網站只會報告發行事實，唔會安裝更新。"
+    },
+    {
+      "id": "ui.core.c117.bundled_documentation",
+      "en": "Bundled documentation",
+      "yue": "隨附文件"
+    },
+    {
+      "id": "ui.core.c118.documentation_browser",
+      "en": "Documentation browser",
+      "yue": "文件瀏覽器"
+    },
+    {
+      "id": "ui.core.c119.offline_documentation",
+      "en": "Articles are compiled into this website artifact. Searching and reading them works offline after the page has loaded.",
+      "yue": "文章已編譯入呢個網站成品。頁面載入之後，離線都可以搜尋同閱讀。"
+    },
+    {
+      "id": "ui.core.c120.search_documentation",
+      "en": "Search documentation",
+      "yue": "搜尋文件"
+    },
+    {
+      "id": "ui.core.c121.choose_article",
+      "en": "Choose an article",
+      "yue": "揀一篇文章"
+    },
+    {
+      "id": "ui.core.c122.article_list_pending",
+      "en": "The article list will appear after build composition.",
+      "yue": "建置組合完成之後，文章清單就會出現。"
+    },
+    {
+      "id": "ui.core.c123.browser_local_utilities",
+      "en": "Browser-local utilities",
+      "yue": "瀏覽器本機小工具"
+    },
+    {
+      "id": "ui.core.c124.tools",
+      "en": "Tools",
+      "yue": "工具"
+    },
+    {
+      "id": "ui.core.c125.local_data_boundary",
+      "en": "These utilities operate on user-selected local data. They do not upload files.",
+      "yue": "呢啲工具只處理由使用者揀選嘅本機資料，唔會上載檔案。"
+    },
+    {
+      "id": "ui.core.c126.regex_workbench",
+      "en": "Regex workbench",
+      "yue": "正則表達式工作台"
+    },
+    {
+      "id": "ui.core.c127.file_converter",
+      "en": "File converter",
+      "yue": "檔案轉換器"
+    },
+    {
+      "id": "ui.core.c128.local_model_manager",
+      "en": "Local model manager",
+      "yue": "本機模型管理器"
+    },
+    {
+      "id": "ui.core.c129.authenticator",
+      "en": "Authenticator",
+      "yue": "驗證器"
+    },
+    {
+      "id": "ui.core.c130.export_center",
+      "en": "Export center",
+      "yue": "匯出中心"
+    },
+    {
+      "id": "ui.core.c131.local_file_converter",
+      "en": "Local file converter",
+      "yue": "本機檔案轉換器"
+    },
+    {
+      "id": "ui.core.c132.source_file",
+      "en": "Source file",
+      "yue": "來源檔案"
+    },
+    {
+      "id": "ui.core.c133.category",
+      "en": "Category",
+      "yue": "類別"
+    },
+    {
+      "id": "ui.core.c134.structured_data_spreadsheets",
+      "en": "Structured Data/Spreadsheets",
+      "yue": "結構化資料/試算表"
+    },
+    {
+      "id": "ui.core.c135.code_text",
+      "en": "Code/Text",
+      "yue": "程式碼/文字"
+    },
+    {
+      "id": "ui.core.c136.binary_encodings",
+      "en": "Binary Encodings",
+      "yue": "二進制編碼"
+    },
+    {
+      "id": "ui.core.c137.documents_pdf_unavailable",
+      "en": "Documents/PDF, adapter unavailable in this browser build",
+      "yue": "文件/PDF，呢個瀏覽器建置未有可用 adapter"
+    },
+    {
+      "id": "ui.core.c138.images_unavailable",
+      "en": "Images, adapter unavailable in this browser build",
+      "yue": "圖像，呢個瀏覽器建置未有可用 adapter"
+    },
+    {
+      "id": "ui.core.c139.audio_unavailable",
+      "en": "Audio, adapter unavailable in this browser build",
+      "yue": "音訊，呢個瀏覽器建置未有可用 adapter"
+    },
+    {
+      "id": "ui.core.c140.video_unavailable",
+      "en": "Video, adapter unavailable in this browser build",
+      "yue": "影片，呢個瀏覽器建置未有可用 adapter"
+    },
+    {
+      "id": "ui.core.c141.archives_unavailable",
+      "en": "Archives, adapter unavailable in this browser build",
+      "yue": "封存檔，呢個瀏覽器建置未有可用 adapter"
+    },
+    {
+      "id": "ui.core.c142.adapter",
+      "en": "Adapter",
+      "yue": "Adapter"
+    },
+    {
+      "id": "ui.core.c143.json_formatted_json",
+      "en": "JSON to formatted JSON",
+      "yue": "JSON 轉格式化 JSON"
+    },
+    {
+      "id": "ui.core.c144.csv_to_tsv",
+      "en": "CSV to TSV",
+      "yue": "CSV 轉 TSV"
+    },
+    {
+      "id": "ui.core.c145.tsv_to_csv",
+      "en": "TSV to CSV",
+      "yue": "TSV 轉 CSV"
+    },
+    {
+      "id": "ui.core.c146.text_to_base64",
+      "en": "Text to Base64",
+      "yue": "文字轉 Base64"
+    },
+    {
+      "id": "ui.core.c147.base64_to_text",
+      "en": "Base64 to text",
+      "yue": "Base64 轉文字"
+    },
+    {
+      "id": "ui.core.c148.markdown_to_safe_html",
+      "en": "Markdown to safe HTML",
+      "yue": "Markdown 轉安全 HTML"
+    },
+    {
+      "id": "ui.core.c149.converter_limits",
+      "en": "Maximum source size is 1 MiB. Processing is local, bounded to one file in this browser surface, cancellable before download, and never overwrites the source.",
+      "yue": "來源檔案上限係 1 MiB。處理只喺本機進行，呢個瀏覽器畫面每次只處理一個檔案，下載前可以取消，而且永遠唔會覆寫來源檔案。"
+    },
+    {
+      "id": "ui.core.c150.convert",
+      "en": "Convert",
+      "yue": "轉換"
+    },
+    {
+      "id": "ui.core.c151.cancel",
+      "en": "Cancel",
+      "yue": "取消"
+    },
+    {
+      "id": "ui.core.c152.zero_percent",
+      "en": "0%",
+      "yue": "0%"
+    },
+    {
+      "id": "ui.core.c153.preview",
+      "en": "Preview",
+      "yue": "預覽"
+    },
+    {
+      "id": "ui.core.c154.download_validated_output",
+      "en": "Download validated output",
+      "yue": "下載已驗證輸出"
+    },
+    {
+      "id": "ui.core.c155.local_ollama_mediation",
+      "en": "Local Ollama mediation",
+      "yue": "本機 Ollama 中介"
+    },
+    {
+      "id": "ui.core.c156.browser_ollama_boundary",
+      "en": "A public HTTPS page cannot start local processes, inspect hardware, bypass browser mixed-content rules, or promise CORS access. This browser-local equivalent can make an explicit user-requested loopback API call, store local profiles, and report the exact browser refusal.",
+      "yue": "公共 HTTPS 頁面無法啟動本機程序、檢查硬件、繞過瀏覽器 mixed-content 規則，亦唔可以保證 CORS 存取。呢個瀏覽器本機等效功能可以按使用者明確要求呼叫 loopback API、儲存本機設定檔，並準確報告瀏覽器拒絕原因。"
+    },
+    {
+      "id": "ui.core.c157.local_api_url",
+      "en": "Local API URL",
+      "yue": "本機 API URL"
+    },
+    {
+      "id": "ui.core.c158.check_local_api",
+      "en": "Check local API",
+      "yue": "檢查本機 API"
+    },
+    {
+      "id": "ui.core.c159.not_checked",
+      "en": "Not checked.",
+      "yue": "仲未檢查。"
+    },
+    {
+      "id": "ui.core.c160.search_local_models",
+      "en": "Search local models",
+      "yue": "搜尋本機模型"
+    },
+    {
+      "id": "ui.core.c161.website_unavailable",
+      "en": "Unavailable on this website",
+      "yue": "呢個網站未能提供"
+    },
+    {
+      "id": "ui.core.c162.remote_store_disabled",
+      "en": "Exhaustive remote store refresh is disabled because the site has no trusted catalog proxy.",
+      "yue": "由於網站冇可信任嘅目錄代理，完整遠端商店重新整理已停用。"
+    },
+    {
+      "id": "ui.core.c163.hardware_fit_unknown",
+      "en": "Hardware-fit verdicts remain Unknown because a browser cannot reliably inspect RAM, VRAM, drivers, and blob metadata.",
+      "yue": "硬件配合判斷會保持 Unknown，因為瀏覽器無法可靠檢查 RAM、VRAM、驅動程式同 blob 中繼資料。"
+    },
+    {
+      "id": "ui.core.c164.installed_app_required",
+      "en": "Batch pull, deletion, and harness launch require the installed application and explicit local process controls.",
+      "yue": "批量 pull、刪除同 harness 啟動需要已安裝應用程式，以及明確嘅本機程序控制。"
+    },
+    {
+      "id": "ui.core.c165.browser_totp_authenticator",
+      "en": "Browser-local TOTP authenticator",
+      "yue": "瀏覽器本機 TOTP 驗證器"
+    },
+    {
+      "id": "ui.core.c166.authenticator_storage_warning",
+      "en": "This website uses localStorage rather than an operating-system credential vault. That is not suitable for valuable account secrets. Prefer a dedicated authenticator. Clearing this site's storage removes entries.",
+      "yue": "呢個網站使用 localStorage，而唔係作業系統憑證保管庫。唔適合儲存重要帳戶密鑰，請優先使用專用驗證器。清除呢個網站嘅儲存資料會移除項目。"
+    },
+    {
+      "id": "ui.core.c167.otpauth_or_base32",
+      "en": "otpauth URI or Base32 secret",
+      "yue": "otpauth URI 或 Base32 密鑰"
+    },
+    {
+      "id": "ui.core.c168.entry_label",
+      "en": "Entry label",
+      "yue": "項目標籤"
+    },
+    {
+      "id": "ui.core.c169.add_local_entry",
+      "en": "Add local entry",
+      "yue": "新增本機項目"
+    },
+    {
+      "id": "ui.core.c170.clear_fields",
+      "en": "Clear fields",
+      "yue": "清空欄位"
+    },
+    {
+      "id": "ui.core.c171.search_authenticator_entries",
+      "en": "Search authenticator entries",
+      "yue": "搜尋驗證器項目"
+    },
+    {
+      "id": "ui.core.c172.qr_decoder_boundary",
+      "en": "QR image decoding and camera access are visible but unavailable in this static build because no verified local decoder is bundled.",
+      "yue": "QR 圖片解碼同相機存取會顯示，但喺呢個靜態版本中無法使用，因為未有隨附經驗證嘅本機解碼器。"
+    },
+    {
+      "id": "ui.core.c173.read_qr_image",
+      "en": "Read QR from image",
+      "yue": "從圖片讀取 QR"
+    },
+    {
+      "id": "ui.core.c174.qr_decoder_unavailable",
+      "en": "Unavailable: no bundled QR decoder has packaged-artifact proof.",
+      "yue": "無法使用：冇隨附具套件成品證據嘅 QR 解碼器。"
+    },
+    {
+      "id": "ui.core.c175.export_privacy_scope",
+      "en": "Exports include browser-local settings, estimates, haircut records, notifications, and redacted history. Authenticator secrets, lock credentials, private vocabulary mappings, and custom-logo bytes are omitted and identified as omitted. CSV and TSV use normalized long-form rows with JSON Pointer paths, JSON values, representation metadata, and the same explicit privacy omissions.",
+      "yue": "匯出內容包括瀏覽器本機設定、估算、剪髮記錄、通知同已遮蓋敏感資料嘅歷史。驗證器密鑰、鎖定憑證、私人詞彙對應同自訂標誌位元組會省略，亦會清楚標明已省略。CSV 同 TSV 會使用正規化長格式資料列，包含 JSON Pointer 路徑、JSON 值、表示中繼資料，同樣清楚列出私隱省略項目。"
+    },
+    {
+      "id": "ui.core.c176.format",
+      "en": "Format",
+      "yue": "格式"
+    },
+    {
+      "id": "ui.core.c177.json",
+      "en": "JSON",
+      "yue": "JSON"
+    },
+    {
+      "id": "ui.core.c178.jsonl",
+      "en": "JSONL",
+      "yue": "JSONL"
+    },
+    {
+      "id": "ui.core.c179.yaml",
+      "en": "YAML",
+      "yue": "YAML"
+    },
+    {
+      "id": "ui.core.c180.toml",
+      "en": "TOML",
+      "yue": "TOML"
+    },
+    {
+      "id": "ui.core.c181.xml",
+      "en": "XML",
+      "yue": "XML"
+    },
+    {
+      "id": "ui.core.c182.csv",
+      "en": "CSV",
+      "yue": "CSV"
+    },
+    {
+      "id": "ui.core.c183.tsv",
+      "en": "TSV",
+      "yue": "TSV"
+    },
+    {
+      "id": "ui.core.c184.markdown",
+      "en": "Markdown",
+      "yue": "Markdown"
+    },
+    {
+      "id": "ui.core.c185.html",
+      "en": "HTML",
+      "yue": "HTML"
+    },
+    {
+      "id": "ui.core.c186.sql",
+      "en": "SQL",
+      "yue": "SQL"
+    },
+    {
+      "id": "ui.core.c187.typescript",
+      "en": "TypeScript",
+      "yue": "TypeScript"
+    },
+    {
+      "id": "ui.core.c188.javascript",
+      "en": "JavaScript",
+      "yue": "JavaScript"
+    },
+    {
+      "id": "ui.core.c189.python",
+      "en": "Python",
+      "yue": "Python"
+    },
+    {
+      "id": "ui.core.c190.go",
+      "en": "Go",
+      "yue": "Go"
+    },
+    {
+      "id": "ui.core.c191.rust",
+      "en": "Rust",
+      "yue": "Rust"
+    },
+    {
+      "id": "ui.core.c192.json_schema",
+      "en": "JSON Schema",
+      "yue": "JSON Schema"
+    },
+    {
+      "id": "ui.core.c193.protobuf",
+      "en": "Protobuf",
+      "yue": "Protobuf"
+    },
+    {
+      "id": "ui.core.c194.export_redacted_state",
+      "en": "Export redacted browser state",
+      "yue": "匯出已遮蓋敏感資料嘅瀏覽器狀態"
+    },
+    {
+      "id": "ui.core.c195.import_compatible_state",
+      "en": "Import compatible state",
+      "yue": "匯入相容狀態"
+    },
+    {
+      "id": "ui.core.c196.artifact_evidence",
+      "en": "Artifact evidence",
+      "yue": "成品證據"
+    },
+    {
+      "id": "ui.core.c197.status",
+      "en": "Status",
+      "yue": "狀態"
+    },
+    {
+      "id": "ui.core.c198.provenance_claims",
+      "en": "Every claim is tied to the provenance embedded in this built website artifact.",
+      "yue": "每項聲明都會連結到內嵌喺呢個已建置網站成品嘅來源資料。"
+    },
+    {
+      "id": "ui.core.c199.pending",
+      "en": "Pending",
+      "yue": "等待中"
+    },
+    {
+      "id": "ui.core.c200.desktop_installer",
+      "en": "Desktop installer",
+      "yue": "桌面安裝程式"
+    },
+    {
+      "id": "ui.core.c201.no_installer_manifest",
+      "en": "No immutable installer manifest is embedded yet.",
+      "yue": "仲未內嵌不可變安裝程式清單。"
+    },
+    {
+      "id": "ui.core.c202.local",
+      "en": "Local",
+      "yue": "本機"
+    },
+    {
+      "id": "ui.core.c203.website_build",
+      "en": "Website build",
+      "yue": "網站建置"
+    },
+    {
+      "id": "ui.core.c204.waiting_provenance",
+      "en": "Waiting for provenance validation.",
+      "yue": "等緊來源資料驗證。"
+    },
+    {
+      "id": "ui.core.c205.unverified",
+      "en": "Unverified",
+      "yue": "未驗證"
+    },
+    {
+      "id": "ui.core.c206.capture_evidence",
+      "en": "Interactive capture evidence",
+      "yue": "互動擷取證據"
+    },
+    {
+      "id": "ui.core.c207.capture_evidence_detail",
+      "en": "Built-artifact screenshots and per-click evidence are recorded separately during release verification.",
+      "yue": "已建置成品嘅畫面擷取同逐次點擊證據，會喺發行驗證期間分開記錄。"
+    },
+    {
+      "id": "ui.core.c208.shared_status_service",
+      "en": "Shared status service",
+      "yue": "共用狀態服務"
+    },
+    {
+      "id": "ui.core.c209.no_status_bridge",
+      "en": "This static website has no authenticated session bridge, so it cannot send answers or mutate project status.",
+      "yue": "呢個靜態網站冇已驗證工作階段橋接，所以無法傳送答案或者變更專案狀態。"
+    },
+    {
+      "id": "ui.core.c210.provenance_json",
+      "en": "Artifact provenance JSON",
+      "yue": "成品來源 JSON"
+    },
+    {
+      "id": "ui.core.c211.append_only_browser_record",
+      "en": "Append-only browser record",
+      "yue": "只可附加嘅瀏覽器記錄"
+    },
+    {
+      "id": "ui.core.c212.local_history_notifications",
+      "en": "Local history and notifications",
+      "yue": "本機歷史同通知"
+    },
+    {
+      "id": "ui.core.c213.history_storage_boundary",
+      "en": "History is stored in this browser only. Same-origin tabs reconcile monotonic revisions through an exclusive browser transaction and refuse stale writes. Nothing synchronizes to another device or server, and clearing site storage removes it.",
+      "yue": "歷史只會儲存喺呢個瀏覽器。Same-origin 分頁會透過獨佔瀏覽器交易協調單調遞增修訂，並拒絕過時寫入。唔會同步去其他裝置或者伺服器，清除網站儲存空間就會移除記錄。"
+    },
+    {
+      "id": "ui.core.c214.browser_revision_unavailable",
+      "en": "Browser revision unavailable until local state initializes.",
+      "yue": "本機狀態初始化之前，瀏覽器修訂資料暫時未有。"
+    },
+    {
+      "id": "ui.core.c215.version_history",
+      "en": "Version history",
+      "yue": "版本歷史"
+    },
+    {
+      "id": "ui.core.c216.from",
+      "en": "From",
+      "yue": "由"
+    },
+    {
+      "id": "ui.core.c217.to",
+      "en": "To",
+      "yue": "至"
+    },
+    {
+      "id": "ui.core.c218.search_history",
+      "en": "Search history",
+      "yue": "搜尋歷史"
+    },
+    {
+      "id": "ui.core.c219.export_redacted_history",
+      "en": "Export redacted history",
+      "yue": "匯出已遮蓋敏感資料嘅歷史"
+    },
+    {
+      "id": "ui.core.c220.notification_center",
+      "en": "Notification center",
+      "yue": "通知中心"
+    },
+    {
+      "id": "ui.core.c221.search_notifications",
+      "en": "Search notifications",
+      "yue": "搜尋通知"
+    },
+    {
+      "id": "ui.core.c222.traceable_releases",
+      "en": "Traceable releases",
+      "yue": "可追溯發行"
+    },
+    {
+      "id": "ui.core.c223.changelog",
+      "en": "Changelog",
+      "yue": "變更記錄"
+    },
+    {
+      "id": "ui.core.c224.changelog_commit_rule",
+      "en": "Entries are compiled from the repository record. Unknown commit links stay visibly unavailable rather than being guessed.",
+      "yue": "項目由版本庫記錄編譯而成。未知提交連結會清楚顯示為不可用，唔會靠估。"
+    },
+    {
+      "id": "ui.core.c225.search_changelog",
+      "en": "Search changelog",
+      "yue": "搜尋變更記錄"
+    },
+    {
+      "id": "ui.core.c226.logo_alt",
+      "en": "Hair Growth Estimator logo",
+      "yue": "頭髮生長估算器標誌"
+    },
+    {
+      "id": "ui.core.c227.open_command_palette",
+      "en": "Open command palette",
+      "yue": "開啟指令面板"
+    },
+    {
+      "id": "ui.core.c228.open_command_palette_shortcut",
+      "en": "Open command palette, Ctrl+Shift+F",
+      "yue": "開啟指令面板，Ctrl+Shift+F"
+    },
+    {
+      "id": "ui.core.c229.javascript_requirement",
+      "en": "JavaScript requirement",
+      "yue": "JavaScript 要求"
+    },
+    {
+      "id": "ui.core.c230.primary_navigation",
+      "en": "Primary navigation",
+      "yue": "主要導覽"
+    },
+    {
+      "id": "ui.core.c231.open_tab_overflow",
+      "en": "Open tab overflow",
+      "yue": "開啟分頁溢出清單"
+    },
+    {
+      "id": "ui.core.c232.search_this_strip",
+      "en": "Search this strip",
+      "yue": "搜尋呢條分頁列"
+    },
+    {
+      "id": "ui.core.c233.open_regex_current_strip",
+      "en": "Open regex builder for current strip search",
+      "yue": "開啟目前分頁列搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c234.search_selected_group",
+      "en": "Search selected group",
+      "yue": "搜尋所選群組"
+    },
+    {
+      "id": "ui.core.c235.open_regex_group_tabs",
+      "en": "Open regex builder for group tab search",
+      "yue": "開啟群組分頁搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c236.search_groups",
+      "en": "Search groups",
+      "yue": "搜尋群組"
+    },
+    {
+      "id": "ui.core.c237.open_regex_group_names",
+      "en": "Open regex builder for group name search",
+      "yue": "開啟群組名稱搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c238.open_regex_master_tabs",
+      "en": "Open regex builder for master tab search",
+      "yue": "開啟總分頁搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c239.key_properties",
+      "en": "Key properties",
+      "yue": "主要屬性"
+    },
+    {
+      "id": "ui.core.c240.pause_growth_animation",
+      "en": "Pause hair growth animation",
+      "yue": "暫停頭髮生長動畫"
+    },
+    {
+      "id": "ui.core.c241.reference_photos_alt",
+      "en": "Hair reference photographs will appear after generated assets are integrated",
+      "yue": "生成素材整合完成之後，頭髮參考相片就會出現"
+    },
+    {
+      "id": "ui.core.c242.progress_toward_target",
+      "en": "Progress toward target",
+      "yue": "前往目標嘅進度"
+    },
+    {
+      "id": "ui.core.c243.optional",
+      "en": "Optional",
+      "yue": "選填"
+    },
+    {
+      "id": "ui.core.c244.haircut_log_controls",
+      "en": "Haircut log controls",
+      "yue": "剪髮記錄控制"
+    },
+    {
+      "id": "ui.core.c245.open_regex_haircut",
+      "en": "Open regex builder for haircut search",
+      "yue": "開啟剪髮搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c246.search_titles_text",
+      "en": "Search titles and text",
+      "yue": "搜尋標題同內文"
+    },
+    {
+      "id": "ui.core.c247.open_regex_documentation",
+      "en": "Open regex builder for documentation search",
+      "yue": "開啟文件搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c248.documentation_articles",
+      "en": "Documentation articles",
+      "yue": "文件文章"
+    },
+    {
+      "id": "ui.core.c249.open_regex_converter_category",
+      "en": "Open regex builder for converter category",
+      "yue": "開啟轉換器類別嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c250.open_regex_converter_adapter",
+      "en": "Open regex builder for converter adapter",
+      "yue": "開啟轉換器 adapter 嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c251.search_installed_models",
+      "en": "Search installed models",
+      "yue": "搜尋已安裝模型"
+    },
+    {
+      "id": "ui.core.c252.open_regex_local_models",
+      "en": "Open regex builder for local model search",
+      "yue": "開啟本機模型搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c253.search_entries",
+      "en": "Search entries",
+      "yue": "搜尋項目"
+    },
+    {
+      "id": "ui.core.c254.open_regex_authenticator",
+      "en": "Open regex builder for authenticator search",
+      "yue": "開啟驗證器搜尋嘅正則表達式建構器"
+    },
+    {
+      "id": "ui.core.c255.open_regex_export_format",
+      "en": "Open regex builder for export format",
+      "yue": "開啟匯出格式嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c256.open_regex_history",
+      "en": "Open regex builder for history search",
+      "yue": "開啟歷史搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c257.open_regex_notifications",
+      "en": "Open regex builder for notification search",
+      "yue": "開啟通知搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c258.open_regex_changelog",
+      "en": "Open regex builder for changelog search",
+      "yue": "開啟變更記錄搜尋嘅 regex 建構器"
+    },
+    {
+      "id": "ui.core.c259.meta_description",
+      "en": "Hair Growth Estimator documentation, downloads, status, privacy details, and browser-local planning tools.",
+      "yue": "頭髮生長估算器文件、下載、狀態、私隱詳情，同瀏覽器本機規劃工具。"
+    },
+    {
+      "id": "ui.core.c260.meta_social_description",
+      "en": "Estimate hair growth, log haircut resets, use centimetres or inches, and connect to an optional private service.",
+      "yue": "估算頭髮生長、記錄剪髮重設、使用厘米或者英寸，仲可以連接選用私密服務。"
+    },
+    {
+      "id": "ui.core.c261.meta_image_alt",
+      "en": "Hair Growth Estimator logo with a curved hair strand and measurement marks",
+      "yue": "帶有彎曲髮絲同量度刻度嘅頭髮生長估算器標誌"
+    }
+  ]
+}

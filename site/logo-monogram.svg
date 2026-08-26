@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">Hair Growth Estimator monogram</title>
+  <desc id="desc">The letters HGE in a rounded square</desc>
+  <rect width="96" height="96" rx="28" fill="#5a3d00"/>
+  <text x="48" y="57" fill="#ffd8a8" font-family="system-ui,sans-serif" font-size="29" font-weight="800" text-anchor="middle">HGE</text>
+  <path d="M24 70h48" stroke="#a7f3d0" stroke-width="5" stroke-linecap="round"/>
+</svg>
