@@ -36,6 +36,9 @@ jobs:
       - name: Compose the static website
         run: npm run compose-site
 
+      - name: Exclude published pages from search indexing
+        run: node scripts/apply-pages-noindex.mjs _site
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
