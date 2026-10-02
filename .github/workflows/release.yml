@@ -257,7 +257,7 @@ jobs:
           include-hidden-files: false
   publish-release:
     name: Publish one verified release
-    if: ${{ always() && needs.windows-package.result == 'success' && needs.linux-container.result == 'success' }}
+    if: ${{ always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.windows-package.result == 'success' && needs.linux-container.result == 'success' }}
     needs: [windows-package, linux-container]
     runs-on: ubuntu-24.04
     permissions:
