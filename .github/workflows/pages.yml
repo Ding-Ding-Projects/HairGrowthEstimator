@@ -36,6 +36,9 @@ jobs:
       - name: Compose the static website
         run: npm run compose-site
 
+      - name: Exclude published pages from search indexing
+        run: node scripts/apply-pages-noindex.mjs _site
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
@@ -45,6 +48,7 @@ jobs:
           path: _site
 
   deploy-pages:
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     name: Deploy the composed documentation website
     needs: [build-pages]
     runs-on: ubuntu-24.04
